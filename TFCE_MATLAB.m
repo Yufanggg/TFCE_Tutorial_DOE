@@ -34,29 +34,34 @@ data = noiseSD * randn(nSub, nChan, nTime);
 group = [zeros(nControl,1); ones(nTreatment,1)]; % 0 = Control, 1 = Treatment
 
 %% Define P300 effect
+p300Latency = 400;
+p300Width = 70;
 
-effectAmplitude = 3;
-effectLatency   = 400;
-effectWidth     = 60;
+controlAmp = 3.0;
+treatmentAmp = 6.0;
 
-effect = effectAmplitude * ...
-    exp(-(times-effectLatency).^2/(2*effectWidth^2));
+controlP300 = controlAmp * exp(-(times - p300Latency).^2 / ...
+              (2 * p300Width^2));
 
-effect = effect(:);
+treatmentP300 = treatmentAmp * exp(-(times - p300Latency).^2 / ...
+                (2 * p300Width^2));
+
+controlP300 = controlP300(:);
+treatmentP300 = treatmentP300(:);
 
 %% Effect channels
 
 effectChans = [30 31 37 38];
 
-%% Inject effect into treatment group
+%% Inject P300 into both groups
 
-for s = (nControl+1):nSub
+for s = 1:nControl
 
     for ch = effectChans
 
         tmp = squeeze(data(s,ch,:));
 
-        tmp = tmp + effect;
+        tmp = tmp + controlP300;
 
         data(s,ch,:) = reshape(tmp,1,1,nTime);
 
@@ -64,6 +69,13 @@ for s = (nControl+1):nSub
 
 end
 
+for s = (nControl+1):nSub
+    for ch = effectChans
+        tmp = squeeze(data(s,ch,:));
+        tmp = tmp + treatmentP300;
+        data(s,ch,:) = reshape(tmp,1,1,nTime);
+    end
+end
 %% ==========================================================
 % Figure 1: ERP waveform
 %% ==========================================================
@@ -114,17 +126,19 @@ colorbar;
 % Figure 3: Ground-truth injected effect
 %% ==========================================================
 
-truth = zeros(nChan,nTime);
+truthDiff = zeros(nChan,nTime);
+
+trueDifference = treatmentP300 - controlP300;
 
 for ch = effectChans
 
-    truth(ch,:) = effect';
+    truthDiff(ch,:) = trueDifference';
 
 end
 
 figure;
 
-imagesc(times,1:nChan,truth);
+imagesc(times,1:nChan,truthDiff);
 
 axis xy;
 
