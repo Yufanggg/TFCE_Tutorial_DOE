@@ -34,7 +34,7 @@ data = noiseSD * randn(nSub, nChan, nTime);
 group = [zeros(nControl,1); ones(nTreatment,1)]; % 0 = Control, 1 = Treatment
 
 %% Define P300 effect
-p300Latency = 400;
+p300Latency = 300;
 p300Width = 70;
 
 controlAmp = 3.0;
@@ -183,5 +183,5 @@ end
 % Save dataset
 %% ==========================================================
 
-save('simulated_between_subject_EEG.mat',...
+save('./data/simulated_between_subject_EEG.mat',...
      'data','group','times','effectChans');
