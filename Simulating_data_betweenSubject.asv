@@ -70,23 +70,22 @@ controlP300 = controlP300(:);
 treatmentP300 = treatmentP300(:);
 
 %% Effect channels
-effectChansLabl = {'Pz', 'POz', 'CPz', 'P1', 'P2', 'CP1', 'CP2'}
+effectChans = {'Pz', 'POz', 'CPz', 'P1', 'P2', 'CP1', 'CP2'}
 %roi_labels = {chanlocs_roi.labels};
-[~, effectChans] = ismember(effectChansLabl, {chanlocs_EEG.labels});
+[~, idx] = ismember(effectChans, {chanlocs_EEG.labels});
+effectChans = [30 31 37 38];
 
 %% Inject P300 into both groups
 
 for s = 1:nControl
 
-    for ch_idx = 1:length(effectChans)
+    for ch = effectChans
 
-        ch = effectChans(ch_idx);
+        tmp = squeeze(data(s,ch,:));
 
-        tmp = squeeze(data(s, ch, :));
+        tmp = tmp + controlP300 + 0.5*ch;
 
-        tmp = tmp + controlP300 - 0.3 * ch_idx;
-
-        data(s, ch, :) = reshape(tmp, 1, 1, nTime);
+        data(s,ch,:) = reshape(tmp,1,1,nTime);
 
     end
 
@@ -103,7 +102,7 @@ end
 % Figure 1: ERP waveform
 %% ==========================================================
 
-channelToPlot = 50;
+channelToPlot = 30;
 
 controlERP = squeeze(mean(data(group==0,channelToPlot,:),1));
 treatmentERP = squeeze(mean(data(group==1,channelToPlot,:),1));
@@ -186,7 +185,7 @@ if exist('readlocs','file')
 
         figure;
 
-        topoplot(topo,chanlocs_EEG);
+        topoplot(topo,chanlocs_64);
 
         colorbar;
 
