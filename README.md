@@ -18,6 +18,7 @@ This project aims to inform cognitive neuroscientist of adapting TFCE to EEG/ERP
 
 ## Table of Contents:
 -[Ground-truth Data](#simulated-data)
+
 -[MATLAB Code](#matlab)
 
 
@@ -28,8 +29,7 @@ The ground-truth is [P300 efffect with 3.0 ](./Figures/01_simGroundEffect_betwee
 ![alt text](./Figures/01_simGroundEffect_betweenSubject_Simple.jpg). 
 
 Other visualized results are the following:
-![alt text](./Figures/01_simERP_betweenSubject_Simple.jpg),  ![alt text](./Figures/01_simTopoDiff_betweenSubject_Simple.jpg)
-![alt text](./Figures/01_simObsDiff_betweenSubject_Simple.jpg)
+![alt text](./Figures/01_simERP_betweenSubject_Simple.jpg),  ![alt text](./Figures/01_simTopoDiff_betweenSubject_Simple.jpg), ![alt text](./Figures/01_simObsDiff_betweenSubject_Simple.jpg)
 
 
 ## MATLAB
