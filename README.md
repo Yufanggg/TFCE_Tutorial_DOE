@@ -18,7 +18,7 @@ This project aims to inform cognitive neuroscientist of adapting TFCE to EEG/ERP
 4. Simple fully-crossed experimental structure (e.g., within-subject and within item)
 
 ## Table of Contents:
--[Ground-truth Data](#simulated-data)
+-[Simulated Data](#simulated-data)
 
 -[MATLAB Code](#matlab)
 
@@ -27,6 +27,7 @@ The respo include MATLAB, R, and Python implemtation of TFCE.
 ## Simulated data
 
 ***Simple (one manipulated variable with two levels) between-subject design without any covariates***
+
 The ground-truth is [P300 efffect with 3.0 ](./Figures/01_simGroundEffect_betweenSubject_Simple.jpg) as follows:
 ![alt text](./Figures/01_simGroundEffect_betweenSubject_Simple.jpg). 
 
@@ -35,7 +36,9 @@ Other visualized results are the following:
 
 
 ## MATLAB
+***Simple (one manipulated variable with two levels) between-subject design without any covariates***
 
+The output of TFCE is ![alt text](./Figures/01_TFCE_betweenSubject_Simple.jpg).
 
 ## Required packages
 
