@@ -1,0 +1,14 @@
+clear all; clc; close all;
+load('data/simulated_between_subject_EEG.mat')
+
+%%
+CON = categorical(group);
+t_Obs = nan(size(data, 2), size(data, 3))
+
+% Compute the initial statistical map
+for ch = 1:size(data, 2)
+    for tpoint = 1:size(data, 3)
+        EEG_local = double(squeeze(data(:, ch, tpoint)));
+        EEG_local = lm(CON);
+    end
+end

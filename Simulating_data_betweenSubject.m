@@ -75,7 +75,7 @@ effectChansLabl = {'Pz', 'POz', 'CPz', 'P1', 'P2', 'CP1', 'CP2'}
 [~, effectChans] = ismember(effectChansLabl, {chanlocs_EEG.labels});
 
 %% Inject P300 into both groups
-
+weights = [1.0 0.9 0.8 0.7 0.6 0.5 0.4];
 for s = 1:nControl
 
     for ch_idx = 1:length(effectChans)
@@ -84,7 +84,7 @@ for s = 1:nControl
 
         tmp = squeeze(data(s, ch, :));
 
-        tmp = tmp + controlP300 - 0.3 * ch_idx;
+        tmp = tmp + weights(ch_idx) *controlP300;
 
         data(s, ch, :) = reshape(tmp, 1, 1, nTime);
 
