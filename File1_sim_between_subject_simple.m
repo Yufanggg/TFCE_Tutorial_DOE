@@ -246,5 +246,5 @@ end
 % Save dataset
 %% ==========================================================
 
-save('./data/simulated_between_subject_EEG.mat',...
+save('./data/01_simulated_between_subject_EEG.mat',...
      'data','group','times','effectChans');
