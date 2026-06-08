@@ -59,8 +59,8 @@ perm_t = nan(size(data,2),size(data,3));
 parfor p = 1:nperms
     XX = group(randperm(num_rows),:);
     perm_t_local = nan(size(data,2),size(data,3));
-    for ch = 1:size(sEEG,1)
-        for tpoint = 1:size(sEEG,2)
+    for ch = 1:size(data,2)
+        for tpoint = 1:size(data,3)
             EEG_local = double(squeeze(data(:, ch, tpoint)));
 %             Group1 = EEG(XX == 1);
 %             Group2 = EEG(XX == 2);
