@@ -22,7 +22,7 @@ chanLabels_64 = {
 % 'TP9','TP10'
 % };
 e_loc = chanlocs_1020(ismember({chanlocs_1020.labels}, chanLabels_64));
-%%
+%% Step-1
 t_Obs = nan(size(data, 2), size(data, 3));
 
 for ch = 1:size(data, 2)
@@ -31,13 +31,81 @@ for ch = 1:size(data, 2)
 
         EEG_local = double(squeeze(data(:, ch, tpoint)));
 
-        g1 = EEG_local(group == 0);
-        g2 = EEG_local(group == 1);
-
-        [~,~,~,stats] = ttest2(g1, g2);
-
-        t_Obs(ch, tpoint) = stats.tstat;
+%         g1 = EEG_local(group == 0);
+%         g2 = EEG_local(group == 1);
+% 
+%         [~,~,~,stats] = ttest2(g1, g2);
+% 
+%         t_Obs(ch, tpoint) = stats.tstat;
+        
+        lm_local = fitlm(group, EEG_local);
+        toc;
+        t_Obs(ch,tpoint) = lm_local.Coefficients.Estimate(2)
 
     end
 
 end
+
+% Step-2
+ChN = ept_ChN2(e_loc); E_H = [0.66, 2];
+TFCE_Obs = ept_mex_TFCE2D(t_Obs, ChN, E_H);
+
+% Step-3
+nperms=999;
+num_rows = size(group,1);
+
+TFCE_permMax = nan(nperms,1);
+perm_t = nan(size(data,2),size(data,3));
+parfor p = 1:nperms
+    XX = group(randperm(num_rows),:);
+    perm_t_local = nan(size(data,2),size(data,3));
+    for ch = 1:size(sEEG,1)
+        for tpoint = 1:size(sEEG,2)
+            EEG_local = double(squeeze(data(:, ch, tpoint)));
+%             Group1 = EEG(XX == 1);
+%             Group2 = EEG(XX == 2);
+            tic;
+            lm_local = fitlm(XX, EEG_local);
+%             [~, ~, ~, stats] = ttest2(Group1, Group2);
+            toc;
+            perm_t_local(ch,tpoint) = lm_local.Coefficients.Estimate(2);%stats.tstat; 
+        end
+    end
+    ChN = ept_ChN2(e_loc); E_H = [0.66, 2];
+    TFCE_perm = ept_mex_TFCE2D(perm_t_local, ChN, E_H);
+    TFCE_permMax(p) = max(abs(TFCE_perm(:)));
+end
+
+% Step-4
+Alpha = .05;
+nPerm = length(TFCE_permMax);
+maxTFCE = sort([TFCE_permMax;max(abs(TFCE_Obs(:)))]);
+maxTFCEcrit = maxTFCE(round(nPerm*(1-Alpha)));
+Mask = abs(TFCE_Obs)>=maxTFCEcrit;
+P_Values = NaN(size(TFCE_Obs,1),size(TFCE_Obs,2));
+for idx = 1:size(TFCE_Obs,1)
+    for jdx = 1:size(TFCE_Obs,2)
+        P_Values(idx,jdx) = sum(abs(TFCE_Obs(idx,jdx))<=maxTFCE)/(nPerm+1);
+    end
+end
+
+Results.Obs                 = t_Obs;
+Results.TFCE_Obs            = TFCE_Obs;
+Results.maxTFCE             = maxTFCE;
+Results.P_Values            = P_Values;
+Results.Mask                = Mask;
+
+% Step-5
+mT = Results.Obs;
+mT(not(Results.Mask))=0;
+tick_labels = reshape({e_loc.labels}, 32, 1);
+
+
+figure,
+imagesc(mT)
+xlim([0 230])
+set(gca,'ytick',1:32,'FontSize',15,'FontName','Arial');
+set(gca,'TickLength',[0 0]);
+set(gca,'XTick',linspace(1,230,10),'XTickLabel',-200:100:700,'FontSize',15,'FontName','Arial');
+yticklabels(tick_labels);
+hc=colorbar;
