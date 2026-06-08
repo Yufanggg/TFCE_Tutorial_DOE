@@ -40,7 +40,7 @@ for ch = 1:size(data, 2)
         
         lm_local = fitlm(group, EEG_local);
         toc;
-        t_Obs(ch,tpoint) = lm_local.Coefficients.Estimate(2)
+        t_Obs(ch,tpoint) = lm_local.Coefficients.Estimate(2);
 
     end
 
