@@ -19,7 +19,7 @@ nControl   = 30;
 nTreatment = 30;
 
 nSub  = nControl + nTreatment;
-nChan = 64;
+nChan = 32;
 
 times = -200:4:800;
 nTime = length(times);
@@ -44,7 +44,16 @@ chanLabels_32 = {
 'PO9','O1','Oz','O2','PO10',...
 'TP9','TP10'
 };
-chanlocs_EEG = chanlocs_1020(ismember({chanlocs_1020.labels}, chanLabels_32));
+% chanlocs_EEG = chanlocs_1020(ismember({chanlocs_1020.labels}, chanLabels_32));
+allLabels = {chanlocs_1020.labels};
+[tf, idx] = ismember(chanLabels_32, allLabels);
+
+if any(~tf)
+    error('Missing channels: %s', strjoin(chanLabels_32(~tf), ', '));
+end
+
+chanlocs_EEG = chanlocs_1020(idx);
+nChan = length(chanlocs_EEG);
 %% Simulate baseline noise
 noiseSD = 1.5;
 data = noiseSD * randn(nSub, nChan, nTime);
@@ -70,12 +79,15 @@ controlP300 = controlP300(:);
 treatmentP300 = treatmentP300(:);
 
 %% Effect channels
-effectChansLabl = {'Cz', 'Pz', 'P3', 'P4'};
+effectChansLabl = {'Cz','CP1','CP2','Pz','P3','P4'};
 %roi_labels = {chanlocs_roi.labels};
-[~, effectChans] = ismember(effectChansLabl, {chanlocs_EEG.labels});
+[tf, effectChans] = ismember(effectChansLabl, {chanlocs_EEG.labels});
 
+if any(~tf)
+    error('Missing effect channels: %s', strjoin(effectChansLabl(~tf), ', '));
+end
 %% Inject P300 into both groups
-weights = [1.0 0.9 0.8 0.4];
+weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 for s = 1:nControl
 
     for ch_idx = 1:length(effectChans)
@@ -95,7 +107,7 @@ end
 for s = (nControl+1):nSub
     for ch = effectChans
         tmp = squeeze(data(s,ch,:));
-        tmp = tmp + treatmentP300;
+        tmp = tmp + weights(ch_idx) * treatmentP300;
         data(s,ch,:) = reshape(tmp,1,1,nTime);
     end
 end
@@ -103,7 +115,7 @@ end
 % Figure 1: ERP waveform
 %% ==========================================================
 
-channelToPlot = 14;
+channelToPlot = find(strcmp({chanlocs_EEG.labels}, 'Pz'));
 
 controlERP = squeeze(mean(data(group==0,channelToPlot,:),1));
 treatmentERP = squeeze(mean(data(group==1,channelToPlot,:),1));
@@ -118,7 +130,7 @@ plot(times,treatmentERP, 'r','LineWidth',2);
 xlabel('Time (ms)');
 ylabel('Amplitude (\muV)');
 
-title(sprintf('ERP waveform (Channel %d)',channelToPlot));
+title(sprintf('ERP waveform (Channel %d, Pz)',channelToPlot));
 
 legend('Control','Treatment');
 
@@ -153,10 +165,9 @@ truthDiff = zeros(nChan,nTime);
 
 trueDifference = treatmentP300 - controlP300;
 
-for ch = effectChans
-
-    truthDiff(ch,:) = trueDifference';
-
+for ch_idx = 1:length(effectChans)
+    ch = effectChans(ch_idx);
+    truthDiff(ch,:) = weights(ch_idx) * trueDifference';
 end
 
 figure;
@@ -175,7 +186,13 @@ colorbar;
 %% ==========================================================
 % Figure 4: Topography at peak latency (requires EEGLAB)
 %% ==========================================================
+% rotate the plot to get the right direction
+chanlocs_plot = chanlocs_EEG;
 
+for k = 1:length(chanlocs_plot)
+    chanlocs_plot(k).theta = chanlocs_plot(k).theta + 90;
+end
+% visualize the plot
 if exist('readlocs','file')
 
     [~,peakIdx] = min(abs(times-300));
@@ -186,7 +203,7 @@ if exist('readlocs','file')
 
         figure;
 
-        topoplot(topo,chanlocs_EEG);
+        topoplot(topo,chanlocs_plot, 'electrodes', 'labels');
 
         colorbar;
 
