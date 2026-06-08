@@ -146,15 +146,26 @@ groupDiff = squeeze(mean(data(group==1,:,:),1) - ...
 
 figure;
 
-imagesc(times,1:nChan,groupDiff);
-
+% Plot observed group difference
+imagesc(times, 1:nChan, groupDiff);
 axis xy;
 
+% Axes formatting
+xlim([-200 800]);
+set(gca, ...
+    'YTick', 1:nChan, ...
+    'YTickLabel', {chanlocs_EEG.labels}, ...
+    'XTick', -200:200:800, ...
+    'TickLength', [0 0], ...
+    'FontSize', 15, ...
+    'FontName', 'Arial');
+
+% Labels and title
 xlabel('Time (ms)');
 ylabel('Channel');
-
 title('Observed Group Difference');
 
+% Color scale
 colorbar;
 
 %% ==========================================================
@@ -172,15 +183,29 @@ end
 
 figure;
 
-imagesc(times,1:nChan,truthDiff);
+% Channel labels
+tick_labels = {chanlocs_EEG.labels};
 
+% Plot ground-truth effect
+imagesc(times, 1:nChan, truthDiff);
 axis xy;
 
+% Axes formatting
+xlim([-200 800]);
+set(gca, ...
+    'YTick', 1:nChan, ...
+    'YTickLabel', tick_labels, ...
+    'XTick', -200:200:800, ...
+    'TickLength', [0 0], ...
+    'FontSize', 15, ...
+    'FontName', 'Arial');
+
+% Labels and title
 xlabel('Time (ms)');
 ylabel('Channel');
-
 title('Ground-Truth Simulated Effect');
 
+% Color scale
 colorbar;
 
 %% ==========================================================

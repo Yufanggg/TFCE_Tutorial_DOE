@@ -22,7 +22,14 @@ chanLabels_32 = {
 'PO9','O1','Oz','O2','PO10',...
 'TP9','TP10'
 };
-e_loc = chanlocs_1020(ismember({chanlocs_1020.labels}, chanLabels_32));
+allLabels = {chanlocs_1020.labels};
+[tf, idx] = ismember(chanLabels_32, allLabels);
+
+if any(~tf)
+    error('Missing channels: %s', strjoin(chanLabels_32(~tf), ', '));
+end
+
+e_loc = chanlocs_1020(idx);
 %% Step-1
 t_Obs = nan(size(data, 2), size(data, 3));
 
@@ -97,16 +104,46 @@ Results.P_Values            = P_Values;
 Results.Mask                = Mask;
 
 % Step-5
+% Mask non-significant values
 mT = Results.Obs;
-mT(not(Results.Mask))=0;
-tick_labels = reshape({e_loc.labels}, 32, 1);
+mT(~Results.Mask) = 0;
 
+% Channel labels
+tick_labels = {e_loc.labels};
 
-figure,
-imagesc(mT)
-xlim([0 230])
-set(gca,'ytick',1:32,'FontSize',15,'FontName','Arial');
-set(gca,'TickLength',[0 0]);
-set(gca,'XTick',linspace(1,230,10),'XTickLabel',-200:100:700,'FontSize',15,'FontName','Arial');
-yticklabels(tick_labels);
-hc=colorbar;
+% Plot significant effects
+figure;
+imagesc(times, 1:32, mT);
+axis xy;
+
+% Axes formatting
+xlim([-200 800]);
+set(gca, ...
+    'YTick', 1:32, ...
+    'YTickLabel', tick_labels, ...
+    'XTick', -200:200:800, ...
+    'TickLength', [0 0], ...
+    'FontSize', 15, ...
+    'FontName', 'Arial');
+
+% Labels and title
+xlabel('Time (ms)');
+ylabel('Channel');
+title('Significant Observed Effects');
+
+% Colorbar
+hc = colorbar;
+
+% mT = Results.Obs;
+% mT(not(Results.Mask))=0;
+% tick_labels = reshape({e_loc.labels}, 32, 1);
+% 
+% 
+% figure,
+% imagesc(mT)
+% xlim([-200 800])
+% set(gca,'ytick',1:32,'FontSize',15,'FontName','Arial');
+% set(gca,'TickLength',[0 0]);
+% set(gca,'XTick',linspace(-200, 800, 4),'XTickLabel',-200:100:700,'FontSize',15,'FontName','Arial');
+% yticklabels(tick_labels);
+% hc=colorbar;
