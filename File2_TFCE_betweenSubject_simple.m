@@ -39,7 +39,7 @@ for ch = 1:nChan
 
     for tpoint = 1:nTime
         
-        EEG_local = double(squeeze(data(:, ch, tpoint)));  
+        EEG_local = double(data(:, ch, tpoint));  
         tic;
         lm_local = fitlm(group, EEG_local);
         toc;
