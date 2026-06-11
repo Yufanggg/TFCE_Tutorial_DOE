@@ -31,9 +31,9 @@ for ch = 1:nChan
     for tpoint = 1:nTime
 
         EEG_local = double(squeeze(data(:, ch, tpoint)));
-        
+        tic;
         lm_local = fitlm(group, EEG_local);
-
+        toc;
         t_Obs(ch,tpoint) = lm_local.Coefficients.Estimate(2);
 
     end
