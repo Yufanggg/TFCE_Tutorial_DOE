@@ -54,7 +54,7 @@ ChN = ept_ChN2(e_loc); E_H = [0.66, 2];
 TFCE_Obs = ept_mex_TFCE2D(t_Obs, ChN, E_H);
 
 % Step-3
-nperms=1;
+nperms=999;
 num_rows = size(group,1);
 TFCE_permMax = nan(nperms,1);
 ChN = ept_ChN2(e_loc); E_H = [0.66, 2];
