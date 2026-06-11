@@ -45,7 +45,8 @@ end
 
 % Step-2
 ChN = ept_ChN2(e_loc); E_H = [0.66, 2];
-TFCE_Obs = ept_mex_TFCE2D(t_Obs, ChN, E_H);
+TFCE_Obs_var1 = ept_mex_TFCE2D(t_Obs_var1, ChN, E_H);
+TFCE_Obs_var2 = ept_mex_TFCE2D(t_Obs_var2, ChN, E_H);
 
 % Step-3
 nperms=999;
@@ -121,17 +122,3 @@ title('Significant Observed Effects');
 
 % Colorbar
 hc = colorbar;
-
-% mT = Results.Obs;
-% mT(not(Results.Mask))=0;
-% tick_labels = reshape({e_loc.labels}, 32, 1);
-% 
-% 
-% figure,
-% imagesc(mT)
-% xlim([-200 800])
-% set(gca,'ytick',1:32,'FontSize',15,'FontName','Arial');
-% set(gca,'TickLength',[0 0]);
-% set(gca,'XTick',linspace(-200, 800, 4),'XTickLabel',-200:100:700,'FontSize',15,'FontName','Arial');
-% yticklabels(tick_labels);
-% hc=colorbar;
