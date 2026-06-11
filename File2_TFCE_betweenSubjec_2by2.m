@@ -1,6 +1,6 @@
 
 clear all; clc; close all;
-load('data/01_simulated_between_subject_EEG.mat')
+load('data/02_simulated_between_subject_2by2_EEG.mat')
 chanlocs_1020 = readlocs('standard_1005.elc');
 
 chanLabels_32 = {
@@ -24,17 +24,20 @@ e_loc = chanlocs_1020(idx);
 %% Step-1
 [nSubj, nChan, nTime] = size(data);
 
-t_Obs = zeros(nChan, nTime);
+t_Obs_var1 = zeros(nChan, nTime);
+t_Obs_var2 = zeros(nChan, nTime);
 
 for ch = 1:nChan
 
     for tpoint = 1:nTime
 
-        EEG_local = double(squeeze(data(:, ch, tpoint)));
+        EEG_local = double(data(:, ch, tpoint));
         tic;
-        lm_local = fitlm(group, EEG_local);
+        X = [var1(:) var2(:)];
+        lm_local = fitlm(X, EEG_local(:));
         toc;
-        t_Obs(ch,tpoint) = lm_local.Coefficients.Estimate(2);
+        t_Obs_var1(ch,tpoint) = lm_local.Coefficients.Estimate(2);
+        t_Obs_var2(ch,tpoint) = lm_local.Coefficients.Estimate(3);
 
     end
 
@@ -48,8 +51,9 @@ TFCE_Obs = ept_mex_TFCE2D(t_Obs, ChN, E_H);
 nperms=999;
 num_rows = size(group,1);
 
-TFCE_permMax = nan(nperms,1);
-perm_t = nan(size(data,2),size(data,3));
+TFCE_permMax_var1 = nan(nperms,1);
+perm_t_var1 = nan(size(data,2),size(data,3));
+
 parfor p = 1:nperms
     XX = group(randperm(num_rows),:);
     perm_t_local = nan(size(data,2),size(data,3));

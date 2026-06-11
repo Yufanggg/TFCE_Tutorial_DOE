@@ -326,21 +326,12 @@ if exist('readlocs','file')
 
     try
         figure;
-        
-        subplot(1,2,1);
 
         topoplot(topo,chanlocs_plot, 'electrodes', 'labels');
 
         colorbar;
 
         title('Group A Difference at 300 ms');
-        
-        % Group B
-        subplot(1,2,2);
-        topoB = groupBDiff(:,peakIdx);
-        topoplot(topoB, chanlocs_plot, 'electrodes', 'labels');
-        colorbar;
-        title('Group B Difference at 300 ms');
 
 
     catch
@@ -365,7 +356,7 @@ if exist('readlocs','file')
 
         colorbar;
 
-        title('Group Difference at 300 ms');
+        title('Group B Difference at 300 ms');
     catch
 
         fprintf('Could not load channel locations.\n');
@@ -377,5 +368,8 @@ end
 %% ==========================================================
 % Save dataset
 %% ==========================================================
+var1 = ~(group == 0 | group == 1);
+var2 = ~(group == 0 | group == 2);
+
 save('./data/02_simulated_between_subject_2by2_EEG.mat',...
-     'data','group','times','effectChans');
+     'data','var1', 'var2','times','effectChans');
