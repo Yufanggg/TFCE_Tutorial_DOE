@@ -63,7 +63,7 @@ p300Width = 70;
 Factor00 = 3.0
 Factor01 = 6.0
 Factor10 = 4.0
-Fatcor11 = 7.0
+Fatcor11 = 12.0
 
 Factor00P300 = Factor00 * exp(-(times - p300Latency).^2 / ...
               (2 * p300Width^2));
@@ -326,22 +326,12 @@ if exist('readlocs','file')
 
     try
         figure;
-        
-        subplot(1,2,1);
 
         topoplot(topo,chanlocs_plot, 'electrodes', 'labels');
 
         colorbar;
 
-        title('Group A Difference at 300 ms');
-        
-        % Group B
-        subplot(1,2,2);
-        topoB = groupBDiff(:,peakIdx);
-        topoplot(topoB, chanlocs_plot, 'electrodes', 'labels');
-        colorbar;
-        title('Group B Difference at 300 ms');
-
+        title('Group Difference at 300 ms');
 
     catch
 
@@ -377,5 +367,5 @@ end
 %% ==========================================================
 % Save dataset
 %% ==========================================================
-save('./data/02_simulated_between_subject_2by2_EEG.mat',...
+save('./data/02_simulated_between_subject_2by2Int_EEG.mat',...
      'data','group','times','effectChans');
