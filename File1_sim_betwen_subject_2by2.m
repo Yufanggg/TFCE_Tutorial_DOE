@@ -53,7 +53,8 @@ data = noiseSD * randn(nSub, nChan, nTime);
 
 %% Group labels
 
-group = [zeros(nFactor00,1); ones(nFactor01,1); 2*ones(nFactor10,1); 3*ones(nFactor11,1)]; % 0 = Control, 1 = Treatment
+group = [zeros(nFactor00,1); ones(nFactor01,1); 2*ones(nFactor10,1); ... 
+    3*ones(nFactor11,1)]; % 0 = Control, 1 = Treatment
 
 %% Define P300 effect
 p300Latency = 300;
@@ -62,7 +63,7 @@ p300Width = 70;
 Factor00 = 3.0
 Factor01 = 6.0
 Factor10 = 4.0
-Fatcor11 = 10.0
+Fatcor11 = 7.0
 
 Factor00P300 = Factor00 * exp(-(times - p300Latency).^2 / ...
               (2 * p300Width^2));
@@ -169,7 +170,7 @@ ylabel('Amplitude (\muV)');
 
 title(sprintf('ERP waveform (Channel %d)',channelToPlot));
 
-legend('FactorA+','FactorA-', 'FactorC+','FactorC-');
+legend('FactorA+','FactorA-', 'FactorB+','FactorB-');
 
 %xline(0,'--');
 grid on;
