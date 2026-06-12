@@ -138,7 +138,7 @@ legend('Control','Treatment');
 grid on;
 
 %% ==========================================================
-% Figure 2: Ground-truth channel ?? time effect map
+% Figure 2: Observed channel ¡Á time effect maps
 %% ==========================================================
 
 groupDiff = squeeze(mean(data(group==1,:,:),1) - ...
@@ -173,7 +173,6 @@ colorbar;
 %% ==========================================================
 
 truthDiff = zeros(nChan,nTime);
-
 trueDifference = treatmentP300 - controlP300;
 
 for ch_idx = 1:length(effectChans)
