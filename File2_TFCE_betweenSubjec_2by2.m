@@ -36,8 +36,8 @@ for ch = 1:nChan
         X = [var1(:) var2(:)];
         lm_local = fitlm(X, EEG_local(:));
         toc;
-        t_Obs_var1(ch,tpoint) = lm_local.Coefficients.Estimate(2);
-        t_Obs_var2(ch,tpoint) = lm_local.Coefficients.Estimate(3);
+        t_Obs_var1(ch,tpoint) = lm_local.Coefficients.tStat(2);
+        t_Obs_var2(ch,tpoint) = lm_local.Coefficients.tStat(3);
 
     end
 
@@ -48,54 +48,71 @@ ChN = ept_ChN2(e_loc); E_H = [0.66, 2];
 TFCE_Obs_var1 = ept_mex_TFCE2D(t_Obs_var1, ChN, E_H);
 TFCE_Obs_var2 = ept_mex_TFCE2D(t_Obs_var2, ChN, E_H);
 
-% Step-3
+% Step-3: Synchronized permutation test
 nperms=999;
 num_rows = size(var1,1);
 
 TFCE_permMax_var1 = nan(nperms,1);
 TFCE_permMax_var2 = nan(nperms,1);
 
+idx_Bminus = find(var2 == -1);
+idx_Bplus  = find(var2 ==  1);
+
+idx_Aminus = find(var1 == -1);
+idx_Aplus  = find(var1 ==  1);
+
 parfor p = 1:nperms
-    XX = group(randperm(num_rows),:);
+    %Permute Factor A within each level of Factor B
+    var1_perm = var1(:);
+
+    var1_perm(idx_Bminus) = var1_perm(idx_Bminus(randperm(length(idx_Bminus))));
+    var1_perm(idx_Bplus)  = var1_perm(idx_Bplus(randperm(length(idx_Bplus))));
+
+    X_perm_A = [var1_perm(:), var2(:)];
+    
     perm_t_local_var1 = nan(size(data,2),size(data,3));
     perm_t_local_var2 = nan(size(data,2),size(data,3));
+    
+    % Permute Factor B within each level of Factor A
+    var2_perm = var2(:);
+
+    var2_perm(idx_Aminus) = var2_perm(idx_Aminus(randperm(length(idx_Aminus))));
+    var2_perm(idx_Aplus)  = var2_perm(idx_Aplus(randperm(length(idx_Aplus))));
+
+    X_perm_B = [var1(:), var2_perm(:)];
+    
+    % Fit models
+    perm_t_var1 = zeros(nChan,nTime);
+    perm_t_var2 = zeros(nChan,nTime);
     
     for ch = 1:nChan
         for tpoint = 1:nTime
             EEG_local = double(data(:, ch, tpoint));
             tic;
-            % Test var1, controlling for var2
-            Xred1 = [ones(N,1), var2];
-            b_red1 = Xred1 \ y;
-            yhat_red1 = Xred1*b_red1;
-            res_red1 = y - yhat_red1;
+            lm_A = fitlm(X_perm_A, EEG_local(:));
+            lm_B = fitlm(X_perm_B, EEG_local(:));
 
-            lm_local = fitlm(XX, EEG_local);
-            perm_t_local_var1(ch,tpoint) = lm_local.Coefficients.Estimate(2);
-            code 
-            % Test var2, controlling for var1
-            Xred2 = [ones(N,1), var1];
-            b_red2 = Xred2 \ y;
-            yhat_red2 = Xred2*b_red2;
-            res_red2 = y - yhat_red2;
-            
-            %Test the interaction
-            XredInt = [ones(N,1), var1, var2];
+            perm_t_var1(ch,tpoint) = lm_A.Coefficients.tStat(2);
+            perm_t_var2(ch,tpoint) = lm_B.Coefficients.tStat(3);
             
             toc;
             
         end
     end
-    TFCE_perm_var1 = ept_mex_TFCE2D(perm_t_local_var1, ChN, E_H);
+    TFCE_perm_var1 = ept_mex_TFCE2D(perm_t_var1, ChN, E_H);
+    TFCE_perm_var2 = ept_mex_TFCE2D(perm_t_var2, ChN, E_H);
+
     TFCE_permMax_var1(p) = max(abs(TFCE_perm_var1(:)));
-    
-    TFCE_perm_var2 = ept_mex_TFCE2D(perm_t_local_var2, ChN, E_H);
     TFCE_permMax_var2(p) = max(abs(TFCE_perm_var2(:)));
 end
 
-% Step-4
+% Step-4: TFCE-corrected p-values and masks
 Alpha = .05;
 nPerm = length(TFCE_permMax_var1);
+
+P_Values_var1 = nan(size(TFCE_Obs_var1));
+P_Values_var2 = nan(size(TFCE_Obs_var2));
+
 maxTFCE_var1 = sort([TFCE_permMax_var1;max(abs(TFCE_Obs_var1(:)))]);
 maxTFCEcrit_var1 = maxTFCE_var1(round(nPerm*(1-Alpha)));
 Mask_var1 = abs(TFCE_Obs_var1)>=maxTFCEcrit_var1;

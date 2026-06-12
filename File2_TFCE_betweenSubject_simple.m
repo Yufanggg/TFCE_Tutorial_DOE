@@ -43,7 +43,7 @@ for ch = 1:nChan
         tic;
         lm_local = fitlm(group, EEG_local);
         toc;
-        t_Obs(ch,tpoint) = lm_local.Coefficients.Estimate(2);
+        t_Obs(ch,tpoint) = lm_local.Coefficients.tStat(2);
 
     end
 
@@ -68,7 +68,7 @@ parfor p = 1:nperms
             tic;
             lm_local = fitlm(XX, EEG_local);
             toc;
-            perm_t_local(ch,tpoint) = lm_local.Coefficients.Estimate(2);%stats.tstat; 
+            perm_t_local(ch,tpoint) = lm_local.Coefficients.tStat(2);%stats.tstat; 
         end
     end
    
