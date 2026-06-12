@@ -83,12 +83,11 @@ maxTFCE = sort([TFCE_permMax;max(abs(TFCE_Obs(:)))]);
 maxTFCEcrit = maxTFCE(round(nPerm*(1-Alpha)));
 Mask = abs(TFCE_Obs)>=maxTFCEcrit;
 P_Values = NaN(size(TFCE_Obs,1),size(TFCE_Obs,2));
-for idx = 1:size(TFCE_Obs,1)
-    for jdx = 1:size(TFCE_Obs,2)
-        P_Values(idx,jdx) = sum(abs(TFCE_Obs(idx,jdx))<=maxTFCE)/(nPerm+1);
+for ch = 1:nChan
+    for tpoint = 1:nTime
+        P_Values(ch,tpoint) = sum(abs(TFCE_Obs(ch,tpoint))<=maxTFCE)/(nPerm+1);
     end
 end
-
 Results.Obs                 = t_Obs;
 Results.TFCE_Obs            = TFCE_Obs;
 Results.maxTFCE             = maxTFCE;
