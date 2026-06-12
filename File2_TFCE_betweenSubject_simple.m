@@ -125,17 +125,3 @@ title('Significant Observed Effects');
 
 % Colorbar
 hc = colorbar;
-
-% mT = Results.Obs;
-% mT(not(Results.Mask))=0;
-% tick_labels = reshape({e_loc.labels}, 32, 1);
-% 
-% 
-% figure,
-% imagesc(mT)
-% xlim([-200 800])
-% set(gca,'ytick',1:32,'FontSize',15,'FontName','Arial');
-% set(gca,'TickLength',[0 0]);
-% set(gca,'XTick',linspace(-200, 800, 4),'XTickLabel',-200:100:700,'FontSize',15,'FontName','Arial');
-% yticklabels(tick_labels);
-% hc=colorbar;
