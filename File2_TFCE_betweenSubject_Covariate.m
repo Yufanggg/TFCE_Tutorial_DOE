@@ -74,10 +74,11 @@ parfor p = 1:nperms
             % Freedman-Lane permutation 
             perm_idx = randperm(num_rows); 
             Y_perm = Y_hat_red + resid_red(perm_idx);
-            
+            tic;
             % Full model fitted to permuted data 
             lm_local = fitlm(X_full, Y_perm)
             perm_t_local(ch,tpoint) = lm_local.Coefficients.tStat(2);
+            toc;
         end
     end
    
