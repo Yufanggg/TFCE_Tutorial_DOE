@@ -58,6 +58,10 @@ TFCE_permMax_var1 = nan(nperms,1);
 TFCE_permMax_var2 = nan(nperms,1);
 TFCE_permMax_Int = nan(nperms,1);
 
+% Design matrices (only focus on the interaction effects)
+X_full = X;
+X_red = [X(:, 1), X(:, 2)];
+
 parfor p = 1:nperms
     XX = group(randperm(num_rows),:);
     perm_t_local_var1 = nan(size(data,2),size(data,3));
