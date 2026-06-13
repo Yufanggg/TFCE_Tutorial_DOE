@@ -47,16 +47,16 @@ TFCE_Obs_Int = ept_mex_TFCE2D(t_Obs_Int, ChN, E_H);
 
 
 % Step-3
-nperms=999;
-num_rows = size(var1,1);
+nPerm=1;
+num_rows = size(group,1);
 
-TFCE_permMax_Int = nan(nperms,1);
+TFCE_permMax_Int = nan(nPerm,1);
 
 % Design matrices (only focus on the interaction effects)
 X_full = X;
 X_red = [X(:, 1), X(:, 2)];
 
-parfor p = 1:nperms
+parfor p = 1:nPerm
     
     perm_t_local = nan(nChan, nTime);
     
@@ -76,7 +76,7 @@ parfor p = 1:nperms
             Y_perm = Y_hat_red + resid_red(perm_idx);
             
             % Full model fitted to permuted data 
-            lm_local = fitlm(X_full, Y_perm)
+            lm_local = fitlm(X_full, Y_perm);
             perm_t_local(ch,tpoint) = lm_local.Coefficients.tStat(4);
         end
     end
@@ -89,7 +89,6 @@ end
 
 % Step-4
 Alpha = .05;
-nPerm = length(TFCE_permMax);
 maxTFCE_Int = sort([TFCE_permMax_Int;max(abs(TFCE_Obs_Int(:)))]);
 maxTFCEcrit_Int = maxTFCE_Int(round(nPerm*(1-Alpha)));
 Mask_Int = abs(TFCE_Obs_Int)>=maxTFCEcrit_Int;
