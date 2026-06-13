@@ -24,8 +24,7 @@ e_loc = chanlocs_1020(idx);
 %% Step-1
 [nSubj, nChan, nTime] = size(data);
 
-t_Obs_var1 = zeros(nChan, nTime);
-t_Obs_var2 = zeros(nChan, nTime);
+
 t_Obs_Int = zeros(nChan, nTime);
 
 for ch = 1:nChan
@@ -35,8 +34,6 @@ for ch = 1:nChan
         EEG_local = double(data(:, ch, tpoint));
         tic;
         lm_local = fitlm(X, EEG_local(:));
-        t_Obs_var1(ch,tpoint) = lm_local.Coefficients.tStat(2);
-        t_Obs_var2(ch,tpoint) = lm_local.Coefficients.tStat(3);
         t_Obs_Int(ch,tpoint) = lm_local.Coefficients.tStat(4);
         toc;
     end
@@ -45,8 +42,7 @@ end
 
 % Step-2
 ChN = ept_ChN2(e_loc); E_H = [0.66, 2];
-TFCE_Obs_var1 = ept_mex_TFCE2D(t_Obs_var1, ChN, E_H);
-TFCE_Obs_var2 = ept_mex_TFCE2D(t_Obs_var2, ChN, E_H);
+
 TFCE_Obs_Int = ept_mex_TFCE2D(t_Obs_Int, ChN, E_H);
 
 
@@ -54,8 +50,6 @@ TFCE_Obs_Int = ept_mex_TFCE2D(t_Obs_Int, ChN, E_H);
 nperms=999;
 num_rows = size(var1,1);
 
-TFCE_permMax_var1 = nan(nperms,1);
-TFCE_permMax_var2 = nan(nperms,1);
 TFCE_permMax_Int = nan(nperms,1);
 
 % Design matrices (only focus on the interaction effects)
@@ -83,37 +77,39 @@ parfor p = 1:nperms
             
             % Full model fitted to permuted data 
             lm_local = fitlm(X_full, Y_perm)
-            perm_t_local(ch,tpoint) = lm_local.Coefficients.tStat(2);
+            perm_t_local(ch,tpoint) = lm_local.Coefficients.tStat(4);
         end
     end
+
    
     TFCE_perm = ept_mex_TFCE2D(perm_t_local, ChN, E_H);
-    TFCE_permMax(p) = max(abs(TFCE_perm(:)));
-    endgigit 
+    TFCE_permMax_Int(p) = max(abs(TFCE_perm(:)));
+    
+end 
 
 % Step-4
 Alpha = .05;
-nPerm = length(TFCE_permMax_var1);
-maxTFCE_var1 = sort([TFCE_permMax_var1;max(abs(TFCE_Obs_var1(:)))]);
-maxTFCEcrit_var1 = maxTFCE_var1(round(nPerm*(1-Alpha)));
-Mask_var1 = abs(TFCE_Obs_var1)>=maxTFCEcrit_var1;
-P_Values_var1 = NaN(size(TFCE_Obs_var1,1),size(TFCE_Obs_var1,2));
-for idx = 1:size(TFCE_Obs_var1,1)
-    for jdx = 1:size(TFCE_Obs_var1,2)
-        P_Values_var1(idx,jdx) = sum(abs(TFCE_Obs_var1(idx,jdx))<=maxTFCE_var1)/(nPerm+1);
+nPerm = length(TFCE_permMax);
+maxTFCE_Int = sort([TFCE_permMax_Int;max(abs(TFCE_Obs_Int(:)))]);
+maxTFCEcrit_Int = maxTFCE_Int(round(nPerm*(1-Alpha)));
+Mask_Int = abs(TFCE_Obs_Int)>=maxTFCEcrit_Int;
+P_Values_Int = NaN(size(TFCE_Obs_Int,1),size(TFCE_Obs_Int,2));
+for ch = 1:nChan
+    for tpoint = 1:nTime
+        P_Values_Int(ch,tpoint) = sum(abs(TFCE_Obs_Int(ch,tpoint))<=maxTFCE_Int)/(nPerm+1);
     end
 end
 
-Results.Obs_var1                 = t_Obs_var1;
-Results.TFCE_Obs_var1            = TFCE_Obs_var1;
-Results.maxTFCE_var1             = maxTFCE_var1;
-Results.P_Values_var1            = P_Values_var1;
-Results.Mask_var1               = Mask_var1;
+Results.Obs_Int                 = t_Obs_Int;
+Results.TFCE_Obs_Int            = TFCE_Obs_Int;
+Results.maxTFCE_Int             = maxTFCE_Int;
+Results.P_Values_Int            = P_Values_Int;
+Results.Mask_Int               = Mask_Int;
 
 % Step-5
 % Mask non-significant values
-mT = Results.Obs;
-mT(~Results.Mask) = 0;
+mT = Results.Obs_Int;
+mT(~Results.Mask_Int) = 0;
 
 % Channel labels
 tick_labels = {e_loc.labels};
