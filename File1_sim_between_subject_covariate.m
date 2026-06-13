@@ -1,11 +1,9 @@
-
-
 %% ==========================================================
 % Simulate ERP data with group-specific P300 effects
 %% ==========================================================
 % Groups:
-% Control (n = 30)
-% Treatment (n = 30)
+% -1 Control (n = 30)
+% 1 Treatment (n = 30)
 %
 % Data dimensions:
 % Subjects ¡Á Channels ¡Á Time
@@ -69,7 +67,7 @@ noiseSD = 1.5;
 data = noiseSD * randn(nSub, nChan, nTime);
 
 %% Group labels and covariate
-group = [zeros(nControl,1); ones(nTreatment,1)];   % 0 = Control, 1 = Treatment
+group = [-ones(nControl,1); ones(nTreatment,1)];   % 0 = Control, 1 = Treatment
 covariate = randn(nSub,1);
 
 %% Define P300 parameters
@@ -143,8 +141,8 @@ end
 
 channelToPlot = find(strcmp({chanlocs_EEG.labels}, 'Pz'));
 
-controlERP = squeeze(mean(data(group==0,channelToPlot,:),1));
-treatmentERP = squeeze(mean(data(group==1,channelToPlot,:),1));
+controlERP = squeeze(mean(data(group==1,channelToPlot,:),1));
+treatmentERP = squeeze(mean(data(group==-1,channelToPlot,:),1));
 
 figure;
 
@@ -158,7 +156,7 @@ ylabel('Amplitude (\muV)');
 
 title(sprintf('ERP waveform (Channel %d, Pz)',channelToPlot));
 
-legend('Control','Treatment');
+legend('Treatment', 'Control');
 
 %xline(0,'--');
 grid on;
@@ -168,7 +166,7 @@ grid on;
 %% ==========================================================
 
 groupDiff = squeeze(mean(data(group==1,:,:),1) - ...
-                    mean(data(group==0,:,:),1));
+                    mean(data(group==-1,:,:),1));
 
 figure;
 
@@ -274,11 +272,9 @@ else
 
 end
 
-
-
 %% ==========================================================
 % Save dataset
 %% ==========================================================
 
 save('./data/04_simulated_between_subject_covariate_EEG.mat',...
-     'data','group','times','effectChans');
+     'data','group','covariate','times','effectChans');
