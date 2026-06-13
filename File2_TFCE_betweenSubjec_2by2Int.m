@@ -63,42 +63,33 @@ X_full = X;
 X_red = [X(:, 1), X(:, 2)];
 
 parfor p = 1:nperms
-    XX = group(randperm(num_rows),:);
-    perm_t_local_var1 = nan(size(data,2),size(data,3));
-    perm_t_local_var2 = nan(size(data,2),size(data,3));
+    
+    perm_t_local = nan(nChan, nTime);
     
     for ch = 1:nChan
         for tpoint = 1:nTime
-            EEG_local = double(data(:, ch, tpoint));
-            tic;
-            % Test var1, controlling for var2
-            Xred1 = [ones(N,1), var2];
-            b_red1 = Xred1 \ y;
-            yhat_red1 = Xred1*b_red1;
-            res_red1 = y - yhat_red1;
-
-            lm_local = fitlm(XX, EEG_local);
-            perm_t_local_var1(ch,tpoint) = lm_local.Coefficients.Estimate(2);
-            code 
-            % Test var2, controlling for var1
-            Xred2 = [ones(N,1), var1];
-            b_red2 = Xred2 \ y;
-            yhat_red2 = Xred2*b_red2;
-            res_red2 = y - yhat_red2;
             
-            %Test the interaction
-            XredInt = [ones(N,1), var1, var2];
+            % EEG data at this channel and time point 
+            Y = double(data(:, ch, tpoint));
             
-            toc;
+            % Reduced model 
+            beta_red = X_red \ Y; 
+            Y_hat_red = X_red * beta_red; 
+            resid_red = Y - Y_hat_red;
             
+            % Freedman-Lane permutation 
+            perm_idx = randperm(num_rows); 
+            Y_perm = Y_hat_red + resid_red(perm_idx);
+            
+            % Full model fitted to permuted data 
+            lm_local = fitlm(X_full, Y_perm)
+            perm_t_local(ch,tpoint) = lm_local.Coefficients.tStat(2);
         end
     end
-    TFCE_perm_var1 = ept_mex_TFCE2D(perm_t_local_var1, ChN, E_H);
-    TFCE_permMax_var1(p) = max(abs(TFCE_perm_var1(:)));
-    
-    TFCE_perm_var2 = ept_mex_TFCE2D(perm_t_local_var2, ChN, E_H);
-    TFCE_permMax_var2(p) = max(abs(TFCE_perm_var2(:)));
-end
+   
+    TFCE_perm = ept_mex_TFCE2D(perm_t_local, ChN, E_H);
+    TFCE_permMax(p) = max(abs(TFCE_perm(:)));
+    endgigit 
 
 % Step-4
 Alpha = .05;
