@@ -50,10 +50,14 @@ for ch = 1:nChan
     for tpoint = 1:nTime
 
         diffVals = double(squeeze(diffData(:,ch,tpoint)));
+        
+        tic;
 
-        [~,p,~,stats] = ttest(diffVals, 0);
+        [~,~,~,stats] = ttest(diffVals, 0);
 
         t_Obs(ch,tpoint) = stats.tstat;
+        
+        toc;
 
     end
 
@@ -94,10 +98,14 @@ parfor p = 1:nperms
         for tpoint = 1:nTime
 
             diffVals = double(squeeze(permDiff(:,ch,tpoint)));
+            
+            tic;
 
             [~,~,~,stats] = ttest(diffVals, 0);
 
             perm_t_local(ch,tpoint) = stats.tstat;
+            
+            toc;
 
         end
 
@@ -134,7 +142,6 @@ for ch = 1:nChan
 end
 
 Results.Obs          = t_Obs;
-Results.P_Obs        = p_Obs;
 Results.TFCE_Obs     = TFCE_Obs;
 Results.TFCE_permMax = TFCE_permMax;
 Results.P_Values     = P_Values;
