@@ -108,18 +108,18 @@ subjectP300SD    = 0.25; % subject-level ERP amplitude variability
 for s = 1:nSub
 
     % Subject-level baseline offset shared by both conditions
-    subjectOffset = subjectOffsetSD * abs(randn);
+    subjectOffset = subjectOffsetSD * randn;
 
     % Shared EEG noise pattern for this subject
-    sharedNoise = sharedNoiseSD * abs(randn(nChan, nTime));
+    sharedNoise = sharedNoiseSD * randn(nChan, nTime);
 
     % Subject-specific P300 gain shared by both conditions
-    subjectP300Gain = 1 + abs(subjectP300SD * randn);
+    subjectP300Gain = 1 + subjectP300SD * randn;
 
     for c = 1:nCond
 
         % Condition-specific noise
-        conditionNoise = conditionNoiseSD * abs(randn(nChan, nTime));
+        conditionNoise = conditionNoiseSD * randn(nChan, nTime);
 
         % Shared subject structure + condition-specific noise
         data(s,c,:,:) = sharedNoise + conditionNoise + subjectOffset;

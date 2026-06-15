@@ -1,19 +1,21 @@
 %% ==========================================================
 % Simulated EEG/ERP dataset
-% Within-subject experimental design
+% Nested within-subject experimental design
 %
-% Same subjects measured in two conditions:
+% Subjects are nested inside classes.
+% Each subject is measured in two conditions:
 % Condition 1 = Control
 % Condition 2 = Treatment
 %
 % Data dimensions:
 % Subjects x Conditions x Channels x Time
 %
-% Key within-subject feature:
-% Control and Treatment are correlated within each subject
+% Model structure:
+% Condition is within-subject.
+% Subjects are nested in Class.
 %
 % Ground truth:
-% Treatment has larger positive ERP effect at 300 ms
+% Treatment has larger positive ERP effect at 300 ms.
 % Effect channels: Cz, CP1, CP2, Pz, P3, P4
 %% ==========================================================
 
@@ -23,10 +25,15 @@ clear; clc; close all; rng(123);
 % Simulation settings
 %% ==========================================================
 
-nSub  = 30;
-nCond = 2;
+nClass = 3;
+nSubPerClass = 10;
+nSub = nClass * nSubPerClass;
 
+nCond = 2;
 condNames = {'Control','Treatment'};
+
+% Older-MATLAB-compatible replacement for repelem
+classID = kron((1:nClass)', ones(nSubPerClass,1));
 
 times = -200:4:800;
 nTime = length(times);
@@ -92,7 +99,7 @@ end
 weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 
 %% ==========================================================
-% Simulate within-subject EEG/ERP data
+% Simulate nested within-subject EEG/ERP data
 %% ==========================================================
 
 % Data size:
@@ -100,33 +107,42 @@ weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 data = zeros(nSub, nCond, nChan, nTime);
 
 % Noise and variability settings
-sharedNoiseSD    = 1.0;  % shared noise across conditions within subject
-conditionNoiseSD = 0.8;  % condition-specific noise
-subjectOffsetSD  = 1.5;  % subject-level amplitude offset
-subjectP300SD    = 0.25; % subject-level ERP amplitude variability
+sharedNoiseSD    = 1.0; %noised within the same subject
+conditionNoiseSD = 0.8; %noise under each conition
 
-for s = 1:nSub
+% Class-level variability
+classOffsetSD = 1.0; %how much classes differ in overall baseline amplitude
+classP300SD   = 0.20;% how much classes differ in P300 size
 
-    % Subject-level baseline offset shared by both conditions
-    subjectOffset = subjectOffsetSD * abs(randn);
+% Subject-level variability
+subjectOffsetSD = 1.5; % how much subjects differ in baseline amplitude within their clss
+subjectP300SD   = 0.25; % how much subject differ in P300 size within their class
+
+% Class-level random effects
+classOffset = abs(classOffsetSD * randn(nClass,1)); %affects the overall baseline amplitude
+classP300Gain = 1 + abs(classP300SD * randn(nClass,1)); %affects only the P300 component amplitude
+
+for s = 1:nSub 
+
+    cl = classID(s);
+
+    % Subject-level baseline offset nested inside class
+    subjectOffset = classOffset(cl) + abs(subjectOffsetSD * randn);
 
     % Shared EEG noise pattern for this subject
-    sharedNoise = sharedNoiseSD * abs(randn(nChan, nTime));
+    sharedNoise = abs(sharedNoiseSD * randn(nChan, nTime));
 
-    % Subject-specific P300 gain shared by both conditions
-    subjectP300Gain = 1 + abs(subjectP300SD * randn);
+    % Subject-specific P300 gain nested inside class
+    subjectP300Gain = classP300Gain(cl) + abs(subjectP300SD * randn);
 
     for c = 1:nCond
 
-        % Condition-specific noise
-        conditionNoise = conditionNoiseSD * abs(randn(nChan, nTime));
+        conditionNoise = abs(conditionNoiseSD * randn(nChan, nTime));
 
-        % Shared subject structure + condition-specific noise
         data(s,c,:,:) = sharedNoise + conditionNoise + subjectOffset;
 
     end
 
-    % Inject P300 into Control and Treatment
     for ch_idx = 1:length(effectChans)
 
         ch = effectChans(ch_idx);
@@ -149,12 +165,7 @@ end
 % Within-subject difference
 %% ==========================================================
 
-% Difference is computed subject-by-subject first
-% Subjects x Channels x Time
 subjectDiff = squeeze(data(:,2,:,:) - data(:,1,:,:));
-
-% Average paired difference
-% Channels x Time
 conditionDiff = squeeze(mean(subjectDiff,1));
 
 %% ==========================================================
@@ -175,7 +186,7 @@ plot(times, treatmentERP, 'r', 'LineWidth', 2);
 
 xlabel('Time (ms)');
 ylabel('Amplitude (\muV)');
-title('Within-subject ERP waveform at Pz');
+title('Nested Within-subject ERP waveform at Pz');
 legend(condNames);
 grid on;
 
@@ -200,7 +211,7 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Observed Within-subject Difference: Treatment - Control');
+title('Observed Difference: Treatment - Control');
 
 colorbar;
 
@@ -242,26 +253,51 @@ title('Ground-truth Within-subject Effect');
 colorbar;
 
 %% ==========================================================
-% Figure 4: Paired t-test map
+% Figure 4: Linear mixed model t-map
+%
+% Model:
+% Y ~ Condition + (1|Class) + (1|Class:Subject)
+%
+% Condition is within-subject.
+% Subject is nested inside Class.
 %% ==========================================================
 
 tMap = zeros(nChan,nTime);
 pMap = zeros(nChan,nTime);
 
+subjectID = (1:nSubPerClass)';
+
 for ch = 1:nChan
+
+    fprintf('Running LME for channel %d of %d: %s\n', ...
+        ch, nChan, chanlocs_EEG(ch).labels);
 
     for t = 1:nTime
 
         controlVals   = squeeze(data(:,1,ch,t));
         treatmentVals = squeeze(data(:,2,ch,t));
 
-        [~,p,~,stats] = ttest(treatmentVals, controlVals);
+        Y = [controlVals; treatmentVals];
 
-        tMap(ch,t) = stats.tstat;
-        pMap(ch,t) = p;
+        Condition = categorical([ ...
+            repmat({'Control'}, nSubPerClass*nClass, 1); ...
+            repmat({'Treatment'}, nSubPerClass*nClass, 1)]);
+
+        Subject = categorical([subjectID; subjectID; subjectID; subjectID; subjectID; subjectID]);
+
+        Class = categorical([classID; classID]);
+
+        tbl = table(Y, Condition, Subject, Class);
+
+        lme = fitlme(tbl, ...
+            'Y ~ Condition + (1|Class) + (1|Class:Subject)');
+
+        coefTable = lme.Coefficients;
+
+        tMap(ch,t) = coefTable.tStat(2);
+        pMap(ch,t) = coefTable.pValue(2);
 
     end
-
 end
 
 figure;
@@ -281,12 +317,12 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Paired t-test Map: Treatment vs Control');
+title('Linear Mixed Model t-map: Treatment vs Control');
 
 colorbar;
 
 %% ==========================================================
-% Figure 5: Significant paired t-test map
+% Figure 5: Significant LME map
 %% ==========================================================
 
 alpha = 0.05;
@@ -311,7 +347,7 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Significant Paired t-test Map, p < 0.05');
+title('Significant LME Map, p < 0.05');
 
 colorbar;
 
@@ -337,7 +373,7 @@ if exist('topoplot','file')
 
     colorbar;
 
-    title('Within-subject Difference at 300 ms');
+    title('Nested Within-subject Difference at 300 ms');
 
 else
 
@@ -353,7 +389,7 @@ if ~exist('./data','dir')
     mkdir('./data');
 end
 
-save('./data/05_simulated_within_subject_EEG.mat', ...
+save('./data/07_simulated_nested_within_subject_EEG.mat', ...
      'data', ...
      'subjectDiff', ...
      'conditionDiff', ...
@@ -363,4 +399,7 @@ save('./data/05_simulated_within_subject_EEG.mat', ...
      'effectChans', ...
      'effectChansLabl', ...
      'chanlocs_EEG', ...
-     'condNames');
+     'condNames', ...
+     'classID', ...
+     'nClass', ...
+     'nSubPerClass');
