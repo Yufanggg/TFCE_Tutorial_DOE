@@ -76,7 +76,7 @@ parfor p = 1:nperms
             Y_perm = Y_hat_red + resid_red(perm_idx);
             tic;
             % Full model fitted to permuted data 
-            lm_local = fitlm(X_full, Y_perm)
+            lm_local = fitlm(X_full, Y_perm);
             perm_t_local(ch,tpoint) = lm_local.Coefficients.tStat(2);
             toc;
         end

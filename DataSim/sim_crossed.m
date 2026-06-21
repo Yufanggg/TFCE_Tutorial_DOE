@@ -1,22 +1,24 @@
 %% ==========================================================
 % Simulated EEG/ERP dataset
-% Nested within-subject experimental design
+% Fully crossed random-effects design
 %
-% Subjects are nested inside classes.
-% Each subject is measured in two conditions:
-% Condition 1 = Control
-% Condition 2 = Treatment
+% Random effects:
+%   Subject
+%   Item
+%
+% Fully crossed:
+%   Every subject sees every item in every condition
 %
 % Data dimensions:
-% Subjects x Conditions x Channels x Time
+%   Subjects x Items x Conditions x Channels x Time
 %
-% Model structure:
-% Condition is within-subject.
-% Subjects are nested in Class.
+% Model idea:
+%   EEG ~ Condition + (1|Subject) + (1|Item)
+%   EEG ~ Condition + (Condition|Subject) + (Condition|Item)
 %
 % Ground truth:
-% Treatment has larger positive ERP effect at 300 ms.
-% Effect channels: Cz, CP1, CP2, Pz, P3, P4
+%   Treatment has larger positive ERP effect at 300 ms
+%   Effect channels: Cz, CP1, CP2, Pz, P3, P4
 %% ==========================================================
 
 clear; clc; close all; rng(123);
@@ -25,15 +27,14 @@ clear; clc; close all; rng(123);
 % Simulation settings
 %% ==========================================================
 
-nClass = 3;
-nSubPerClass = 10;
-nSub = nClass * nSubPerClass;
-
+nSub  = 30;
+nItem = 40;
 nCond = 2;
+
 condNames = {'Control','Treatment'};
 
-% Older-MATLAB-compatible replacement for repelem
-classID = kron((1:nClass)', ones(nSubPerClass,1));
+subjectID = (1:nSub)';
+itemID    = (1:nItem)';
 
 times = -200:4:800;
 nTime = length(times);
@@ -99,74 +100,107 @@ end
 weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 
 %% ==========================================================
-% Simulate nested within-subject EEG/ERP data
+% Simulate crossed random effects
 %% ==========================================================
 
 % Data size:
-% Subjects x Conditions x Channels x Time
-data = zeros(nSub, nCond, nChan, nTime);
+% Subjects x Items x Conditions x Channels x Time
+data = zeros(nSub, nItem, nCond, nChan, nTime);
 
-% Noise and variability settings
-sharedNoiseSD    = 1.0; %noised within the same subject
-conditionNoiseSD = 0.8; %noise under each conition
+% Random-intercept variability
+subjectOffsetSD = 1.5;
+itemOffsetSD    = 1.0;
 
-% Class-level variability
-classOffsetSD = 1.0; %how much classes differ in overall baseline amplitude
-classP300SD   = 0.20;% how much classes differ in P300 size
+% Random P300-gain variability
+subjectP300SD = 0.25;
+itemP300SD    = 0.15;
 
-% Subject-level variability
-subjectOffsetSD = 1.5; % how much subjects differ in baseline amplitude within their clss
-subjectP300SD   = 0.25; % how much subject differ in P300 size within their class
+% Noise variability
+sharedNoiseSD    = 1.0;
+conditionNoiseSD = 0.8;
 
-% Class-level random effects
-classOffset = abs(classOffsetSD * randn(nClass,1)); %affects the overall baseline amplitude
-classP300Gain = 1 + abs(classP300SD * randn(nClass,1)); %affects only the P300 component amplitude
+% Subject random effects
+subjectOffset = subjectOffsetSD * randn(nSub,1);
+subjectP300Gain = 1 + subjectP300SD * randn(nSub,1);
 
-for s = 1:nSub 
+% Item random effects
+itemOffset = itemOffsetSD * randn(nItem,1);
+itemP300Gain = 1 + itemP300SD * randn(nItem,1);
 
-    cl = classID(s);
+for s = 1:nSub
 
-    % Subject-level baseline offset nested inside class
-    subjectOffset = classOffset(cl) + abs(subjectOffsetSD * randn);
+    for i = 1:nItem
 
-    % Shared EEG noise pattern for this subject
-    sharedNoise = abs(sharedNoiseSD * randn(nChan, nTime));
+        % Shared noise for this subject-item pair
+        sharedNoise = sharedNoiseSD * randn(nChan,nTime);
 
-    % Subject-specific P300 gain nested inside class
-    subjectP300Gain = classP300Gain(cl) + abs(subjectP300SD * randn);
+        % Combined subject + item random intercept
+        crossedOffset = subjectOffset(s) + itemOffset(i);
 
-    for c = 1:nCond
+        % Combined subject + item P300 gain
+        crossedP300Gain = subjectP300Gain(s) * itemP300Gain(i);
 
-        conditionNoise = abs(conditionNoiseSD * randn(nChan, nTime));
+        for c = 1:nCond
 
-        data(s,c,:,:) = sharedNoise + conditionNoise + subjectOffset;
+            conditionNoise = conditionNoiseSD * randn(nChan,nTime);
 
+            data(s,i,c,:,:) = sharedNoise + ...
+                              conditionNoise + ...
+                              crossedOffset;
+
+        end
+
+        % Inject P300 effect into selected channels
+        for ch_idx = 1:length(effectChans)
+
+            ch = effectChans(ch_idx);
+
+            % Control
+            tmp = squeeze(data(s,i,1,ch,:));
+            tmp = tmp + crossedP300Gain * weights(ch_idx) * controlP300;
+            data(s,i,1,ch,:) = reshape(tmp,1,1,1,1,nTime);
+
+            % Treatment
+            tmp = squeeze(data(s,i,2,ch,:));
+            tmp = tmp + crossedP300Gain * weights(ch_idx) * treatmentP300;
+            data(s,i,2,ch,:) = reshape(tmp,1,1,1,1,nTime);
+
+        end
     end
-
-    for ch_idx = 1:length(effectChans)
-
-        ch = effectChans(ch_idx);
-
-        % Control condition
-        tmp = squeeze(data(s,1,ch,:));
-        tmp = tmp + subjectP300Gain * weights(ch_idx) * controlP300;
-        data(s,1,ch,:) = reshape(tmp, 1, 1, 1, nTime);
-
-        % Treatment condition
-        tmp = squeeze(data(s,2,ch,:));
-        tmp = tmp + subjectP300Gain * weights(ch_idx) * treatmentP300;
-        data(s,2,ch,:) = reshape(tmp, 1, 1, 1, nTime);
-
-    end
-
 end
 
 %% ==========================================================
-% Within-subject difference
+% Design table
 %% ==========================================================
 
-subjectDiff = squeeze(data(:,2,:,:) - data(:,1,:,:));
-conditionDiff = squeeze(mean(subjectDiff,1));
+Subject = [];
+Item = [];
+Condition = {};
+
+for s = 1:nSub
+    for i = 1:nItem
+        for c = 1:nCond
+            Subject(end+1,1) = s;
+            Item(end+1,1) = i;
+            Condition{end+1,1} = condNames{c};
+        end
+    end
+end
+
+designTable = table(Subject, Item, Condition);
+
+disp(designTable(1:20,:));
+
+%% ==========================================================
+% Condition difference
+%% ==========================================================
+
+% Subjects x Items x Channels x Time
+subjectItemDiff = squeeze(data(:,:,2,:,:) - data(:,:,1,:,:));
+
+% Average over subjects and items
+% Channels x Time
+conditionDiff = squeeze(mean(mean(subjectItemDiff,1),2));
 
 %% ==========================================================
 % Figure 1: ERP waveform at Pz
@@ -174,8 +208,8 @@ conditionDiff = squeeze(mean(subjectDiff,1));
 
 channelToPlot = find(strcmp({chanlocs_EEG.labels}, 'Pz'));
 
-controlERP = squeeze(mean(data(:,1,channelToPlot,:),1));
-treatmentERP = squeeze(mean(data(:,2,channelToPlot,:),1));
+controlERP = squeeze(mean(mean(data(:,:,1,channelToPlot,:),1),2));
+treatmentERP = squeeze(mean(mean(data(:,:,2,channelToPlot,:),1),2));
 
 figure;
 
@@ -186,12 +220,12 @@ plot(times, treatmentERP, 'r', 'LineWidth', 2);
 
 xlabel('Time (ms)');
 ylabel('Amplitude (\muV)');
-title('Nested Within-subject ERP waveform at Pz');
+title('Fully Crossed Subject ¡Á Item ERP at Pz');
 legend(condNames);
 grid on;
 
 %% ==========================================================
-% Figure 2: Observed within-subject difference map
+% Figure 2: Observed difference map
 %% ==========================================================
 
 figure;
@@ -220,13 +254,11 @@ colorbar;
 %% ==========================================================
 
 truthDiff = zeros(nChan,nTime);
-
 trueDifference = treatmentP300 - controlP300;
 
 for ch_idx = 1:length(effectChans)
 
     ch = effectChans(ch_idx);
-
     truthDiff(ch,:) = weights(ch_idx) * trueDifference';
 
 end
@@ -248,54 +280,31 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Ground-truth Within-subject Effect');
+title('Ground-truth Fully Crossed Effect');
 
 colorbar;
 
 %% ==========================================================
-% Figure 4: Linear mixed model t-map
-%
-% Model:
-% Y ~ Condition + (1|Class) + (1|Class:Subject)
-%
-% Condition is within-subject.
-% Subject is nested inside Class.
+% Figure 4: Paired t-test map over subject-item observations
 %% ==========================================================
 
 tMap = zeros(nChan,nTime);
 pMap = zeros(nChan,nTime);
 
-subjectID = (1:nSubPerClass)';
-
 for ch = 1:nChan
-
-    fprintf('Running LME for channel %d of %d: %s\n', ...
-        ch, nChan, chanlocs_EEG(ch).labels);
 
     for t = 1:nTime
 
-        controlVals   = squeeze(data(:,1,ch,t));
-        treatmentVals = squeeze(data(:,2,ch,t));
+        controlVals = squeeze(data(:,:,1,ch,t));
+        treatmentVals = squeeze(data(:,:,2,ch,t));
 
-        Y = [controlVals; treatmentVals];
+        controlVals = controlVals(:);
+        treatmentVals = treatmentVals(:);
 
-        Condition = categorical([ ...
-            repmat({'Control'}, nSubPerClass*nClass, 1); ...
-            repmat({'Treatment'}, nSubPerClass*nClass, 1)]);
+        [~,p,~,stats] = ttest(treatmentVals, controlVals);
 
-        Subject = categorical([subjectID; subjectID; subjectID; subjectID; subjectID; subjectID]);
-
-        Class = categorical([classID; classID]);
-
-        tbl = table(Y, Condition, Subject, Class);
-
-        lme = fitlme(tbl, ...
-            'Y ~ Condition + (1|Class) + (1|Class:Subject)');
-
-        coefTable = lme.Coefficients;
-
-        tMap(ch,t) = coefTable.tStat(2);
-        pMap(ch,t) = coefTable.pValue(2);
+        tMap(ch,t) = stats.tstat;
+        pMap(ch,t) = p;
 
     end
 end
@@ -317,12 +326,12 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Linear Mixed Model t-map: Treatment vs Control');
+title('Paired t-test Map: Treatment vs Control');
 
 colorbar;
 
 %% ==========================================================
-% Figure 5: Significant LME map
+% Figure 5: Significant paired t-test map
 %% ==========================================================
 
 alpha = 0.05;
@@ -347,7 +356,7 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Significant LME Map, p < 0.05');
+title('Significant Paired t-test Map, p < 0.05');
 
 colorbar;
 
@@ -373,7 +382,7 @@ if exist('topoplot','file')
 
     colorbar;
 
-    title('Nested Within-subject Difference at 300 ms');
+    title('Fully Crossed Difference at 300 ms');
 
 else
 
@@ -389,9 +398,9 @@ if ~exist('./data','dir')
     mkdir('./data');
 end
 
-save('./data/07_simulated_nested_within_subject_EEG.mat', ...
+save('./data/08_simulated_fully_crossed_subject_item_EEG.mat', ...
      'data', ...
-     'subjectDiff', ...
+     'subjectItemDiff', ...
      'conditionDiff', ...
      'tMap', ...
      'pMap', ...
@@ -400,6 +409,10 @@ save('./data/07_simulated_nested_within_subject_EEG.mat', ...
      'effectChansLabl', ...
      'chanlocs_EEG', ...
      'condNames', ...
-     'classID', ...
-     'nClass', ...
-     'nSubPerClass');
+     'subjectID', ...
+     'itemID', ...
+     'designTable', ...
+     'subjectOffset', ...
+     'itemOffset', ...
+     'subjectP300Gain', ...
+     'itemP300Gain');

@@ -1,16 +1,14 @@
 %% ==========================================================
 % Simulated EEG/ERP dataset
-% Within-subject experimental design
+% Nested within-subject experimental design
 %
+% Subjects are nested inside classes.
 % Same subjects measured in two conditions:
 % Condition 1 = Control
 % Condition 2 = Treatment
 %
 % Data dimensions:
 % Subjects x Conditions x Channels x Time
-%
-% Key within-subject feature:
-% Control and Treatment are correlated within each subject
 %
 % Ground truth:
 % Treatment has larger positive ERP effect at 300 ms
@@ -23,10 +21,21 @@ clear; clc; close all; rng(123);
 % Simulation settings
 %% ==========================================================
 
-nSub  = 30;
-nCond = 2;
+nClass = 3;
+nSubPerClass = 10;
+nSub = nClass * nSubPerClass;
 
+nCond = 2;
 condNames = {'Control','Treatment'};
+
+% Class membership for each subject
+classID = kron((1:nClass)', ones(nSubPerClass,1));
+
+% Subject ID within each class: 1,2,...,10,1,2,...,10,...
+subIDwithinClass = repmat((1:nSubPerClass)', nClass, 1);
+
+% Global subject ID: 1,...,30
+subjectID = (1:nSub)';
 
 times = -200:4:800;
 nTime = length(times);
@@ -92,36 +101,48 @@ end
 weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 
 %% ==========================================================
-% Simulate within-subject EEG/ERP data
+% Simulate nested within-subject EEG/ERP data
 %% ==========================================================
 
 % Data size:
 % Subjects x Conditions x Channels x Time
 data = zeros(nSub, nCond, nChan, nTime);
 
-% Noise and variability settings
-sharedNoiseSD    = 1.0;  % shared noise across conditions within subject
-conditionNoiseSD = 0.8;  % condition-specific noise
-subjectOffsetSD  = 1.5;  % subject-level amplitude offset
-subjectP300SD    = 0.25; % subject-level ERP amplitude variability
+% Variability settings
+classOffsetSD     = 1.0;   % class-level amplitude offset
+classP300SD       = 0.15;  % class-level P300 variability
+
+subjectOffsetSD   = 1.5;   % subject-level amplitude offset
+subjectP300SD     = 0.25;  % subject-level ERP variability
+
+sharedNoiseSD     = 1.0;   % shared noise across conditions within subject
+conditionNoiseSD  = 0.8;   % condition-specific noise
+
+% Class-level random effects
+classOffset = classOffsetSD * abs(randn(nClass,1));
+classP300Gain = 1 + classP300SD * abs(randn(nClass,1));
 
 for s = 1:nSub
 
-    % Subject-level baseline offset shared by both conditions
-    subjectOffset = subjectOffsetSD * randn;
+    thisClass = classID(s);
+
+    % Subject-level baseline offset nested inside class
+    subjectOffset = classOffset(thisClass) + ...
+                    subjectOffsetSD * abs(randn);
 
     % Shared EEG noise pattern for this subject
-    sharedNoise = sharedNoiseSD * randn(nChan, nTime);
+    sharedNoise = sharedNoiseSD * abs(randn(nChan, nTime));
 
-    % Subject-specific P300 gain shared by both conditions
-    subjectP300Gain = 1 + subjectP300SD * randn;
+    % Subject-specific P300 gain nested inside class
+    subjectP300Gain = classP300Gain(thisClass) + ...
+                      subjectP300SD * abs(randn);
 
     for c = 1:nCond
 
         % Condition-specific noise
-        conditionNoise = conditionNoiseSD * randn(nChan, nTime);
+        conditionNoise = conditionNoiseSD * abs(randn(nChan, nTime));
 
-        % Shared subject structure + condition-specific noise
+        % Shared subject/class structure + condition-specific noise
         data(s,c,:,:) = sharedNoise + conditionNoise + subjectOffset;
 
     end
@@ -146,15 +167,19 @@ for s = 1:nSub
 end
 
 %% ==========================================================
+% Design table
+%% ==========================================================
+
+designTable = table(subjectID, classID, subIDwithinClass, ...
+    'VariableNames', {'SubjectID','ClassID','SubjectWithinClass'});
+
+disp(designTable);
+
+%% ==========================================================
 % Within-subject difference
 %% ==========================================================
 
-% Difference is computed subject-by-subject first
-% Subjects x Channels x Time
 subjectDiff = squeeze(data(:,2,:,:) - data(:,1,:,:));
-
-% Average paired difference
-% Channels x Time
 conditionDiff = squeeze(mean(subjectDiff,1));
 
 %% ==========================================================
@@ -175,7 +200,7 @@ plot(times, treatmentERP, 'r', 'LineWidth', 2);
 
 xlabel('Time (ms)');
 ylabel('Amplitude (\muV)');
-title('Within-subject ERP waveform at Pz');
+title('Nested Within-subject ERP waveform at Pz');
 legend(condNames);
 grid on;
 
@@ -200,7 +225,7 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Observed Within-subject Difference: Treatment - Control');
+title('Observed Nested Within-subject Difference: Treatment - Control');
 
 colorbar;
 
@@ -237,7 +262,7 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Ground-truth Within-subject Effect');
+title('Ground-truth Nested Within-subject Effect');
 
 colorbar;
 
@@ -337,7 +362,7 @@ if exist('topoplot','file')
 
     colorbar;
 
-    title('Within-subject Difference at 300 ms');
+    title('Nested Within-subject Difference at 300 ms');
 
 else
 
@@ -353,7 +378,7 @@ if ~exist('./data','dir')
     mkdir('./data');
 end
 
-save('./data/05_simulated_within_subject_EEG.mat', ...
+save('./data/07_simulated_nested_within_subject_EEG.mat', ...
      'data', ...
      'subjectDiff', ...
      'conditionDiff', ...
@@ -363,4 +388,10 @@ save('./data/05_simulated_within_subject_EEG.mat', ...
      'effectChans', ...
      'effectChansLabl', ...
      'chanlocs_EEG', ...
-     'condNames');
+     'condNames', ...
+     'nClass', ...
+     'nSubPerClass', ...
+     'classID', ...
+     'subIDwithinClass', ...
+     'subjectID', ...
+     'designTable');
