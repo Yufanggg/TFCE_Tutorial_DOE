@@ -1,40 +1,46 @@
 %% ==========================================================
 % Simulated EEG/ERP dataset
-% Split-plot design
+% Split-plot mixed design
 %
 % Between-subject factor:
-%   Group: G1 vs G2
+%   Group: HC vs Patients
 %
 % Within-subject factor:
-%   Condition: Control vs Treatment
+%   Word Type: Noun vs Verb
 %
-% Effects injected:
-%   1. Group effect: G2 - G1
-%   2. Treatment effect: Treatment - Control
-%   3. Interaction: G2(T-C) - G1(T-C)
+% Model:
+%   EEG ~ Group * WordType + (1 | Subject)
+%
+% Noise sources:
+%   1. Subject-wise noise
+%   2. Background noise
 %
 % Data dimensions:
 %   Subjects x Conditions x Channels x Time
 %% ==========================================================
 
-clear; clc; close all; rng(123);
+clear; clc; close all;
+rng(123);
 
 %% Simulation settings
 
-nGroup = 2;
-nSubPerGroup = 15;
-nSub = nGroup * nSubPerGroup;
+nHC = 30;
+nPatient = 30;
+nSub = nHC + nPatient;
 
 nCond = 2;
-condNames = {'Control','Treatment'};
-groupNames = {'G1','G2'};
-
-groupID = kron((1:nGroup)', ones(nSubPerGroup,1));
-subIDwithinGroup = repmat((1:nSubPerGroup)', nGroup, 1);
-subjectID = (1:nSub)';
+condNames = {'Noun','Verb'};
+groupNames = {'HC','Patient'};
 
 times = -200:4:800;
 nTime = length(times);
+
+%% Subject and group labels
+
+subjectID = (1:nSub)';
+
+% 0 = HC, 1 = Patient
+group = [zeros(nHC,1); ones(nPatient,1)];
 
 %% Load channel locations
 
@@ -61,174 +67,202 @@ end
 chanlocs_EEG = chanlocs_1020(idx);
 nChan = length(chanlocs_EEG);
 
-%% Define P300 waveform with group, treatment, and interaction effects
+%% Define ERP effect
 
 p300Latency = 300;
 p300Width   = 70;
 
-baseAmp = 3.0;
+p300Shape = exp(-(times - p300Latency).^2 ./ ...
+                (2 * p300Width^2));
+p300Shape = p300Shape(:);
 
-groupEffectAmp     = 1.0;   % G2 > G1
-treatmentEffectAmp = 2.0;   % Treatment > Control
-interactionAmp     = 1.5;   % Treatment effect stronger in G2
+% Amplitudes for each cell
+% Rows = Group, Columns = Word Type
+% Group 1 = HC, Group 2 = Patient
+% Condition 1 = Noun, Condition 2 = Verb
 
-amp_G1_Control   = baseAmp;
-amp_G1_Treatment = baseAmp + treatmentEffectAmp;
+amp_HC_Noun      = 3.0;
+amp_HC_Verb      = 6.0;
 
-amp_G2_Control   = baseAmp + groupEffectAmp;
-amp_G2_Treatment = baseAmp + groupEffectAmp + treatmentEffectAmp + interactionAmp;
+amp_Patient_Noun = 2.0;
+amp_Patient_Verb = 3.5;
 
-p300_G1_Control = amp_G1_Control * exp(-(times - p300Latency).^2 ./ ...
-                 (2 * p300Width^2));
+cellAmps = [
+    amp_HC_Noun,      amp_HC_Verb;
+    amp_Patient_Noun, amp_Patient_Verb
+];
 
-p300_G1_Treatment = amp_G1_Treatment * exp(-(times - p300Latency).^2 ./ ...
-                   (2 * p300Width^2));
+%% Define effect channels
 
-p300_G2_Control = amp_G2_Control * exp(-(times - p300Latency).^2 ./ ...
-                 (2 * p300Width^2));
+effectChanLabels = {'Cz','CP1','CP2','Pz','P3','P4'};
 
-p300_G2_Treatment = amp_G2_Treatment * exp(-(times - p300Latency).^2 ./ ...
-                   (2 * p300Width^2));
-
-p300_G1_Control   = p300_G1_Control(:);
-p300_G1_Treatment = p300_G1_Treatment(:);
-p300_G2_Control   = p300_G2_Control(:);
-p300_G2_Treatment = p300_G2_Treatment(:);
-
-%% Effect channels
-
-effectChansLabl = {'Cz','CP1','CP2','Pz','P3','P4'};
-
-[tf, effectChans] = ismember(effectChansLabl, {chanlocs_EEG.labels});
+[tf, effectChans] = ismember(effectChanLabels, {chanlocs_EEG.labels});
 
 if any(~tf)
-    error('Missing effect channels: %s', strjoin(effectChansLabl(~tf), ', '));
+    error('Missing effect channels: %s', strjoin(effectChanLabels(~tf), ', '));
 end
 
 weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 
 %% Simulate EEG data
 
+% Data size:
+% Subjects x Conditions x Channels x Time
 data = zeros(nSub, nCond, nChan, nTime);
 
-groupOffsetSD    = 1.0;
-subjectOffsetSD  = 1.5;
-subjectP300SD    = 0.25;
+% Noise settings
+subjectNoiseSD    = 1.5;
+backgroundNoiseSD = 0.8;
 
-sharedNoiseSD    = 1.0;
-conditionNoiseSD = 0.8;
-
-groupOffset = groupOffsetSD * randn(nGroup,1);
+% Subject-wise noise:
+% one stable EEG pattern per subject,
+% shared across noun and verb
+subjectNoise = subjectNoiseSD * randn(nSub, nChan, nTime);
 
 for s = 1:nSub
 
-    thisGroup = groupID(s);
-
-    subjectOffset = groupOffset(thisGroup) + subjectOffsetSD * randn;
-
-    sharedNoise = sharedNoiseSD * randn(nChan,nTime);
-
-    subjectP300Gain = 1 + subjectP300SD * randn;
+    % groupIndex: 1 = HC, 2 = Patient
+    groupIndex = group(s) + 1;
 
     for c = 1:nCond
 
-        conditionNoise = conditionNoiseSD * randn(nChan,nTime);
+        % Background noise:
+        % unique for each subject x condition observation
+        backgroundNoise = backgroundNoiseSD * randn(nChan, nTime);
 
-        data(s,c,:,:) = sharedNoise + conditionNoise + subjectOffset;
+        data(s,c,:,:) = squeeze(subjectNoise(s,:,:)) + backgroundNoise;
 
-    end
+        % Add deterministic ERP signal
+        amp = cellAmps(groupIndex, c);
+        erpWave = amp * p300Shape;
 
-    for ch_idx = 1:length(effectChans)
+        for ch_idx = 1:length(effectChans)
 
-        ch = effectChans(ch_idx);
+            ch = effectChans(ch_idx);
 
-        if thisGroup == 1
-            p300_control   = p300_G1_Control;
-            p300_treatment = p300_G1_Treatment;
-        else
-            p300_control   = p300_G2_Control;
-            p300_treatment = p300_G2_Treatment;
+            tmp = squeeze(data(s,c,ch,:));
+            tmp = tmp + weights(ch_idx) * erpWave;
+
+            data(s,c,ch,:) = reshape(tmp, 1, 1, 1, nTime);
+
         end
-
-        tmp = squeeze(data(s,1,ch,:));
-        tmp = tmp + subjectP300Gain * weights(ch_idx) * p300_control;
-        data(s,1,ch,:) = reshape(tmp,1,1,1,nTime);
-
-        tmp = squeeze(data(s,2,ch,:));
-        tmp = tmp + subjectP300Gain * weights(ch_idx) * p300_treatment;
-        data(s,2,ch,:) = reshape(tmp,1,1,1,nTime);
-
     end
 end
 
 %% Design table
 
-designTable = table(subjectID, groupID, subIDwithinGroup, ...
-    'VariableNames', {'SubjectID','GroupID','SubjectWithinGroup'});
+Subject = [];
+Group = {};
+GroupCode = [];
+Condition = {};
+ConditionCode = [];
 
-disp(designTable);
-
-%% Compute effects
-
-subjectDiff = squeeze(data(:,2,:,:) - data(:,1,:,:));
-
-conditionDiff = squeeze(mean(subjectDiff,1));
-
-groupMean = zeros(nGroup,nCond,nChan,nTime);
-
-for g = 1:nGroup
+for s = 1:nSub
     for c = 1:nCond
-        groupMean(g,c,:,:) = squeeze(mean(data(groupID==g,c,:,:),1));
+
+        Subject(end+1,1) = subjectID(s);
+        GroupCode(end+1,1) = group(s);
+        Group{end+1,1} = groupNames{group(s)+1};
+
+        ConditionCode(end+1,1) = c - 1;  % 0 = Noun, 1 = Verb
+        Condition{end+1,1} = condNames{c};
+
     end
 end
 
-groupDiff = squeeze(mean(groupMean(2,:,:,:),2) - mean(groupMean(1,:,:,:),2));
+designTable = table(Subject, Group, GroupCode, ...
+                    Condition, ConditionCode);
 
-groupConditionDiff = zeros(nGroup,nChan,nTime);
+disp(designTable(1:20,:));
 
-for g = 1:nGroup
-    groupConditionDiff(g,:,:) = squeeze(mean(subjectDiff(groupID==g,:,:),1));
+%% Compute grand average ERPs
+
+HC_Noun = squeeze(mean(data(group == 0, 1, :, :), 1));
+HC_Verb = squeeze(mean(data(group == 0, 2, :, :), 1));
+
+Patient_Noun = squeeze(mean(data(group == 1, 1, :, :), 1));
+Patient_Verb = squeeze(mean(data(group == 1, 2, :, :), 1));
+
+%% Compute contrasts
+
+% Between-subject contrast: Patients minus HC
+HC_mean = squeeze(mean(mean(data(group == 0,:,:,:), 2), 1));
+Patient_mean = squeeze(mean(mean(data(group == 1,:,:,:), 2), 1));
+
+groupDiff = Patient_mean - HC_mean;
+
+% Within-subject contrast: Verb minus Noun
+verbNoun_HC = HC_Verb - HC_Noun;
+verbNoun_Patient = Patient_Verb - Patient_Noun;
+
+wordTypeDiff = squeeze(mean(data(:,2,:,:) - data(:,1,:,:), 1));
+
+% Interaction:
+% (Verb - Noun) in Patients minus (Verb - Noun) in HC
+interactionDiff = verbNoun_Patient - verbNoun_HC;
+
+%% Ground-truth effects
+
+truth_HC_Noun      = zeros(nChan, nTime);
+truth_HC_Verb      = zeros(nChan, nTime);
+truth_Patient_Noun = zeros(nChan, nTime);
+truth_Patient_Verb = zeros(nChan, nTime);
+
+for ch_idx = 1:length(effectChans)
+
+    ch = effectChans(ch_idx);
+
+    truth_HC_Noun(ch,:)      = weights(ch_idx) * amp_HC_Noun      * p300Shape';
+    truth_HC_Verb(ch,:)      = weights(ch_idx) * amp_HC_Verb      * p300Shape';
+    truth_Patient_Noun(ch,:) = weights(ch_idx) * amp_Patient_Noun * p300Shape';
+    truth_Patient_Verb(ch,:) = weights(ch_idx) * amp_Patient_Verb * p300Shape';
+
 end
 
-interactionDiff = squeeze(groupConditionDiff(2,:,:) - groupConditionDiff(1,:,:));
+truthGroupDiff = ...
+    ((truth_Patient_Noun + truth_Patient_Verb) / 2) - ...
+    ((truth_HC_Noun + truth_HC_Verb) / 2);
+
+truthWordTypeDiff = ...
+    ((truth_HC_Verb - truth_HC_Noun) + ...
+     (truth_Patient_Verb - truth_Patient_Noun)) / 2;
+
+truthInteractionDiff = ...
+    (truth_Patient_Verb - truth_Patient_Noun) - ...
+    (truth_HC_Verb - truth_HC_Noun);
 
 %% Figure 1: ERP waveform at Pz
 
 channelToPlot = find(strcmp({chanlocs_EEG.labels}, 'Pz'));
 
-figure; hold on;
+figure;
 
-% ∂®“Â—’…´
-col_G1 = [0 0.4470 0.7410];      % ¿∂
-col_G2 = [0.8500 0.3250 0.0980]; % ≥»
+plot(times, HC_Noun(channelToPlot,:), ...
+    'Color', [0.00 0.45 0.74], 'LineWidth', 2); hold on;
 
-for g = 1:nGroup
+plot(times, HC_Verb(channelToPlot,:), ...
+    'Color', [0.00 0.45 0.74], 'LineStyle', '--', 'LineWidth', 2);
 
-    groupSubjects = groupID == g;
+plot(times, Patient_Noun(channelToPlot,:), ...
+    'Color', [0.85 0.33 0.10], 'LineWidth', 2);
 
-    controlERP = squeeze(mean(data(groupSubjects,1,channelToPlot,:),1));
-    treatmentERP = squeeze(mean(data(groupSubjects,2,channelToPlot,:),1));
-
-    if g == 1
-        plot(times, controlERP, '-',  'Color', col_G1, 'LineWidth', 2);
-        plot(times, treatmentERP, '--', 'Color', col_G1, 'LineWidth', 2);
-    elseif g == 2
-        plot(times, controlERP, '-',  'Color', col_G2, 'LineWidth', 2);
-        plot(times, treatmentERP, '--', 'Color', col_G2, 'LineWidth', 2);
-    end
-
-end
+plot(times, Patient_Verb(channelToPlot,:), ...
+    'Color', [0.85 0.33 0.10], 'LineStyle', '--', 'LineWidth', 2);
 
 xlabel('Time (ms)');
 ylabel('Amplitude (\muV)');
 title('Split-plot ERP waveform at Pz');
-legend({'G1 Control','G1 Treatment','G2 Control','G2 Treatment'});
+
+legend('HC Noun', 'HC Verb', ...
+       'Patient Noun', 'Patient Verb');
+
 grid on;
 
-%% Figure 2: Group effect map, G2 - G1
+%% Figure 2: HC Verb - Noun
 
 figure;
-imagesc(times, 1:nChan, groupDiff);
+
+imagesc(times, 1:nChan, verbNoun_HC);
 axis xy;
 xlim([-200 800]);
 
@@ -242,13 +276,14 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Group Effect: G2 - G1');
+title('HC Within-subject Effect: Verb - Noun');
 colorbar;
 
-%% Figure 3: Treatment effect map, T - C
+%% Figure 3: Patient Verb - Noun
 
 figure;
-imagesc(times, 1:nChan, conditionDiff);
+
+imagesc(times, 1:nChan, verbNoun_Patient);
 axis xy;
 xlim([-200 800]);
 
@@ -262,12 +297,13 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Treatment Effect: Treatment - Control');
+title('Patient Within-subject Effect: Verb - Noun');
 colorbar;
 
-%% Figure 4: Interaction map
+%% Figure 4: Interaction effect
 
 figure;
+
 imagesc(times, 1:nChan, interactionDiff);
 axis xy;
 xlim([-200 800]);
@@ -282,30 +318,14 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Interaction: G2(T-C) - G1(T-C)');
+title('Interaction: Patient(Verb - Noun) - HC(Verb - Noun)');
 colorbar;
 
-%% Figure 5: t-test for Group effect
-
-tMap_group = zeros(nChan,nTime);
-pMap_group = zeros(nChan,nTime);
-
-for ch = 1:nChan
-    for t = 1:nTime
-
-        valsG1 = squeeze(mean(data(groupID==1,:,ch,t),2));
-        valsG2 = squeeze(mean(data(groupID==2,:,ch,t),2));
-
-        [~,p,~,stats] = ttest2(valsG2, valsG1);
-
-        tMap_group(ch,t) = stats.tstat;
-        pMap_group(ch,t) = p;
-
-    end
-end
+%% Figure 5: Ground-truth interaction
 
 figure;
-imagesc(times, 1:nChan, tMap_group);
+
+imagesc(times, 1:nChan, truthInteractionDiff);
 axis xy;
 xlim([-200 800]);
 
@@ -319,84 +339,10 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('t-map: Group Effect G2 - G1');
+title('Ground-Truth Interaction Effect');
 colorbar;
 
-%% Figure 6: t-test for Treatment effect
-
-tMap_treatment = zeros(nChan,nTime);
-pMap_treatment = zeros(nChan,nTime);
-
-for ch = 1:nChan
-    for t = 1:nTime
-
-        controlVals = squeeze(data(:,1,ch,t));
-        treatmentVals = squeeze(data(:,2,ch,t));
-
-        [~,p,~,stats] = ttest(treatmentVals, controlVals);
-
-        tMap_treatment(ch,t) = stats.tstat;
-        pMap_treatment(ch,t) = p;
-
-    end
-end
-
-figure;
-imagesc(times, 1:nChan, tMap_treatment);
-axis xy;
-xlim([-200 800]);
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {chanlocs_EEG.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-title('t-map: Treatment Effect T - C');
-colorbar;
-
-%% Figure 7: t-test for Interaction
-
-tMap_interaction = zeros(nChan,nTime);
-pMap_interaction = zeros(nChan,nTime);
-
-for ch = 1:nChan
-    for t = 1:nTime
-
-        diffG1 = squeeze(subjectDiff(groupID==1,ch,t));
-        diffG2 = squeeze(subjectDiff(groupID==2,ch,t));
-
-        [~,p,~,stats] = ttest2(diffG2, diffG1);
-
-        tMap_interaction(ch,t) = stats.tstat;
-        pMap_interaction(ch,t) = p;
-
-    end
-end
-
-figure;
-imagesc(times, 1:nChan, tMap_interaction);
-axis xy;
-xlim([-200 800]);
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {chanlocs_EEG.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-title('t-map: Interaction G2(T-C) - G1(T-C)');
-colorbar;
-
-%% Figure 8: Topographies at 300 ms
+%% Topography at 300 ms
 
 chanlocs_plot = chanlocs_EEG;
 
@@ -404,65 +350,48 @@ for k = 1:length(chanlocs_plot)
     chanlocs_plot(k).theta = chanlocs_plot(k).theta + 90;
 end
 
-if exist('topoplot','file')
+[~, peakIdx] = min(abs(times - p300Latency));
 
-    [~,peakIdx] = min(abs(times - 300));
-
-    topo_GroupEffect     = groupDiff(:,peakIdx);
-    topo_TreatmentEffect = conditionDiff(:,peakIdx);
-    topo_Interaction     = interactionDiff(:,peakIdx);
+if exist('topoplot', 'file')
 
     figure;
+    topoplot(interactionDiff(:,peakIdx), ...
+        chanlocs_plot, 'electrodes', 'labels');
 
-    subplot(1,3,1);
-    topoplot(topo_GroupEffect, chanlocs_plot, 'electrodes', 'labels');
-    title('Group: G2 - G1');
     colorbar;
-
-    subplot(1,3,2);
-    topoplot(topo_TreatmentEffect, chanlocs_plot, 'electrodes', 'labels');
-    title('Treatment: T - C');
-    colorbar;
-
-    subplot(1,3,3);
-    topoplot(topo_Interaction, chanlocs_plot, 'electrodes', 'labels');
-    title('Interaction');
-    colorbar;
-
-    sgtitle('Split-plot Topographies at 300 ms');
+    title('Observed Interaction at 300 ms');
 
 else
 
-    fprintf('topoplot not found. Please check EEGLAB path.\n');
+    warning('topoplot not found. Please add EEGLAB to your MATLAB path.');
 
 end
 
 %% Save dataset
 
-if ~exist('./data','dir')
+if ~exist('../data', 'dir')
     mkdir('./data');
 end
 
-save('./data/07_simulated_split_plot_group_treatment_interaction_EEG.mat', ...
+save('../data/06_simulated_split_plot_EEG.mat', ...
      'data', ...
-     'subjectDiff', ...
-     'conditionDiff', ...
-     'groupDiff', ...
-     'groupConditionDiff', ...
-     'interactionDiff', ...
-     'tMap_group', ...
-     'pMap_group', ...
-     'tMap_treatment', ...
-     'pMap_treatment', ...
-     'tMap_interaction', ...
-     'pMap_interaction', ...
+     'group', ...
+     'subjectID', ...
+     'designTable', ...
      'times', ...
-     'effectChans', ...
-     'effectChansLabl', ...
      'chanlocs_EEG', ...
+     'effectChans', ...
+     'effectChanLabels', ...
      'condNames', ...
      'groupNames', ...
-     'subjectID', ...
-     'groupID', ...
-     'subIDwithinGroup', ...
-     'designTable');
+     'subjectNoise', ...
+     'subjectNoiseSD', ...
+     'backgroundNoiseSD', ...
+     'groupDiff', ...
+     'wordTypeDiff', ...
+     'interactionDiff', ...
+     'verbNoun_HC', ...
+     'verbNoun_Patient', ...
+     'truthGroupDiff', ...
+     'truthWordTypeDiff', ...
+     'truthInteractionDiff');

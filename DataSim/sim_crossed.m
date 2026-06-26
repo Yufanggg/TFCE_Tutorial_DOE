@@ -1,27 +1,23 @@
 %% ==========================================================
 % Simulated EEG/ERP dataset
-% Fully crossed random-effects design
+% Fully crossed within-subject and within-item design
 %
-% Random effects:
-%   Subject
-%   Item
-%
-% Fully crossed:
-%   Every subject sees every item in every condition
+% Every subject sees every item in every condition
 %
 % Data dimensions:
-%   Subjects x Items x Conditions x Channels x Time
+% Subjects x Items x Conditions x Channels x Time
+%
+% Noise sources:
+% 1. Background noise
+% 2. Subject-wise noise
+% 3. Item-wise noise
 %
 % Model idea:
-%   EEG ~ Condition + (1|Subject) + (1|Item)
-%   EEG ~ Condition + (Condition|Subject) + (Condition|Item)
-%
-% Ground truth:
-%   Treatment has larger positive ERP effect at 300 ms
-%   Effect channels: Cz, CP1, CP2, Pz, P3, P4
+% EEG ~ Condition + (1|Subject) + (1|Item)
 %% ==========================================================
 
-clear; clc; close all; rng(123);
+clear; clc; close all;
+rng(123);
 
 %% ==========================================================
 % Simulation settings
@@ -32,9 +28,6 @@ nItem = 40;
 nCond = 2;
 
 condNames = {'Control','Treatment'};
-
-subjectID = (1:nSub)';
-itemID    = (1:nItem)';
 
 times = -200:4:800;
 nTime = length(times);
@@ -89,81 +82,78 @@ treatmentP300 = treatmentP300(:);
 % Define effect channels
 %% ==========================================================
 
-effectChansLabl = {'Cz','CP1','CP2','Pz','P3','P4'};
+effectChanLabels = {'Cz','CP1','CP2','Pz','P3','P4'};
 
-[tf, effectChans] = ismember(effectChansLabl, {chanlocs_EEG.labels});
+[tf, effectChans] = ismember(effectChanLabels, {chanlocs_EEG.labels});
 
 if any(~tf)
-    error('Missing effect channels: %s', strjoin(effectChansLabl(~tf), ', '));
+    error('Missing effect channels: %s', strjoin(effectChanLabels(~tf), ', '));
 end
 
 weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 
 %% ==========================================================
-% Simulate crossed random effects
+% Simulate fully crossed EEG/ERP data
 %% ==========================================================
 
-% Data size:
+% Data dimensions:
 % Subjects x Items x Conditions x Channels x Time
 data = zeros(nSub, nItem, nCond, nChan, nTime);
 
-% Random-intercept variability
-subjectOffsetSD = 1.5;
-itemOffsetSD    = 1.0;
+% Noise settings
+backgroundNoiseSD = 0.8;
+subjectNoiseSD    = 1.5;
+itemNoiseSD       = 1.0;
 
-% Random P300-gain variability
-subjectP300SD = 0.25;
-itemP300SD    = 0.15;
+% Subject-wise noise:
+% one stable pattern per subject, shared across items and conditions
+subjectNoise = subjectNoiseSD * randn(nSub, nChan, nTime);
 
-% Noise variability
-sharedNoiseSD    = 1.0;
-conditionNoiseSD = 0.8;
-
-% Subject random effects
-subjectOffset = subjectOffsetSD * randn(nSub,1);
-subjectP300Gain = 1 + subjectP300SD * randn(nSub,1);
-
-% Item random effects
-itemOffset = itemOffsetSD * randn(nItem,1);
-itemP300Gain = 1 + itemP300SD * randn(nItem,1);
+% Item-wise noise:
+% one stable pattern per item, shared across subjects and conditions
+itemNoise = itemNoiseSD * randn(nItem, nChan, nTime);
 
 for s = 1:nSub
 
     for i = 1:nItem
 
-        % Shared noise for this subject-item pair
-        sharedNoise = sharedNoiseSD * randn(nChan,nTime);
-
-        % Combined subject + item random intercept
-        crossedOffset = subjectOffset(s) + itemOffset(i);
-
-        % Combined subject + item P300 gain
-        crossedP300Gain = subjectP300Gain(s) * itemP300Gain(i);
-
         for c = 1:nCond
 
-            conditionNoise = conditionNoiseSD * randn(nChan,nTime);
+            % Background noise:
+            % unique for each subject-item-condition observation
+            backgroundNoise = backgroundNoiseSD * randn(nChan, nTime);
 
-            data(s,i,c,:,:) = sharedNoise + ...
-                              conditionNoise + ...
-                              crossedOffset;
+            % Combine exactly three noise sources
+            data(s,i,c,:,:) = ...
+                squeeze(subjectNoise(s,:,:)) + ...
+                squeeze(itemNoise(i,:,:)) + ...
+                backgroundNoise;
 
         end
+    end
+end
 
-        % Inject P300 effect into selected channels
+%% ==========================================================
+% Inject deterministic P300 condition effect
+%% ==========================================================
+
+for s = 1:nSub
+
+    for i = 1:nItem
+
         for ch_idx = 1:length(effectChans)
 
             ch = effectChans(ch_idx);
 
-            % Control
+            % Control condition
             tmp = squeeze(data(s,i,1,ch,:));
-            tmp = tmp + crossedP300Gain * weights(ch_idx) * controlP300;
-            data(s,i,1,ch,:) = reshape(tmp,1,1,1,1,nTime);
+            tmp = tmp + weights(ch_idx) * controlP300;
+            data(s,i,1,ch,:) = reshape(tmp, 1, 1, 1, 1, nTime);
 
-            % Treatment
+            % Treatment condition
             tmp = squeeze(data(s,i,2,ch,:));
-            tmp = tmp + crossedP300Gain * weights(ch_idx) * treatmentP300;
-            data(s,i,2,ch,:) = reshape(tmp,1,1,1,1,nTime);
+            tmp = tmp + weights(ch_idx) * treatmentP300;
+            data(s,i,2,ch,:) = reshape(tmp, 1, 1, 1, 1, nTime);
 
         end
     end
@@ -200,7 +190,7 @@ subjectItemDiff = squeeze(data(:,:,2,:,:) - data(:,:,1,:,:));
 
 % Average over subjects and items
 % Channels x Time
-conditionDiff = squeeze(mean(mean(subjectItemDiff,1),2));
+conditionDiff = squeeze(mean(mean(subjectItemDiff, 1), 2));
 
 %% ==========================================================
 % Figure 1: ERP waveform at Pz
@@ -284,81 +274,81 @@ title('Ground-truth Fully Crossed Effect');
 
 colorbar;
 
-%% ==========================================================
-% Figure 4: Paired t-test map over subject-item observations
-%% ==========================================================
-
-tMap = zeros(nChan,nTime);
-pMap = zeros(nChan,nTime);
-
-for ch = 1:nChan
-
-    for t = 1:nTime
-
-        controlVals = squeeze(data(:,:,1,ch,t));
-        treatmentVals = squeeze(data(:,:,2,ch,t));
-
-        controlVals = controlVals(:);
-        treatmentVals = treatmentVals(:);
-
-        [~,p,~,stats] = ttest(treatmentVals, controlVals);
-
-        tMap(ch,t) = stats.tstat;
-        pMap(ch,t) = p;
-
-    end
-end
-
-figure;
-
-imagesc(times, 1:nChan, tMap);
-axis xy;
-
-xlim([-200 800]);
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {chanlocs_EEG.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-title('Paired t-test Map: Treatment vs Control');
-
-colorbar;
-
-%% ==========================================================
-% Figure 5: Significant paired t-test map
-%% ==========================================================
-
-alpha = 0.05;
-
-sigMap = tMap;
-sigMap(pMap >= alpha) = 0;
-
-figure;
-
-imagesc(times, 1:nChan, sigMap);
-axis xy;
-
-xlim([-200 800]);
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {chanlocs_EEG.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-title('Significant Paired t-test Map, p < 0.05');
-
-colorbar;
+% %% ==========================================================
+% % Figure 4: Paired t-test map over subject-item observations
+% %% ==========================================================
+% 
+% tMap = zeros(nChan,nTime);
+% pMap = zeros(nChan,nTime);
+% 
+% for ch = 1:nChan
+% 
+%     for t = 1:nTime
+% 
+%         controlVals = squeeze(data(:,:,1,ch,t));
+%         treatmentVals = squeeze(data(:,:,2,ch,t));
+% 
+%         controlVals = controlVals(:);
+%         treatmentVals = treatmentVals(:);
+% 
+%         [~,p,~,stats] = ttest(treatmentVals, controlVals);
+% 
+%         tMap(ch,t) = stats.tstat;
+%         pMap(ch,t) = p;
+% 
+%     end
+% end
+% 
+% figure;
+% 
+% imagesc(times, 1:nChan, tMap);
+% axis xy;
+% 
+% xlim([-200 800]);
+% 
+% set(gca, ...
+%     'YTick', 1:nChan, ...
+%     'YTickLabel', {chanlocs_EEG.labels}, ...
+%     'XTick', -200:200:800, ...
+%     'TickLength', [0 0], ...
+%     'FontSize', 15, ...
+%     'FontName', 'Arial');
+% 
+% xlabel('Time (ms)');
+% ylabel('Channel');
+% title('Paired t-test Map: Treatment vs Control');
+% 
+% colorbar;
+% 
+% %% ==========================================================
+% % Figure 5: Significant paired t-test map
+% %% ==========================================================
+% 
+% alpha = 0.05;
+% 
+% sigMap = tMap;
+% sigMap(pMap >= alpha) = 0;
+% 
+% figure;
+% 
+% imagesc(times, 1:nChan, sigMap);
+% axis xy;
+% 
+% xlim([-200 800]);
+% 
+% set(gca, ...
+%     'YTick', 1:nChan, ...
+%     'YTickLabel', {chanlocs_EEG.labels}, ...
+%     'XTick', -200:200:800, ...
+%     'TickLength', [0 0], ...
+%     'FontSize', 15, ...
+%     'FontName', 'Arial');
+% 
+% xlabel('Time (ms)');
+% ylabel('Channel');
+% title('Significant Paired t-test Map, p < 0.05');
+% 
+% colorbar;
 
 %% ==========================================================
 % Figure 6: Topography at 300 ms
@@ -394,25 +384,22 @@ end
 % Save dataset
 %% ==========================================================
 
-if ~exist('./data','dir')
-    mkdir('./data');
+if ~exist('../data','dir')
+    mkdir('../data');
 end
 
-save('./data/08_simulated_fully_crossed_subject_item_EEG.mat', ...
+save('../data/07_simulated_fully_crossed_subject_item_EEG.mat', ...
      'data', ...
      'subjectItemDiff', ...
      'conditionDiff', ...
-     'tMap', ...
-     'pMap', ...
      'times', ...
      'effectChans', ...
-     'effectChansLabl', ...
+     'effectChanLabels', ...
      'chanlocs_EEG', ...
      'condNames', ...
-     'subjectID', ...
-     'itemID', ...
      'designTable', ...
-     'subjectOffset', ...
-     'itemOffset', ...
-     'subjectP300Gain', ...
-     'itemP300Gain');
+     'subjectNoise', ...
+     'itemNoise', ...
+     'backgroundNoiseSD', ...
+     'subjectNoiseSD', ...
+     'itemNoiseSD');

@@ -99,30 +99,22 @@ weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 % Subjects x Conditions x Channels x Time
 data = zeros(nSub, nCond, nChan, nTime);
 
-% Noise and variability settings
-sharedNoiseSD    = 1.0;  % shared noise across conditions within subject
-conditionNoiseSD = 0.8;  % condition-specific noise
-subjectOffsetSD  = 1.5;  % subject-level amplitude offset
-subjectP300SD    = 0.25; % subject-level ERP amplitude variability
+% Noise settings
+subjectNoiseSD    = 1.5;  % subject-wise noise shared across conditions
+backgroundNoiseSD = 0.8;  % background EEG noise
 
 for s = 1:nSub
 
-    % Subject-level baseline offset shared by both conditions
-    subjectOffset = subjectOffsetSD * abs(randn);
-
-    % Shared EEG noise pattern for this subject
-    sharedNoise = sharedNoiseSD * abs(randn(nChan, nTime));
-
-    % Subject-specific P300 gain shared by both conditions
-    subjectP300Gain = 1 + abs(subjectP300SD * randn);
+    % Subject-wise noise: same for both conditions
+    subjectNoise = subjectNoiseSD * randn(nChan, nTime);
 
     for c = 1:nCond
 
-        % Condition-specific noise
-        conditionNoise = conditionNoiseSD * abs(randn(nChan, nTime));
+        % Background noise: independent random EEG noise
+        backgroundNoise = backgroundNoiseSD * randn(nChan, nTime);
 
-        % Shared subject structure + condition-specific noise
-        data(s,c,:,:) = sharedNoise + conditionNoise + subjectOffset;
+        % Only two noise sources
+        data(s,c,:,:) = subjectNoise + backgroundNoise;
 
     end
 
@@ -133,12 +125,12 @@ for s = 1:nSub
 
         % Control condition
         tmp = squeeze(data(s,1,ch,:));
-        tmp = tmp + subjectP300Gain * weights(ch_idx) * controlP300;
+        tmp = tmp + weights(ch_idx) * controlP300;
         data(s,1,ch,:) = reshape(tmp, 1, 1, 1, nTime);
 
         % Treatment condition
         tmp = squeeze(data(s,2,ch,:));
-        tmp = tmp + subjectP300Gain * weights(ch_idx) * treatmentP300;
+        tmp = tmp + weights(ch_idx) * treatmentP300;
         data(s,2,ch,:) = reshape(tmp, 1, 1, 1, nTime);
 
     end
@@ -241,79 +233,79 @@ title('Ground-truth Within-subject Effect');
 
 colorbar;
 
-%% ==========================================================
-% Figure 4: Paired t-test map
-%% ==========================================================
-
-tMap = zeros(nChan,nTime);
-pMap = zeros(nChan,nTime);
-
-for ch = 1:nChan
-
-    for t = 1:nTime
-
-        controlVals   = squeeze(data(:,1,ch,t));
-        treatmentVals = squeeze(data(:,2,ch,t));
-
-        [~,p,~,stats] = ttest(treatmentVals, controlVals);
-
-        tMap(ch,t) = stats.tstat;
-        pMap(ch,t) = p;
-
-    end
-
-end
-
-figure;
-
-imagesc(times, 1:nChan, tMap);
-axis xy;
-
-xlim([-200 800]);
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {chanlocs_EEG.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-title('Paired t-test Map: Treatment vs Control');
-
-colorbar;
-
-%% ==========================================================
-% Figure 5: Significant paired t-test map
-%% ==========================================================
-
-alpha = 0.05;
-
-sigMap = tMap;
-sigMap(pMap >= alpha) = 0;
-
-figure;
-
-imagesc(times, 1:nChan, sigMap);
-axis xy;
-
-xlim([-200 800]);
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {chanlocs_EEG.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-title('Significant Paired t-test Map, p < 0.05');
-
-colorbar;
+% %% ==========================================================
+% % Figure 4: Paired t-test map
+% %% ==========================================================
+% 
+% tMap = zeros(nChan,nTime);
+% pMap = zeros(nChan,nTime);
+% 
+% for ch = 1:nChan
+% 
+%     for t = 1:nTime
+% 
+%         controlVals   = squeeze(data(:,1,ch,t));
+%         treatmentVals = squeeze(data(:,2,ch,t));
+% 
+%         [~,p,~,stats] = ttest(treatmentVals, controlVals);
+% 
+%         tMap(ch,t) = stats.tstat;
+%         pMap(ch,t) = p;
+% 
+%     end
+% 
+% end
+% 
+% figure;
+% 
+% imagesc(times, 1:nChan, tMap);
+% axis xy;
+% 
+% xlim([-200 800]);
+% 
+% set(gca, ...
+%     'YTick', 1:nChan, ...
+%     'YTickLabel', {chanlocs_EEG.labels}, ...
+%     'XTick', -200:200:800, ...
+%     'TickLength', [0 0], ...
+%     'FontSize', 15, ...
+%     'FontName', 'Arial');
+% 
+% xlabel('Time (ms)');
+% ylabel('Channel');
+% title('Paired t-test Map: Treatment vs Control');
+% 
+% colorbar;
+% 
+% %% ==========================================================
+% % Figure 5: Significant paired t-test map
+% %% ==========================================================
+% 
+% alpha = 0.05;
+% 
+% sigMap = tMap;
+% sigMap(pMap >= alpha) = 0;
+% 
+% figure;
+% 
+% imagesc(times, 1:nChan, sigMap);
+% axis xy;
+% 
+% xlim([-200 800]);
+% 
+% set(gca, ...
+%     'YTick', 1:nChan, ...
+%     'YTickLabel', {chanlocs_EEG.labels}, ...
+%     'XTick', -200:200:800, ...
+%     'TickLength', [0 0], ...
+%     'FontSize', 15, ...
+%     'FontName', 'Arial');
+% 
+% xlabel('Time (ms)');
+% ylabel('Channel');
+% title('Significant Paired t-test Map, p < 0.05');
+% 
+% colorbar;
 
 %% ==========================================================
 % Figure 6: Topography at 300 ms
@@ -349,16 +341,14 @@ end
 % Save dataset
 %% ==========================================================
 
-if ~exist('./data','dir')
-    mkdir('./data');
+if ~exist('../data','dir')
+    mkdir('../data');
 end
 
-save('./data/05_simulated_within_subject_EEG.mat', ...
+save('../data/05_simulated_within_subject_EEG.mat', ...
      'data', ...
      'subjectDiff', ...
      'conditionDiff', ...
-     'tMap', ...
-     'pMap', ...
      'times', ...
      'effectChans', ...
      'effectChansLabl', ...

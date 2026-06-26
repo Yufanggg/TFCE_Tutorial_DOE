@@ -23,7 +23,7 @@ end
 e_loc = chanlocs_1020(idx);
 %% Step-1
 [nSubj, nChan, nTime] = size(data);
-X = [group, covariate];
+X = [covariate, group];
 t_Obs = zeros(nChan, nTime);
 
 for ch = 1:nChan
@@ -35,7 +35,7 @@ for ch = 1:nChan
         lm_local = fitlm(X, EEG_local(:));
         toc;
         % t-statistic for Group effect
-        t_Obs(ch, tpoint) = lm_local.Coefficients.tStat(2);
+        t_Obs(ch, tpoint) = lm_local.Coefficients.tStat(3);
 
     end
 
@@ -53,7 +53,7 @@ ChN = ept_ChN2(e_loc); E_H = [0.66, 2];
 perm_t = nan(size(data,2),size(data,3));
 
 % Design matrices 
-X_full = [group, covariate]; 
+X_full = [covariate, group]; 
 X_red = covariate; 
 
 parfor p = 1:nperms
@@ -77,7 +77,7 @@ parfor p = 1:nperms
             tic;
             % Full model fitted to permuted data 
             lm_local = fitlm(X_full, Y_perm);
-            perm_t_local(ch,tpoint) = lm_local.Coefficients.tStat(2);
+            perm_t_local(ch,tpoint) = lm_local.Coefficients.tStat(3);
             toc;
         end
     end

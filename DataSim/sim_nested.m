@@ -1,44 +1,42 @@
 %% ==========================================================
 % Simulated EEG/ERP dataset
-% Nested within-subject experimental design
+% Nested within-student design
 %
-% Subjects are nested inside classes.
-% Same subjects measured in two conditions:
-% Condition 1 = Control
-% Condition 2 = Treatment
+% Model:
+% Y ~ Condition + (1|Class) + (1|Class:Student)
+%
+% Noise sources:
+% 1. Class-wise noise
+% 2. Student-wise noise nested within class
+% 3. Background noise
 %
 % Data dimensions:
 % Subjects x Conditions x Channels x Time
-%
-% Ground truth:
-% Treatment has larger positive ERP effect at 300 ms
-% Effect channels: Cz, CP1, CP2, Pz, P3, P4
 %% ==========================================================
 
-clear; clc; close all; rng(123);
+clear; clc; close all;
+rng(123);
 
 %% ==========================================================
 % Simulation settings
 %% ==========================================================
 
-nClass = 3;
-nSubPerClass = 10;
-nSub = nClass * nSubPerClass;
+nClass = 6;
+nStudentPerClass = 10;
+nSub = nClass * nStudentPerClass;
 
 nCond = 2;
-condNames = {'Control','Treatment'};
-
-% Class membership for each subject
-classID = kron((1:nClass)', ones(nSubPerClass,1));
-
-% Subject ID within each class: 1,2,...,10,1,2,...,10,...
-subIDwithinClass = repmat((1:nSubPerClass)', nClass, 1);
-
-% Global subject ID: 1,...,30
-subjectID = (1:nSub)';
+condNames = {'Control', 'Treatment'};
 
 times = -200:4:800;
 nTime = length(times);
+
+%% ==========================================================
+% Subject and class IDs
+%% ==========================================================
+
+classID = kron((1:nClass)', ones(nStudentPerClass,1));
+studentID = (1:nSub)';
 
 %% ==========================================================
 % Load channel locations
@@ -68,7 +66,7 @@ chanlocs_EEG = chanlocs_1020(idx);
 nChan = length(chanlocs_EEG);
 
 %% ==========================================================
-% Define P300 effect
+% Define P300 condition effect
 %% ==========================================================
 
 p300Latency = 300;
@@ -90,97 +88,109 @@ treatmentP300 = treatmentP300(:);
 % Define effect channels
 %% ==========================================================
 
-effectChansLabl = {'Cz','CP1','CP2','Pz','P3','P4'};
+effectChanLabels = {'Cz','CP1','CP2','Pz','P3','P4'};
 
-[tf, effectChans] = ismember(effectChansLabl, {chanlocs_EEG.labels});
+[tf, effectChans] = ismember(effectChanLabels, {chanlocs_EEG.labels});
 
 if any(~tf)
-    error('Missing effect channels: %s', strjoin(effectChansLabl(~tf), ', '));
+    error('Missing effect channels: %s', strjoin(effectChanLabels(~tf), ', '));
 end
 
 weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 
 %% ==========================================================
-% Simulate nested within-subject EEG/ERP data
+% Simulate nested EEG/ERP data
 %% ==========================================================
 
-% Data size:
+% Data dimensions:
 % Subjects x Conditions x Channels x Time
 data = zeros(nSub, nCond, nChan, nTime);
 
-% Variability settings
-classOffsetSD     = 1.0;   % class-level amplitude offset
-classP300SD       = 0.15;  % class-level P300 variability
+% Noise settings
+classNoiseSD      = 1.2;
+studentNoiseSD    = 1.5;
+backgroundNoiseSD = 0.8;
 
-subjectOffsetSD   = 1.5;   % subject-level amplitude offset
-subjectP300SD     = 0.25;  % subject-level ERP variability
+% Class-wise noise:
+% one stable pattern per class, shared by all students in that class
+classNoise = classNoiseSD * randn(nClass, nChan, nTime);
 
-sharedNoiseSD     = 1.0;   % shared noise across conditions within subject
-conditionNoiseSD  = 0.8;   % condition-specific noise
-
-% Class-level random effects
-classOffset = classOffsetSD * abs(randn(nClass,1));
-classP300Gain = 1 + classP300SD * abs(randn(nClass,1));
+% Student-wise noise:
+% one stable pattern per student, nested within class
+studentNoise = studentNoiseSD * randn(nSub, nChan, nTime);
 
 for s = 1:nSub
 
-    thisClass = classID(s);
+    cID = classID(s);
 
-    % Subject-level baseline offset nested inside class
-    subjectOffset = classOffset(thisClass) + ...
-                    subjectOffsetSD * abs(randn);
+    for cond = 1:nCond
 
-    % Shared EEG noise pattern for this subject
-    sharedNoise = sharedNoiseSD * abs(randn(nChan, nTime));
+        % Background noise:
+        % unique for each subject-condition observation
+        backgroundNoise = backgroundNoiseSD * randn(nChan, nTime);
 
-    % Subject-specific P300 gain nested inside class
-    subjectP300Gain = classP300Gain(thisClass) + ...
-                      subjectP300SD * abs(randn);
-
-    for c = 1:nCond
-
-        % Condition-specific noise
-        conditionNoise = conditionNoiseSD * abs(randn(nChan, nTime));
-
-        % Shared subject/class structure + condition-specific noise
-        data(s,c,:,:) = sharedNoise + conditionNoise + subjectOffset;
+        data(s,cond,:,:) = ...
+            squeeze(classNoise(cID,:,:)) + ...
+            squeeze(studentNoise(s,:,:)) + ...
+            backgroundNoise;
 
     end
+end
 
-    % Inject P300 into Control and Treatment
+%% ==========================================================
+% Inject deterministic condition-specific P300 signal
+%% ==========================================================
+
+for s = 1:nSub
+
     for ch_idx = 1:length(effectChans)
 
         ch = effectChans(ch_idx);
 
-        % Control condition
+        % Control
         tmp = squeeze(data(s,1,ch,:));
-        tmp = tmp + subjectP300Gain * weights(ch_idx) * controlP300;
+        tmp = tmp + weights(ch_idx) * controlP300;
         data(s,1,ch,:) = reshape(tmp, 1, 1, 1, nTime);
 
-        % Treatment condition
+        % Treatment
         tmp = squeeze(data(s,2,ch,:));
-        tmp = tmp + subjectP300Gain * weights(ch_idx) * treatmentP300;
+        tmp = tmp + weights(ch_idx) * treatmentP300;
         data(s,2,ch,:) = reshape(tmp, 1, 1, 1, nTime);
 
     end
-
 end
 
 %% ==========================================================
 % Design table
 %% ==========================================================
 
-designTable = table(subjectID, classID, subIDwithinClass, ...
-    'VariableNames', {'SubjectID','ClassID','SubjectWithinClass'});
+Subject = [];
+Class = [];
+Condition = {};
 
-disp(designTable);
+for s = 1:nSub
+    for cond = 1:nCond
+
+        Subject(end+1,1) = studentID(s);
+        Class(end+1,1) = classID(s);
+        Condition{end+1,1} = condNames{cond};
+
+    end
+end
+
+designTable = table(Subject, Class, Condition);
+
+disp(designTable(1:20,:));
 
 %% ==========================================================
-% Within-subject difference
+% Compute condition difference
 %% ==========================================================
 
+% Subjects x Channels x Time
 subjectDiff = squeeze(data(:,2,:,:) - data(:,1,:,:));
-conditionDiff = squeeze(mean(subjectDiff,1));
+
+% Channels x Time
+conditionDiff = squeeze(mean(subjectDiff, 1));
 
 %% ==========================================================
 % Figure 1: ERP waveform at Pz
@@ -188,8 +198,8 @@ conditionDiff = squeeze(mean(subjectDiff,1));
 
 channelToPlot = find(strcmp({chanlocs_EEG.labels}, 'Pz'));
 
-controlERP = squeeze(mean(data(:,1,channelToPlot,:),1));
-treatmentERP = squeeze(mean(data(:,2,channelToPlot,:),1));
+controlERP = squeeze(mean(data(:,1,channelToPlot,:), 1));
+treatmentERP = squeeze(mean(data(:,2,channelToPlot,:), 1));
 
 figure;
 
@@ -200,19 +210,18 @@ plot(times, treatmentERP, 'r', 'LineWidth', 2);
 
 xlabel('Time (ms)');
 ylabel('Amplitude (\muV)');
-title('Nested Within-subject ERP waveform at Pz');
+title('Nested within-student ERP waveform at Pz');
 legend(condNames);
 grid on;
 
 %% ==========================================================
-% Figure 2: Observed within-subject difference map
+% Figure 2: Observed condition difference
 %% ==========================================================
 
 figure;
 
 imagesc(times, 1:nChan, conditionDiff);
 axis xy;
-
 xlim([-200 800]);
 
 set(gca, ...
@@ -225,22 +234,20 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Observed Nested Within-subject Difference: Treatment - Control');
-
+title('Observed Condition Difference: Treatment - Control');
 colorbar;
 
 %% ==========================================================
-% Figure 3: Ground-truth injected effect
+% Figure 3: Ground-truth condition effect
 %% ==========================================================
 
-truthDiff = zeros(nChan,nTime);
+truthDiff = zeros(nChan, nTime);
 
 trueDifference = treatmentP300 - controlP300;
 
 for ch_idx = 1:length(effectChans)
 
     ch = effectChans(ch_idx);
-
     truthDiff(ch,:) = weights(ch_idx) * trueDifference';
 
 end
@@ -249,7 +256,6 @@ figure;
 
 imagesc(times, 1:nChan, truthDiff);
 axis xy;
-
 xlim([-200 800]);
 
 set(gca, ...
@@ -262,86 +268,11 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Ground-truth Nested Within-subject Effect');
-
+title('Ground-Truth Condition Effect');
 colorbar;
 
 %% ==========================================================
-% Figure 4: Paired t-test map
-%% ==========================================================
-
-tMap = zeros(nChan,nTime);
-pMap = zeros(nChan,nTime);
-
-for ch = 1:nChan
-
-    for t = 1:nTime
-
-        controlVals   = squeeze(data(:,1,ch,t));
-        treatmentVals = squeeze(data(:,2,ch,t));
-
-        [~,p,~,stats] = ttest(treatmentVals, controlVals);
-
-        tMap(ch,t) = stats.tstat;
-        pMap(ch,t) = p;
-
-    end
-
-end
-
-figure;
-
-imagesc(times, 1:nChan, tMap);
-axis xy;
-
-xlim([-200 800]);
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {chanlocs_EEG.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-title('Paired t-test Map: Treatment vs Control');
-
-colorbar;
-
-%% ==========================================================
-% Figure 5: Significant paired t-test map
-%% ==========================================================
-
-alpha = 0.05;
-
-sigMap = tMap;
-sigMap(pMap >= alpha) = 0;
-
-figure;
-
-imagesc(times, 1:nChan, sigMap);
-axis xy;
-
-xlim([-200 800]);
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {chanlocs_EEG.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-title('Significant Paired t-test Map, p < 0.05');
-
-colorbar;
-
-%% ==========================================================
-% Figure 6: Topography at 300 ms
+% Figure 4: Topography at 300 ms
 %% ==========================================================
 
 chanlocs_plot = chanlocs_EEG;
@@ -350,48 +281,43 @@ for k = 1:length(chanlocs_plot)
     chanlocs_plot(k).theta = chanlocs_plot(k).theta + 90;
 end
 
-if exist('topoplot','file')
+[~, peakIdx] = min(abs(times - p300Latency));
 
-    [~,peakIdx] = min(abs(times - 300));
-
-    topo = conditionDiff(:,peakIdx);
+if exist('topoplot', 'file')
 
     figure;
-
-    topoplot(topo, chanlocs_plot, 'electrodes', 'labels');
-
+    topoplot(conditionDiff(:,peakIdx), chanlocs_plot, 'electrodes', 'labels');
     colorbar;
-
-    title('Nested Within-subject Difference at 300 ms');
+    title('Observed Treatment - Control Difference at 300 ms');
 
 else
 
-    fprintf('topoplot not found. Please check EEGLAB path.\n');
+    warning('topoplot not found. Please add EEGLAB to your MATLAB path.');
 
 end
 
 %% ==========================================================
-% Save dataset
+% Save simulated dataset
 %% ==========================================================
 
-if ~exist('./data','dir')
-    mkdir('./data');
+if ~exist('../data', 'dir')
+    mkdir('../data');
 end
 
-save('./data/07_simulated_nested_within_subject_EEG.mat', ...
+save('../data/08_simulated_nested_class_student_EEG.mat', ...
      'data', ...
      'subjectDiff', ...
      'conditionDiff', ...
-     'tMap', ...
-     'pMap', ...
      'times', ...
      'effectChans', ...
-     'effectChansLabl', ...
+     'effectChanLabels', ...
      'chanlocs_EEG', ...
      'condNames', ...
-     'nClass', ...
-     'nSubPerClass', ...
+     'studentID', ...
      'classID', ...
-     'subIDwithinClass', ...
-     'subjectID', ...
-     'designTable');
+     'designTable', ...
+     'classNoise', ...
+     'studentNoise', ...
+     'classNoiseSD', ...
+     'studentNoiseSD', ...
+     'backgroundNoiseSD');

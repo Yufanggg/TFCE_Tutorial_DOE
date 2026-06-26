@@ -1,44 +1,42 @@
 %% ==========================================================
-% Simulate ERP data with group-specific P300 effects
-%% ==========================================================
-% Groups:
-% -1 Control (n = 30)
-% 1 Treatment (n = 30)
+% Simulated EEG/ERP dataset
+% Between-subject design: Control vs Treatment
+% With covariate effect
 %
 % Data dimensions:
-% Subjects ¡Á Channels ¡Á Time
-%
-% Sampling:
-% 32 EEG channels
-% Epoch: -200 to 800 ms
-% Sampling rate: 250 Hz
-%
-% Ground truth:
-% Positive ERP component centered at 300 ms
-% Effect present only in Treatment group
-% Effect channels: 30, 31, 37, 38
-% Peak amplitude increase: +3 ?V
+% Subjects x Channels x Time
 %
 % Noise:
-% Gaussian trial-to-trial variability
-% Subject-specific baseline differences
+% Background Gaussian noise only
 %
-% Expected result:
-% Significant Group difference around 300 ms
-% Localized to channels 30, 31, 37, 38
+% Ground truth:
+% P300 component centered at 300 ms
+% Larger P300 amplitude in Treatment than Control
+% Covariate also modulates P300 amplitude
 %% ==========================================================
 
-clear; clc; close all; rng(123);
+clear; clc; close all;
+rng(123);
 
-%% Simulation settings
+%% ==========================================================
+% Simulation settings
+%% ==========================================================
+
 nControl   = 30;
 nTreatment = 30;
 nSub       = nControl + nTreatment;
 
+condNames = {'Control', 'Treatment'};
+
 times = -200:4:800;
 nTime = length(times);
 
-%% Load and select EEG channels
+noiseSD = 1.5;
+
+%% ==========================================================
+% Load and select EEG channels
+%% ==========================================================
+
 chanlocs_1020 = readlocs('standard_1005.elc');
 
 chanLabels_32 = {
@@ -62,120 +60,151 @@ end
 chanlocs_EEG = chanlocs_1020(idx);
 nChan = length(chanlocs_EEG);
 
-%% Simulate baseline noise
-noiseSD = 1.5;
-data = noiseSD * randn(nSub, nChan, nTime);
+%% ==========================================================
+% Group labels and covariate
+%% ==========================================================
 
-%% Group labels and covariate
-group = [-ones(nControl,1); ones(nTreatment,1)];   % 0 = Control, 1 = Treatment
-covariate = randn(nSub,1);
+% -1 = Control
+%  1 = Treatment
+group = [-ones(nControl, 1); ones(nTreatment, 1)];
 
-%% Define P300 parameters
+% Subject-level covariate
+% Example: standardized age / symptom score / behavioral score
+covariate = randn(nSub, 1);
+covariate = covariate - mean(covariate);
+
+%% ==========================================================
+% Define P300 waveform
+%% ==========================================================
+
 p300Latency = 300;
 p300Width   = 70;
 
 controlAmp   = 3.0;
 treatmentAmp = 6.0;
-betaCov      = 3.0;
 
-%% Generate base P300 waveform
+% Covariate effect on P300 amplitude
+betaCov = 1.5;
+
 p300Shape = exp(-(times - p300Latency).^2 ./ ...
-                (2 * p300Width^2));   % 1 x nTime
+                (2 * p300Width^2));
+p300Shape = p300Shape(:);
 
-%% Subject-specific amplitudes
-controlAmplitude = controlAmp + ...
-                   betaCov * covariate(1:nControl);
+%% ==========================================================
+% Define effect channels
+%% ==========================================================
 
-treatmentAmplitude = treatmentAmp + ...
-                     betaCov * covariate(nControl+1:end);
-
-%% Generate subject-level P300 waveforms
-controlP300   = controlAmplitude * p300Shape;     % nControl x nTime
-treatmentP300 = treatmentAmplitude * p300Shape;   % nTreatment x nTime
-
-%% Define effect channels
 effectChanLabels = {'Cz','CP1','CP2','Pz','P3','P4'};
+
 [tf, effectChans] = ismember(effectChanLabels, {chanlocs_EEG.labels});
 
 if any(~tf)
     error('Missing effect channels: %s', strjoin(effectChanLabels(~tf), ', '));
 end
 
-%% Inject P300 into selected channels
 weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 
-% Control group
-for s = 1:nControl
+%% ==========================================================
+% Simulate EEG/ERP data
+%% ==========================================================
+
+% Background noise only
+data = noiseSD * randn(nSub, nChan, nTime);
+
+for s = 1:nSub
+
+    if group(s) == -1
+        baseAmp = controlAmp;
+    elseif group(s) == 1
+        baseAmp = treatmentAmp;
+    end
+
+    % Subject-specific deterministic P300 amplitude
+    subjectAmp = baseAmp + betaCov * covariate(s);
+
+    subjectP300 = subjectAmp * p300Shape;
+
     for ch_idx = 1:length(effectChans)
 
         ch = effectChans(ch_idx);
 
         tmp = squeeze(data(s, ch, :));
-        tmp = tmp + weights(ch_idx) * controlP300(s, :)';
+        tmp = tmp + weights(ch_idx) * subjectP300;
 
         data(s, ch, :) = reshape(tmp, 1, 1, nTime);
 
     end
-end
 
-% Treatment group
-for i = 1:nTreatment
-
-    s = nControl + i;   % actual subject index in full data matrix
-
-    for ch_idx = 1:length(effectChans)
-
-        ch = effectChans(ch_idx);
-
-        tmp = squeeze(data(s, ch, :));
-        tmp = tmp + weights(ch_idx) * treatmentP300(i, :)';
-
-        data(s, ch, :) = reshape(tmp, 1, 1, nTime);
-
-    end
 end
 
 %% ==========================================================
-% Figure 1: ERP waveform
+% Compute group-level ERPs
+%% ==========================================================
+
+controlData   = data(group == -1, :, :);
+treatmentData = data(group == 1, :, :);
+
+controlERP   = squeeze(mean(controlData, 1));
+treatmentERP = squeeze(mean(treatmentData, 1));
+
+groupDiff = treatmentERP - controlERP;
+
+%% ==========================================================
+% Compute covariate-adjusted ground truth
+%% ==========================================================
+
+meanCovControl   = mean(covariate(group == -1));
+meanCovTreatment = mean(covariate(group == 1));
+
+meanControlAmp   = controlAmp   + betaCov * meanCovControl;
+meanTreatmentAmp = treatmentAmp + betaCov * meanCovTreatment;
+
+controlP300_truth   = meanControlAmp   * p300Shape;
+treatmentP300_truth = meanTreatmentAmp * p300Shape;
+
+trueDifference = treatmentP300_truth - controlP300_truth;
+
+truthDiff = zeros(nChan, nTime);
+
+for ch_idx = 1:length(effectChans)
+
+    ch = effectChans(ch_idx);
+
+    truthDiff(ch, :) = weights(ch_idx) * trueDifference';
+
+end
+
+%% ==========================================================
+% Figure 1: ERP waveform at Pz
 %% ==========================================================
 
 channelToPlot = find(strcmp({chanlocs_EEG.labels}, 'Pz'));
 
-controlERP = squeeze(mean(data(group==1,channelToPlot,:),1));
-treatmentERP = squeeze(mean(data(group==-1,channelToPlot,:),1));
-
 figure;
 
-plot(times,controlERP,'LineWidth',2);
+plot(times, controlERP(channelToPlot, :), 'LineWidth', 2);
 hold on;
 
-plot(times,treatmentERP, 'r','LineWidth',2);
+plot(times, treatmentERP(channelToPlot, :), 'r', 'LineWidth', 2);
 
 xlabel('Time (ms)');
 ylabel('Amplitude (\muV)');
+title(sprintf('ERP waveform at Pz, Channel %d', channelToPlot));
 
-title(sprintf('ERP waveform (Channel %d, Pz)',channelToPlot));
-
-legend('Treatment', 'Control');
-
-%xline(0,'--');
+legend(condNames);
 grid on;
 
 %% ==========================================================
-% Figure 2: Observed channel ¡Á time effect maps
+% Figure 2: Observed channel x time group difference
 %% ==========================================================
-
-groupDiff = squeeze(mean(data(group==1,:,:),1) - ...
-                    mean(data(group==-1,:,:),1));
 
 figure;
 
-% Plot observed group difference
 imagesc(times, 1:nChan, groupDiff);
 axis xy;
 
-% Axes formatting
 xlim([-200 800]);
+
 set(gca, ...
     'YTick', 1:nChan, ...
     'YTickLabel', {chanlocs_EEG.labels}, ...
@@ -184,39 +213,17 @@ set(gca, ...
     'FontSize', 15, ...
     'FontName', 'Arial');
 
-% Labels and title
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Observed Group Difference');
+title('Observed Group Difference: Treatment - Control');
 
-% Color scale
 colorbar;
 
 %% ==========================================================
 % Figure 3: Ground-truth injected effect
 %% ==========================================================
-truthDiff = zeros(nChan, nTime);
 
-% Average P300 waveform for each group
-meanControlP300   = mean(controlP300, 1);      % 1 x nTime
-meanTreatmentP300 = mean(treatmentP300, 1);    % 1 x nTime
-
-% True group difference waveform
-trueDifference = meanTreatmentP300 - meanControlP300;   % 1 x nTime
-
-% Apply channel-specific weights
-for ch_idx = 1:length(effectChans)
-
-    ch = effectChans(ch_idx);
-
-    truthDiff(ch, :) = weights(ch_idx) * trueDifference;
-
-end
-
-%% Plot ground-truth effect over channels and time
 figure;
-
-tickLabels = {chanlocs_EEG.labels};
 
 imagesc(times, 1:nChan, truthDiff);
 axis xy;
@@ -225,7 +232,7 @@ xlim([-200 800]);
 
 set(gca, ...
     'YTick', 1:nChan, ...
-    'YTickLabel', tickLabels, ...
+    'YTickLabel', {chanlocs_EEG.labels}, ...
     'XTick', -200:200:800, ...
     'TickLength', [0 0], ...
     'FontSize', 15, ...
@@ -233,38 +240,33 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Ground-Truth Simulated Effect');
+title('Ground-Truth Effect Including Covariate');
 
 colorbar;
 
-
 %% ==========================================================
-% Topography of ground-truth effect at peak latency
-% Requires EEGLAB topoplot
+% Figure 4: Topography of observed group difference at 300 ms
 %% ==========================================================
 
 chanlocs_plot = chanlocs_EEG;
 
-% Rotate layout for plotting orientation
 for k = 1:length(chanlocs_plot)
     chanlocs_plot(k).theta = chanlocs_plot(k).theta + 90;
 end
 
-% Find index closest to P300 peak
 [~, peakIdx] = min(abs(times - p300Latency));
 
-% Topographic values at peak latency
-topo = truthDiff(:, peakIdx);
+topo = groupDiff(:, peakIdx);
 
 if exist('topoplot', 'file')
 
     figure;
 
-    topoplot(topo, chanlocs_plot, ...
-        'electrodes', 'labels');
+    topoplot(topo, chanlocs_plot, 'electrodes', 'labels');
 
     colorbar;
-    title(sprintf('Ground-Truth Effect at %d ms', p300Latency));
+
+    title(sprintf('Observed Group Difference at %d ms', p300Latency));
 
 else
 
@@ -273,8 +275,59 @@ else
 end
 
 %% ==========================================================
+% Figure 5: Topography of ground-truth effect at 300 ms
+%% ==========================================================
+
+topoTruth = truthDiff(:, peakIdx);
+
+if exist('topoplot', 'file')
+
+    figure;
+
+    topoplot(topoTruth, chanlocs_plot, 'electrodes', 'labels');
+
+    colorbar;
+
+    title(sprintf('Ground-Truth Effect Including Covariate at %d ms', p300Latency));
+
+end
+
+%% ==========================================================
+% Design table
+%% ==========================================================
+
+Subject = (1:nSub)';
+Group = cell(nSub,1);
+
+Group(group == -1) = {'Control'};
+Group(group ==  1) = {'Treatment'};
+
+designTable = table(Subject, Group, group, covariate, ...
+    'VariableNames', {'Subject','Group','GroupCode','Covariate'});
+
+disp(designTable(1:10,:));
+
+%% ==========================================================
 % Save dataset
 %% ==========================================================
 
-save('./data/04_simulated_between_subject_covariate_EEG.mat',...
-     'data','group','covariate','times','effectChans');
+if ~exist('../data', 'dir')
+    mkdir('../data');
+end
+
+save('../data/04_simulated_between_subject_covariate_EEG.mat', ...
+     'data', ...
+     'group', ...
+     'covariate', ...
+     'designTable', ...
+     'times', ...
+     'effectChans', ...
+     'effectChanLabels', ...
+     'chanlocs_EEG', ...
+     'condNames', ...
+     'noiseSD', ...
+     'controlAmp', ...
+     'treatmentAmp', ...
+     'betaCov', ...
+     'groupDiff', ...
+     'truthDiff');
