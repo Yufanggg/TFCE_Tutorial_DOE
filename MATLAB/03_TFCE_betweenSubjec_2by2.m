@@ -1,19 +1,47 @@
+%% ==========================================================
+% TFCE analysis
+% Between-subject 2 x 2 design without interaction
+%
+% Model:
+%   EEG ~ var1 + var2
+%
+% Tests:
+%   Main effect of var1, adjusted for var2
+%   Main effect of var2, adjusted for var1
+%
+% Factor coding:
+%   var1 = -1 / +1
+%   var2 = -1 / +1
+%
+% Permutation:
+%   Freedman-Lane
+%% ==========================================================
 
-clear all; clc; close all;
+clear; clc; close all;
 
-load('data/02_simulated_between_subject_2by2_EEG.mat')
+%% ==========================================================
+% Load data
+%% ==========================================================
+
+load('data/02_simulated_between_subject_2by2_EEG.mat');
+
+%% ==========================================================
+% Load channel locations
+%% ==========================================================
+
 chanlocs_1020 = readlocs('standard_1005.elc');
 
 chanLabels_32 = {
-'Fp1','Fp2',...
-'F7','F3','Fz','F4','F8',...
-'FC5','FC1','FC2','FC6',...
-'T7','C3','Cz','C4','T8',...
-'CP5','CP1','CP2','CP6',...
-'P7','P3','Pz','P4','P8',...
-'PO9','O1','Oz','O2','PO10',...
+'Fp1','Fp2', ...
+'F7','F3','Fz','F4','F8', ...
+'FC5','FC1','FC2','FC6', ...
+'T7','C3','Cz','C4','T8', ...
+'CP5','CP1','CP2','CP6', ...
+'P7','P3','Pz','P4','P8', ...
+'PO9','O1','Oz','O2','PO10', ...
 'TP9','TP10'
 };
+
 allLabels = {chanlocs_1020.labels};
 [tf, idx] = ismember(chanLabels_32, allLabels);
 
@@ -21,139 +49,248 @@ if any(~tf)
     error('Missing channels: %s', strjoin(chanLabels_32(~tf), ', '));
 end
 
-%% Setup
 e_loc = chanlocs_1020(idx);
+
+%% ==========================================================
+% Basic checks
+%% ==========================================================
 
 [nSubj, nChan, nTime] = size(data);
 
-X_obs = [var1(:), var2(:)];
+var1 = var1(:);
+var2 = var2(:);
+
+if length(var1) ~= nSubj
+    error('Length of var1 does not match number of subjects.');
+end
+
+if length(var2) ~= nSubj
+    error('Length of var2 does not match number of subjects.');
+end
+
+if length(times) ~= nTime
+    error('Length of times does not match number of time points.');
+end
+
+if length(e_loc) ~= nChan
+    error('Number of channel locations does not match number of channels.');
+end
+
+%% ==========================================================
+% Design matrices for fitlm
+%% ==========================================================
+
+% Do not include intercept.
+% fitlm adds the intercept automatically.
+%
+% fitlm(X_full, Y) fits:
+%   EEG ~ Intercept + var1 + var2
+%
+% Coefficient rows:
+%   1 = Intercept
+%   2 = var1
+%   3 = var2
+
+X_full = [var1, var2];
+
+coefRow_var1 = 2;
+coefRow_var2 = 3;
+
+%% ==========================================================
+% Step 1: Observed t-maps
+%% ==========================================================
 
 t_Obs_var1 = zeros(nChan, nTime);
 t_Obs_var2 = zeros(nChan, nTime);
 
-% Step 1: Observed regression t-values
 for ch = 1:nChan
     for tp = 1:nTime
-        EEG_local = double(data(:, ch, tp));
 
-        lm = fitlm(X_obs, EEG_local(:));
+        Y = double(data(:, ch, tp));
 
-        t_Obs_var1(ch, tp) = lm.Coefficients.tStat(2);
-        t_Obs_var2(ch, tp) = lm.Coefficients.tStat(3);
+        lm_full = fitlm(X_full, Y);
+
+        t_Obs_var1(ch, tp) = lm_full.Coefficients.tStat(coefRow_var1);
+        t_Obs_var2(ch, tp) = lm_full.Coefficients.tStat(coefRow_var2);
+
     end
 end
 
-% Step 2: TFCE on observed t-maps
+%% ==========================================================
+% Step 2: Observed TFCE maps
+%% ==========================================================
+
 ChN = ept_ChN2(e_loc);
 E_H = [0.66, 2];
 
 TFCE_Obs_var1 = ept_mex_TFCE2D(t_Obs_var1, ChN, E_H);
 TFCE_Obs_var2 = ept_mex_TFCE2D(t_Obs_var2, ChN, E_H);
 
-% Step 3: Synchronized permutation test
+%% ==========================================================
+% Step 3: Freedman-Lane permutation
+%% ==========================================================
+
 nPerms = 999;
 
 TFCE_permMax_var1 = nan(nPerms, 1);
 TFCE_permMax_var2 = nan(nPerms, 1);
 
-idx_Bminus = find(var2 == -1);
-idx_Bplus  = find(var2 ==  1);
+% Reduced model for testing var1:
+%   EEG ~ var2
+X_red_var1 = var2;
 
-idx_Aminus = find(var1 == -1);
-idx_Aplus  = find(var1 ==  1);
+% Reduced model for testing var2:
+%   EEG ~ var1
+X_red_var2 = var1;
 
 parfor p = 1:nPerms
 
-    % Permute Factor A within each level of Factor B
-    var1_perm = var1(:);
-
-    var1_perm(idx_Bminus) = var1_perm(idx_Bminus(randperm(numel(idx_Bminus))));
-    var1_perm(idx_Bplus)  = var1_perm(idx_Bplus(randperm(numel(idx_Bplus))));
-
-    X_perm_A = [var1_perm(:), var2(:)];
-
-    % Permute Factor B within each level of Factor A
-    var2_perm = var2(:);
-
-    var2_perm(idx_Aminus) = var2_perm(idx_Aminus(randperm(numel(idx_Aminus))));
-    var2_perm(idx_Aplus)  = var2_perm(idx_Aplus(randperm(numel(idx_Aplus))));
-
-    X_perm_B = [var1(:), var2_perm(:)];
-
-    % Fit permutation models
     perm_t_var1 = zeros(nChan, nTime);
     perm_t_var2 = zeros(nChan, nTime);
 
+    perm_idx_var1 = randperm(nSubj);
+    perm_idx_var2 = randperm(nSubj);
+
     for ch = 1:nChan
         for tp = 1:nTime
-            EEG_local = double(data(:, ch, tp));
 
-            lm_A = fitlm(X_perm_A, EEG_local(:));
-            lm_B = fitlm(X_perm_B, EEG_local(:));
+            Y = double(data(:, ch, tp));
 
-            perm_t_var1(ch, tp) = lm_A.Coefficients.tStat(2);
-            perm_t_var2(ch, tp) = lm_B.Coefficients.tStat(3);
+            %% ----------------------------------------------
+            % Test var1 adjusted for var2
+            %% ----------------------------------------------
+
+            lm_red_var1 = fitlm(X_red_var1, Y);
+
+            Y_hat_red_var1 = fitted(lm_red_var1);
+            resid_red_var1 = residuals(lm_red_var1);
+
+            Y_perm_var1 = Y_hat_red_var1 + resid_red_var1(perm_idx_var1);
+
+            lm_perm_var1 = fitlm(X_full, Y_perm_var1);
+
+            perm_t_var1(ch, tp) = ...
+                lm_perm_var1.Coefficients.tStat(coefRow_var1);
+
+            %% ----------------------------------------------
+            % Test var2 adjusted for var1
+            %% ----------------------------------------------
+
+            lm_red_var2 = fitlm(X_red_var2, Y);
+
+            Y_hat_red_var2 = fitted(lm_red_var2);
+            resid_red_var2 = residuals(lm_red_var2);
+
+            Y_perm_var2 = Y_hat_red_var2 + resid_red_var2(perm_idx_var2);
+
+            lm_perm_var2 = fitlm(X_full, Y_perm_var2);
+
+            perm_t_var2(ch, tp) = ...
+                lm_perm_var2.Coefficients.tStat(coefRow_var2);
+
         end
     end
 
-    % TFCE permutation max statistics
     TFCE_perm_var1 = ept_mex_TFCE2D(perm_t_var1, ChN, E_H);
     TFCE_perm_var2 = ept_mex_TFCE2D(perm_t_var2, ChN, E_H);
 
     TFCE_permMax_var1(p) = max(abs(TFCE_perm_var1(:)));
     TFCE_permMax_var2(p) = max(abs(TFCE_perm_var2(:)));
+
 end
 
-% Step 4: TFCE-corrected p-values and masks
-Alpha = 0.05;
+%% ==========================================================
+% Step 4: TFCE-corrected significance
+%% ==========================================================
 
-maxTFCE_var1 = sort([TFCE_permMax_var1; max(abs(TFCE_Obs_var1(:)))]);
-maxTFCE_var2 = sort([TFCE_permMax_var2; max(abs(TFCE_Obs_var2(:)))]);
+alpha = 0.05;
 
-critIdx = round((nPerms + 1) * (1 - Alpha));
+critTFCE_var1 = prctile(TFCE_permMax_var1, 100 * (1 - alpha));
+critTFCE_var2 = prctile(TFCE_permMax_var2, 100 * (1 - alpha));
 
-maxTFCEcrit_var1 = maxTFCE_var1(critIdx);
-maxTFCEcrit_var2 = maxTFCE_var2(critIdx);
-
-Mask_var1 = abs(TFCE_Obs_var1) >= maxTFCEcrit_var1;
-Mask_var2 = abs(TFCE_Obs_var2) >= maxTFCEcrit_var2;
+Mask_var1 = abs(TFCE_Obs_var1) >= critTFCE_var1;
+Mask_var2 = abs(TFCE_Obs_var2) >= critTFCE_var2;
 
 P_Values_var1 = nan(nChan, nTime);
 P_Values_var2 = nan(nChan, nTime);
 
 for ch = 1:nChan
     for tp = 1:nTime
+
         P_Values_var1(ch, tp) = ...
-            sum(abs(TFCE_Obs_var1(ch, tp)) <= maxTFCE_var1) / (nPerms + 1);
+            (sum(TFCE_permMax_var1 >= abs(TFCE_Obs_var1(ch, tp))) + 1) / ...
+            (nPerms + 1);
 
         P_Values_var2(ch, tp) = ...
-            sum(abs(TFCE_Obs_var2(ch, tp)) <= maxTFCE_var2) / (nPerms + 1);
+            (sum(TFCE_permMax_var2 >= abs(TFCE_Obs_var2(ch, tp))) + 1) / ...
+            (nPerms + 1);
+
     end
 end
 
-% Store results
+%% ==========================================================
+% Step 5: Store results
+%% ==========================================================
+
+Results = struct();
+
 Results.Obs_var1       = t_Obs_var1;
 Results.TFCE_Obs_var1  = TFCE_Obs_var1;
-Results.maxTFCE_var1   = maxTFCE_var1;
+Results.TFCE_Null_var1 = TFCE_permMax_var1;
+Results.critTFCE_var1  = critTFCE_var1;
 Results.P_Values_var1  = P_Values_var1;
 Results.Mask_var1      = Mask_var1;
 
 Results.Obs_var2       = t_Obs_var2;
 Results.TFCE_Obs_var2  = TFCE_Obs_var2;
-Results.maxTFCE_var2   = maxTFCE_var2;
+Results.TFCE_Null_var2 = TFCE_permMax_var2;
+Results.critTFCE_var2  = critTFCE_var2;
 Results.P_Values_var2  = P_Values_var2;
 Results.Mask_var2      = Mask_var2;
 
-% Step 5: Plot ignificant observed effects for var1 and var2
+Results.alpha = alpha;
+Results.nPerm = nPerms;
+Results.model = 'EEG ~ var1 + var2';
+
+%% ==========================================================
+% Step 6: Plot significant observed effects
+%% ==========================================================
+
 plot_tfce_results(Results.Obs_var1, Results.Mask_var1, ...
-                  times, e_loc, 'Significant Observed Effects: var1');
+                  times, e_loc, ...
+                  'TFCE-corrected Main Effect: var1');
 
 plot_tfce_results(Results.Obs_var2, Results.Mask_var2, ...
-                  times, e_loc, 'Significant Observed Effects: var2');
-              
-                  
+                  times, e_loc, ...
+                  'TFCE-corrected Main Effect: var2');
+
+%% ==========================================================
+% Step 7: Save results
+%% ==========================================================
+
+if ~exist('results', 'dir')
+    mkdir('results');
+end
+
+save('results/02_TFCE_between_subject_2by2_no_interaction_results.mat', ...
+     'Results', ...
+     't_Obs_var1', ...
+     't_Obs_var2', ...
+     'TFCE_Obs_var1', ...
+     'TFCE_Obs_var2', ...
+     'TFCE_permMax_var1', ...
+     'TFCE_permMax_var2', ...
+     'Mask_var1', ...
+     'Mask_var2', ...
+     'P_Values_var1', ...
+     'P_Values_var2', ...
+     'times', ...
+     'e_loc');
+
+disp('TFCE analysis completed and saved.');
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Local functions must be at the end of the script
+% Local function
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 function plot_tfce_results(Obs, Mask, times, e_loc, plot_title)
@@ -162,6 +299,7 @@ function plot_tfce_results(Obs, Mask, times, e_loc, plot_title)
     mT(~Mask) = 0;
 
     figure;
+
     imagesc(times, 1:size(mT,1), mT);
     axis xy;
 
