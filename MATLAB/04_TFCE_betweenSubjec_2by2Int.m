@@ -22,7 +22,7 @@ clear; clc; close all;
 % Load data
 %% ==========================================================
 
-load('data/03_simulated_between_subject_2by2Int_EEG.mat');
+load('../data/03_simulated_between_subject_2by2Int_EEG.mat');
 
 %% ==========================================================
 % Load channel locations
@@ -276,11 +276,11 @@ colorbar;
 % Step 8: Save results
 %% ==========================================================
 
-if ~exist('results', 'dir')
-    mkdir('results');
+if ~exist('../results', 'dir')
+    mkdir('../results');
 end
 
-save('results/03_TFCE_between_subject_2by2_interaction_results.mat', ...
+save('../results/03_TFCE_between_subject_2by2_interaction_results.mat', ...
      'Results', ...
      't_Obs_Int', ...
      'TFCE_Obs_Int', ...

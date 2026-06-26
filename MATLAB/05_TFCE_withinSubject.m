@@ -1,18 +1,49 @@
+%% ==========================================================
+% TFCE analysis
+% Within-subject EEG/ERP design using linear mixed model
+%
+% Data format:
+%   data = Subjects x Conditions x Channels x Time
+%
+% Conditions:
+%   Condition 1 = Control
+%   Condition 2 = Treatment
+%
+% Model:
+%   EEG ~ Condition + (1|Subject)
+%
+% Test:
+%   Treatment - Control fixed effect
+%
+% Permutation:
+%   Within-subject condition-label flipping
+%% ==========================================================
 
-clear all; clc; close all;
-load('data/05_simulated_within_subject_EEG.mat')
+clear; clc; close all;
+
+%% ==========================================================
+% Load data
+%% ==========================================================
+
+load('data/05_simulated_within_subject_EEG.mat');
+
+%% ==========================================================
+% Load channel locations
+%% ==========================================================
+
 chanlocs_1020 = readlocs('standard_1005.elc');
 
 chanLabels_32 = {
-'Fp1','Fp2',...
-'F7','F3','Fz','F4','F8',...
-'FC5','FC1','FC2','FC6',...
-'T7','C3','Cz','C4','T8',...
-'CP5','CP1','CP2','CP6',...
-'P7','P3','Pz','P4','P8',...
-'PO9','O1','Oz','O2','PO10',...
+'Fp1','Fp2', ...
+'F7','F3','Fz','F4','F8', ...
+'FC5','FC1','FC2','FC6', ...
+'T7','C3','Cz','C4','T8', ...
+'CP5','CP1','CP2','CP6', ...
+'P7','P3','Pz','P4','P8', ...
+'PO9','O1','Oz','O2','PO10', ...
 'TP9','TP10'
 };
+
 allLabels = {chanlocs_1020.labels};
 [tf, idx] = ismember(chanLabels_32, allLabels);
 
@@ -23,48 +54,62 @@ end
 e_loc = chanlocs_1020(idx);
 
 %% ==========================================================
-% Data format expected:
-% data = subjects x conditions x channels x time
-% condition 1 = Control
-% condition 2 = Treatment
+% Basic checks
 %% ==========================================================
 
 [nSubj, nCond, nChan, nTime] = size(data);
 
 if nCond ~= 2
-    error('Expected data format: subjects x 2 conditions x channels x time');
+    error('Expected data format: Subjects x 2 Conditions x Channels x Time');
+end
+
+if length(times) ~= nTime
+    error('Length of times does not match number of time points.');
+end
+
+if length(e_loc) ~= nChan
+    error('Number of channel locations does not match number of channels.');
 end
 
 %% ==========================================================
-% Step 1: observed paired / within-subject t-map
+% Long-format design variables for fitlme
 %% ==========================================================
 
-% Subject-level difference waves
-% Subjects x Channels x Time
-diffData = squeeze(data(:,2,:,:) - data(:,1,:,:));
+% For old MATLAB compatibility, use kron instead of repelem
+Subject = kron((1:nSubj)', ones(nCond,1));
+
+% 0 = Control, 1 = Treatment
+Condition = repmat([0; 1], nSubj, 1);
+
+Subject = categorical(Subject);
+
+%% ==========================================================
+% Step 1: Observed LME t-map
+%% ==========================================================
 
 t_Obs = zeros(nChan, nTime);
 
 for ch = 1:nChan
-
     for tpoint = 1:nTime
 
-        diffVals = double(squeeze(diffData(:,ch,tpoint)));
-        
-        tic;
+        controlVals   = squeeze(data(:,1,ch,tpoint));
+        treatmentVals = squeeze(data(:,2,ch,tpoint));
 
-        [~,~,~,stats] = ttest(diffVals, 0);
+        EEG = reshape([controlVals treatmentVals]', [], 1);
 
-        t_Obs(ch,tpoint) = stats.tstat;
-        
-        toc;
+        tbl = table(EEG, Condition, Subject, ...
+            'VariableNames', {'EEG','Condition','Subject'});
+
+        lme = fitlme(tbl, 'EEG ~ Condition + (1|Subject)');
+
+        % Row 2 = Treatment - Control fixed effect
+        t_Obs(ch,tpoint) = lme.Coefficients.tStat(2);
 
     end
-
 end
 
 %% ==========================================================
-% Step 2: TFCE transform of observed t-map
+% Step 2: Observed TFCE map
 %% ==========================================================
 
 ChN = ept_ChN2(e_loc);
@@ -73,45 +118,46 @@ E_H = [0.66, 2];
 TFCE_Obs = ept_mex_TFCE2D(t_Obs, ChN, E_H);
 
 %% ==========================================================
-% Step 3: permutation test using random sign-flipping
+% Step 3: Permutation using within-subject condition flipping
 %% ==========================================================
 
-nperms = 999;
+nPerm = 999;
+TFCE_permMax = nan(nPerm,1);
 
-TFCE_permMax = nan(nperms,1);
+parfor p = 1:nPerm
 
-parfor p = 1:nperms
+    perm_t = nan(nChan, nTime);
 
-    % Randomly flip the sign of each subject's difference wave
-    signs = randi([0 1], nSubj, 1) * 2 - 1;
-
-    permDiff = diffData;
-
-    for s = 1:nSubj
-        permDiff(s,:,:) = signs(s) * permDiff(s,:,:);
-    end
-
-    perm_t_local = nan(nChan, nTime);
+    % Randomly flip Control/Treatment labels within each subject
+    flip = randi(nSubj, 1);
 
     for ch = 1:nChan
-
         for tpoint = 1:nTime
-
-            diffVals = double(squeeze(permDiff(:,ch,tpoint)));
             
-            tic;
+            permControl   = squeeze(data(:,1,ch,tpoint));
+            permTreatment  = squeeze(data(:,2,ch,tpoint));
 
-            [~,~,~,stats] = ttest(diffVals, 0);
+            for s = 1:nSubj
+                if flip(s)
+                    tmp = permControl(s);
+                    permControl(s)   = permTreatment(s);
+                    permTreatment(s) = tmp;
+                end
+            end
 
-            perm_t_local(ch,tpoint) = stats.tstat;
-            
-            toc;
+            EEG = reshape([permControl permTreatment]', [], 1);
+
+            tbl = table(EEG, Condition, Subject, ...
+                'VariableNames', {'EEG','Condition','Subject'});
+
+            lme = fitlme(tbl, 'EEG ~ Condition + (1|Subject)');
+
+            perm_t(ch,tpoint) = lme.Coefficients.tStat(2);
 
         end
-
     end
 
-    TFCE_perm = ept_mex_TFCE2D(perm_t_local, ChN, E_H);
+    TFCE_perm = ept_mex_TFCE2D(perm_t, ChN, E_H);
 
     TFCE_permMax(p) = max(abs(TFCE_perm(:)));
 
@@ -121,41 +167,45 @@ end
 % Step 4: TFCE correction
 %% ==========================================================
 
-Alpha = 0.05;
+alpha = 0.05;
 
-maxTFCEcrit = prctile(TFCE_permMax, 100 * (1 - Alpha));
+critTFCE = prctile(TFCE_permMax, 100 * (1 - alpha));
 
-Mask = abs(TFCE_Obs) >= maxTFCEcrit;
+Mask = abs(TFCE_Obs) >= critTFCE;
 
 P_Values = nan(nChan, nTime);
 
-for ch = 1:nChan
+for i = 1:numel(TFCE_Obs)
 
-    for tpoint = 1:nTime
-
-        P_Values(ch,tpoint) = ...
-            (sum(TFCE_permMax >= abs(TFCE_Obs(ch,tpoint))) + 1) / ...
-            (nperms + 1);
-
-    end
+    P_Values(i) = ...
+        (sum(TFCE_permMax >= abs(TFCE_Obs(i))) + 1) / ...
+        (nPerm + 1);
 
 end
 
+%% ==========================================================
+% Step 5: Store results
+%% ==========================================================
+
+Results = struct();
+
 Results.Obs          = t_Obs;
 Results.TFCE_Obs     = TFCE_Obs;
-Results.TFCE_permMax = TFCE_permMax;
+Results.TFCE_Null    = TFCE_permMax;
+Results.critTFCE     = critTFCE;
 Results.P_Values     = P_Values;
 Results.Mask         = Mask;
-Results.diffData     = diffData;
+Results.alpha        = alpha;
+Results.nPerm        = nPerm;
+Results.model        = 'EEG ~ Condition + (1|Subject)';
+Results.test         = 'Treatment - Control fixed effect';
 
 %% ==========================================================
-% Step 5: plot significant observed t-values
+% Step 6: Plot significant observed t-values
 %% ==========================================================
 
-mT = Results.Obs;
-mT(~Results.Mask) = 0;
-
-tick_labels = {e_loc.labels};
+mT = t_Obs;
+mT(~Mask) = 0;
 
 figure;
 
@@ -166,7 +216,7 @@ xlim([-200 800]);
 
 set(gca, ...
     'YTick', 1:nChan, ...
-    'YTickLabel', tick_labels, ...
+    'YTickLabel', {e_loc.labels}, ...
     'XTick', -200:200:800, ...
     'TickLength', [0 0], ...
     'FontSize', 15, ...
@@ -174,6 +224,52 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Significant Within-subject Effects: Treatment - Control');
+title('TFCE-corrected LME Effect: Treatment - Control');
 
 colorbar;
+
+%% ==========================================================
+% Step 7: Plot observed TFCE map
+%% ==========================================================
+
+figure;
+
+imagesc(times, 1:nChan, TFCE_Obs);
+axis xy;
+
+xlim([-200 800]);
+
+set(gca, ...
+    'YTick', 1:nChan, ...
+    'YTickLabel', {e_loc.labels}, ...
+    'XTick', -200:200:800, ...
+    'TickLength', [0 0], ...
+    'FontSize', 15, ...
+    'FontName', 'Arial');
+
+xlabel('Time (ms)');
+ylabel('Channel');
+title('Observed TFCE Map: LME Treatment Effect');
+
+colorbar;
+
+%% ==========================================================
+% Step 8: Save results
+%% ==========================================================
+
+if ~exist('../results', 'dir')
+    mkdir('../results');
+end
+
+save('../results/05_TFCE_within_subject_LME_results.mat', ...
+     'Results', ...
+     't_Obs', ...
+     'TFCE_Obs', ...
+     'TFCE_permMax', ...
+     'critTFCE', ...
+     'P_Values', ...
+     'Mask', ...
+     'times', ...
+     'e_loc');
+
+disp('Within-subject LME TFCE analysis completed and saved.');

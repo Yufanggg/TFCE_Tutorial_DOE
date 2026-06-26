@@ -23,7 +23,7 @@ clear; clc; close all;
 % Load data
 %% ==========================================================
 
-load('data/02_simulated_between_subject_2by2_EEG.mat');
+load('../data/02_simulated_between_subject_2by2_EEG.mat');
 
 %% ==========================================================
 % Load channel locations
@@ -268,11 +268,11 @@ plot_tfce_results(Results.Obs_var2, Results.Mask_var2, ...
 % Step 7: Save results
 %% ==========================================================
 
-if ~exist('results', 'dir')
-    mkdir('results');
+if ~exist('../results', 'dir')
+    mkdir('../results');
 end
 
-save('results/02_TFCE_between_subject_2by2_no_interaction_results.mat', ...
+save('../results/02_TFCE_between_subject_2by2_no_interaction_results.mat', ...
      'Results', ...
      't_Obs_var1', ...
      't_Obs_var2', ...

@@ -75,7 +75,7 @@ end
 %% ==========================================================
 % Step 1: Observed t-statistic map
 %% ==========================================================
-
+X = group;
 tObs = zeros(nChan, nTime);
 
 for ch = 1:nChan
@@ -125,6 +125,7 @@ parfor p = 1:nPerm
             permT(ch, t) = lm_perm.Coefficients.tStat(2);
 
         end
+    end
 
     TFCE_perm = ept_mex_TFCE2D(permT, ChN, E_H);
 
@@ -231,11 +232,11 @@ colorbar;
 % Step 8: Save TFCE results
 %% ==========================================================
 
-if ~exist('results', 'dir')
-    mkdir('results');
+if ~exist('../results', 'dir')
+    mkdir('../results');
 end
 
-save('results/01_TFCE_between_subject_results.mat', ...
+save('../results/01_TFCE_between_subject_results.mat', ...
      'Results', ...
      'tObs', ...
      'TFCE_Obs', ...
