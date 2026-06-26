@@ -1,19 +1,23 @@
 %% ==========================================================
 % Simulated EEG/ERP dataset
-% Between-subject design: Control vs Treatment
+% Simple between-subject design: Control vs Treatment
 %
 % Control:   n = 30
 % Treatment: n = 30
 %
+% Group coding:
+%   -1 = Control
+%    1 = Treatment
+%
 % Data dimensions:
-% Subjects x Channels x Time
+%   Subjects x Channels x Time
 %
 % Noise:
-% Background noise only
+%   Background Gaussian noise only
 %
 % Ground truth:
-% P300 effect around 300 ms
-% Larger P300 amplitude in Treatment than Control
+%   P300 effect around 300 ms
+%   Larger P300 amplitude in Treatment than Control
 %% ==========================================================
 
 clear; clc; close all;
@@ -41,13 +45,13 @@ noiseSD = 1.5;
 chanlocs_1020 = readlocs('standard_1005.elc');
 
 chanLabels_32 = {
-'Fp1','Fp2',...
-'F7','F3','Fz','F4','F8',...
-'FC5','FC1','FC2','FC6',...
-'T7','C3','Cz','C4','T8',...
-'CP5','CP1','CP2','CP6',...
-'P7','P3','Pz','P4','P8',...
-'PO9','O1','Oz','O2','PO10',...
+'Fp1','Fp2', ...
+'F7','F3','Fz','F4','F8', ...
+'FC5','FC1','FC2','FC6', ...
+'T7','C3','Cz','C4','T8', ...
+'CP5','CP1','CP2','CP6', ...
+'P7','P3','Pz','P4','P8', ...
+'PO9','O1','Oz','O2','PO10', ...
 'TP9','TP10'
 };
 
@@ -65,8 +69,11 @@ nChan = length(chanlocs_EEG);
 % Group labels
 %% ==========================================================
 
-% 1 = Control, 2 = Treatment
-group = [ones(nControl,1); 2 * ones(nTreatment,1)];
+% -1 = Control
+%  1 = Treatment
+group = [-ones(nControl,1); ones(nTreatment,1)];
+
+subjectID = (1:nSub)';
 
 %% ==========================================================
 % Define P300 waveform
@@ -78,14 +85,12 @@ p300Width   = 70;
 controlAmp   = 3.0;
 treatmentAmp = 6.0;
 
-controlP300 = controlAmp * exp(-(times - p300Latency).^2 ./ ...
-              (2 * p300Width^2));
-
-treatmentP300 = treatmentAmp * exp(-(times - p300Latency).^2 ./ ...
+p300Shape = exp(-(times - p300Latency).^2 ./ ...
                 (2 * p300Width^2));
+p300Shape = p300Shape(:);
 
-controlP300   = controlP300(:);
-treatmentP300 = treatmentP300(:);
+controlP300   = controlAmp   * p300Shape;
+treatmentP300 = treatmentAmp * p300Shape;
 
 %% ==========================================================
 % Define effect channels
@@ -105,15 +110,15 @@ weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 % Simulate EEG/ERP data
 %% ==========================================================
 
-% Data dimensions:
+% Background noise only
 % Subjects x Channels x Time
 data = noiseSD * randn(nSub, nChan, nTime);
 
 for s = 1:nSub
 
-    if group(s) == 1
+    if group(s) == -1
         p300 = controlP300;
-    elseif group(s) == 2
+    elseif group(s) == 1
         p300 = treatmentP300;
     end
 
@@ -129,14 +134,27 @@ for s = 1:nSub
     end
 
 end
+
 %% ==========================================================
-% Figure 1: ERP waveform
+% Compute group-level ERPs
+%% ==========================================================
+
+controlData   = data(group == -1, :, :);
+treatmentData = data(group ==  1, :, :);
+
+controlERP   = squeeze(mean(controlData, 1));
+treatmentERP = squeeze(mean(treatmentData, 1));
+
+groupDiff = treatmentERP - controlERP;
+
+%% ==========================================================
+% Figure 1: ERP waveform at Pz
 %% ==========================================================
 
 channelToPlot = find(strcmp({chanlocs_EEG.labels}, 'Pz'));
 
-controlWave   = squeeze(mean(data(group == 1, channelToPlot, :), 1));
-treatmentWave = squeeze(mean(data(group == 2, channelToPlot, :), 1));
+controlWave   = controlERP(channelToPlot, :);
+treatmentWave = treatmentERP(channelToPlot, :);
 
 figure;
 
@@ -149,17 +167,12 @@ xlabel('Time (ms)');
 ylabel('Amplitude (\muV)');
 title(sprintf('ERP waveform at Pz, Channel %d', channelToPlot));
 
-legend('Control', 'Treatment');
+legend(condNames);
 grid on;
 
 %% ==========================================================
-% Figure 2: Observed channel ¡Á time effect map
+% Figure 2: Observed channel x time effect map
 %% ==========================================================
-
-controlERP   = squeeze(mean(data(group == 1, :, :), 1));
-treatmentERP = squeeze(mean(data(group == 2, :, :), 1));
-
-groupDiff = treatmentERP - controlERP;
 
 figure;
 
@@ -220,7 +233,7 @@ title('Ground-Truth Simulated Effect: Treatment - Control');
 colorbar;
 
 %% ==========================================================
-% Figure 4: Topography at peak latency
+% Figure 4: Topography of observed group difference at 300 ms
 %% ==========================================================
 
 chanlocs_plot = chanlocs_EEG;
@@ -229,7 +242,7 @@ for k = 1:length(chanlocs_plot)
     chanlocs_plot(k).theta = chanlocs_plot(k).theta + 90;
 end
 
-[~, peakIdx] = min(abs(times - 300));
+[~, peakIdx] = min(abs(times - p300Latency));
 
 topo = groupDiff(:, peakIdx);
 
@@ -241,18 +254,69 @@ if exist('topoplot', 'file')
 
     colorbar;
 
-    title('Observed Group Difference at 300 ms');
+    title(sprintf('Observed Group Difference at %d ms', p300Latency));
 
 else
 
     fprintf('topoplot not found. Please add EEGLAB to the MATLAB path.\n');
 
 end
+
+%% ==========================================================
+% Figure 5: Topography of ground-truth effect at 300 ms
+%% ==========================================================
+
+topoTruth = truthDiff(:, peakIdx);
+
+if exist('topoplot', 'file')
+
+    figure;
+
+    topoplot(topoTruth, chanlocs_plot, 'electrodes', 'labels');
+
+    colorbar;
+
+    title(sprintf('Ground-Truth Effect at %d ms', p300Latency));
+
+end
+
+%% ==========================================================
+% Design table
+%% ==========================================================
+
+GroupLabel = cell(nSub,1);
+GroupLabel(group == -1) = {'Control'};
+GroupLabel(group ==  1) = {'Treatment'};
+
+designTable = table(subjectID, group, GroupLabel, ...
+    'VariableNames', {'Subject','GroupCode','GroupLabel'});
+
+disp(designTable(1:10,:));
+
 %% ==========================================================
 % Save dataset
 %% ==========================================================
+
 if ~exist('../data', 'dir')
     mkdir('../data');
 end
-save('../data/01_simulated_between_subject_EEG.mat',...
-     'data','group','times','effectChans');
+
+save('../data/01_simulated_between_subject_EEG.mat', ...
+     'data', ...
+     'group', ...
+     'subjectID', ...
+     'designTable', ...
+     'times', ...
+     'effectChans', ...
+     'effectChanLabels', ...
+     'chanlocs_EEG', ...
+     'condNames', ...
+     'noiseSD', ...
+     'controlAmp', ...
+     'treatmentAmp', ...
+     'p300Latency', ...
+     'p300Width', ...
+     'groupDiff', ...
+     'truthDiff');
+
+disp('Dataset saved: ../data/01_simulated_between_subject_EEG.mat');
