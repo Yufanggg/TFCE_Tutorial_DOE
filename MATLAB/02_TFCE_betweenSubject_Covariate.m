@@ -1,6 +1,6 @@
 %% ==========================================================
 % TFCE for between-subject design with covariate
-%
+% -1 = Control, 1 = Treatment
 % Model:
 % EEG ~ Covariate + Group
 %
