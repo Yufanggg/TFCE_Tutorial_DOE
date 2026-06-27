@@ -14,7 +14,8 @@
 %% ==========================================================
 
 clear; clc; close all;
-
+fprintf('\nStarting TFCE analysis...\n');
+tic;
 %% ==========================================================
 % Load simulated data
 %% ==========================================================
@@ -75,6 +76,8 @@ end
 %% ==========================================================
 % Step 1: Observed t-statistic map
 %% ==========================================================
+fprintf('Step 1: Computing observed t-statistic map...\n');
+
 X = group;
 tObs = zeros(nChan, nTime);
 
@@ -83,7 +86,7 @@ for ch = 1:nChan
 
         EEG_local = double(data(:, ch, t));
 
-        lm_local = fitlm(group, EEG_local);
+        lm_local = fitlm(X, EEG_local);
 
         % Coefficient 2 = Group effect
         tObs(ch, t) = lm_local.Coefficients.tStat(2);
@@ -91,15 +94,18 @@ for ch = 1:nChan
     end
 end
 
+fprintf('Observed t-statistic map completed.\n');
 %% ==========================================================
 % Step 2: TFCE transform of observed t-map
 %% ==========================================================
+fprintf('Step 2: Computing observed TFCE map...\n');
 
 ChN = ept_ChN2(e_loc);
 E_H = [0.66 2];
 
 TFCE_Obs = ept_mex_TFCE2D(tObs, ChN, E_H);
 
+fprintf('Observed TFCE map completed.\n');
 %% ==========================================================
 % Step 3: Permutation testing
 %% ==========================================================
@@ -107,9 +113,16 @@ TFCE_Obs = ept_mex_TFCE2D(tObs, ChN, E_H);
 nPerm = 999;
 TFCE_permMax = zeros(nPerm, 1);
 
+fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
+
+dq = parallel.pool.DataQueue;
+progressCount = 0;
+
+afterEach(dq, @(~) updateProgress());
+
 parfor p = 1:nPerm
 
-    permGroup = group(randperm(nSub));
+    permX = X(randperm(nSub));
 
     permT = zeros(nChan, nTime);
 
@@ -119,7 +132,7 @@ parfor p = 1:nPerm
 
             EEG_local = double(data(:, ch, t));
 
-            lm_perm = fitlm(permGroup, EEG_local);
+            lm_perm = fitlm(permX, EEG_local);
 
             % Coefficient 2 = permuted Group effect
             permT(ch, t) = lm_perm.Coefficients.tStat(2);
@@ -130,12 +143,18 @@ parfor p = 1:nPerm
     TFCE_perm = ept_mex_TFCE2D(permT, ChN, E_H);
 
     TFCE_permMax(p) = max(abs(TFCE_perm(:)));
+    
+    send(dq, p);
 
 end
+
+fprintf('\nPermutation testing completed.\n');
 
 %% ==========================================================
 % Step 4: TFCE-corrected significance
 %% ==========================================================
+
+fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
 alpha = 0.05;
 
@@ -160,9 +179,12 @@ for ch = 1:nChan
     end
 end
 
+fprintf('TFCE-corrected significance completed.\n');
+fprintf('Critical TFCE value = %.4f\n', critTFCE);
 %% ==========================================================
 % Step 5: Store results
 %% ==========================================================
+fprintf('Step 5: Storing results...\n');
 
 Results = struct();
 
@@ -175,6 +197,7 @@ Results.Mask         = Mask;
 Results.alpha        = alpha;
 Results.nPerm        = nPerm;
 
+fprintf('Results stored.\n');
 %% ==========================================================
 % Step 6: Plot TFCE-corrected significant t-values
 %% ==========================================================
