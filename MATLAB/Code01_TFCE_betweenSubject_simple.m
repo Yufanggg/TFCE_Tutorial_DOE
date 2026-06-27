@@ -83,7 +83,7 @@ for ch = 1:nChan
 
         EEG_local = double(data(:, ch, t));
 
-        lm_local = fitlm(X, EEG_local);
+        lm_local = fitlm(group, EEG_local);
 
         % Coefficient 2 = Group effect
         tObs(ch, t) = lm_local.Coefficients.tStat(2);
@@ -125,6 +125,7 @@ parfor p = 1:nPerm
             permT(ch, t) = lm_perm.Coefficients.tStat(2);
 
         end
+    end
 
     TFCE_perm = ept_mex_TFCE2D(permT, ChN, E_H);
 
