@@ -118,14 +118,14 @@ parfor p = 1:nPerm
 
              % Reduced model: EEG ~ Covariate
             lm_red = fitlm(X_red, Y);
-            Y_hat_red = fitted(lm_red);
-            resid_red = residuals(lm_red);
+            Y_hat_red = lm_red.Fitted;
+            resid_red = lm_red.Residuals.Raw;
 
             % Freedman-Lane permuted response
             Y_perm = Y_hat_red + resid_red(perm_idx);
 
             % Full model on permuted data: EEG_perm ~ Covariate + Group
-            lm_perm = fitlm(X_full, Y_perm);
+            lm_perm = fitlm(X, Y_perm);
             perm_t_local(ch,tpoint) = lm_perm.Coefficients.tStat(3);
 
         end
