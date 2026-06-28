@@ -115,11 +115,6 @@ TFCE_permMax = zeros(nPerm, 1);
 
 fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
 
-dq = parallel.pool.DataQueue;
-progressCount = 0;
-
-afterEach(dq, @(~) updateProgress());
-
 parfor p = 1:nPerm
 
     permX = X(randperm(nSub));
@@ -139,12 +134,12 @@ parfor p = 1:nPerm
 
         end
     end
+    
+    fprintf('At the %dth permutation\n', p);
 
     TFCE_perm = ept_mex_TFCE2D(permT, ChN, E_H);
 
     TFCE_permMax(p) = max(abs(TFCE_perm(:)));
-    
-    send(dq, p);
 
 end
 
