@@ -1,6 +1,6 @@
 
 clear all; clc; close all;
-load('data/05_simulated_within_subject_EEG.mat')
+load('data/08_simulated_fully_crossed_subject_item_EEG.mat')
 chanlocs_1020 = readlocs('standard_1005.elc');
 
 chanLabels_32 = {

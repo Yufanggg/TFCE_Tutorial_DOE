@@ -18,10 +18,10 @@
 %% ==========================================================
 
 clear; clc; close all;
-
+fprintf('\nStarting TFCE analysis...\n');
 %% Load data
 
-load('../data/10_simulated_split_plot_EEG.mat');
+load('../data/06_simulated_split_plot_EEG.mat');
 
 %% Load channel locations
 
@@ -75,6 +75,7 @@ WordType = repmat([0; 1], nSubj, 1);
 %% ==========================================================
 % Step 1: Observed LME t-maps
 %% ==========================================================
+fprintf('Step 1: Computing observed t-statistic map...\n');
 
 t_Group_Obs = zeros(nChan, nTime);
 t_Word_Obs  = zeros(nChan, nTime);
@@ -106,9 +107,12 @@ for ch = 1:nChan
     end
 end
 
+fprintf('Observed t-statistic map completed.\n');
+
 %% ==========================================================
 % Step 2: TFCE transformation
 %% ==========================================================
+fprintf('Step 2: Computing observed TFCE map...\n');
 
 ChN = ept_ChN2(e_loc);
 E_H = [0.66, 2];
@@ -117,6 +121,7 @@ TFCE_Group_Obs = ept_mex_TFCE2D(t_Group_Obs, ChN, E_H);
 TFCE_Word_Obs  = ept_mex_TFCE2D(t_Word_Obs,  ChN, E_H);
 TFCE_Int_Obs   = ept_mex_TFCE2D(t_Int_Obs,   ChN, E_H);
 
+fprintf('Observed TFCE map completed.\n');
 %% ==========================================================
 % Step 3: Permutation tests
 %% ==========================================================
@@ -126,6 +131,8 @@ nPerm = 999;
 TFCE_permMax_Group = nan(nPerm,1);
 TFCE_permMax_Word  = nan(nPerm,1);
 TFCE_permMax_Int   = nan(nPerm,1);
+
+fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
 
 parfor p = 1:nPerm
 
@@ -194,6 +201,8 @@ parfor p = 1:nPerm
 
         end
     end
+    
+    fprintf('At the %dth permutation\n', p);
 
     TFCE_perm_Group = ept_mex_TFCE2D(perm_t_Group, ChN, E_H);
     TFCE_perm_Word  = ept_mex_TFCE2D(perm_t_Word,  ChN, E_H);
@@ -205,10 +214,11 @@ parfor p = 1:nPerm
 
 end
 
+fprintf('\nPermutation testing completed.\n');
 %% ==========================================================
 % Step 4: TFCE correction
 %% ==========================================================
-
+fprintf('Step 4: Computing TFCE-corrected significance...\n');
 alpha = 0.05;
 
 crit_Group = prctile(TFCE_permMax_Group, 100*(1-alpha));
@@ -239,10 +249,12 @@ for i = 1:numel(TFCE_Group_Obs)
 
 end
 
+fprintf('TFCE-corrected significance completed.\n');
+fprintf('Critical TFCE value = %.4f\n', critTFCE);
 %% ==========================================================
 % Step 5: Store results
 %% ==========================================================
-
+fprintf('Step 5: Storing results...\n');
 Results = struct();
 
 Results.t_Group_Obs = t_Group_Obs;
@@ -273,6 +285,7 @@ Results.alpha = alpha;
 Results.nPerm = nPerm;
 Results.model = 'EEG ~ Group * WordType + (1|Subject)';
 
+fprintf('Results stored.\n');
 %% ==========================================================
 % Step 6: Plot significant effects
 %% ==========================================================
@@ -294,7 +307,7 @@ if ~exist('../results', 'dir')
     mkdir('../results');
 end
 
-save('../results/10_TFCE_split_plot_LME_results.mat', ...
+save('../results/06_TFCE_split_plot_LME_results.mat', ...
      'Results', ...
      't_Group_Obs', ...
      't_Word_Obs', ...
@@ -316,34 +329,3 @@ save('../results/10_TFCE_split_plot_LME_results.mat', ...
 
 disp('Split-plot LME TFCE analysis completed and saved.');
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Local plotting function
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-function plot_tfce_result(tMap, Mask, times, e_loc, plotTitle)
-
-    mT = tMap;
-    mT(~Mask) = 0;
-
-    figure;
-
-    imagesc(times, 1:size(mT,1), mT);
-    axis xy;
-
-    xlim([-200 800]);
-
-    set(gca, ...
-        'YTick', 1:size(mT,1), ...
-        'YTickLabel', {e_loc.labels}, ...
-        'XTick', -200:200:800, ...
-        'TickLength', [0 0], ...
-        'FontSize', 15, ...
-        'FontName', 'Arial');
-
-    xlabel('Time (ms)');
-    ylabel('Channel');
-    title(plotTitle);
-
-    colorbar;
-
-end

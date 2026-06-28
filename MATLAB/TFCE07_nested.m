@@ -1,6 +1,6 @@
 
 clear all; clc; close all;
-load('../data/07_simulated_nested_within_subject_EEG.mat')
+load('../data/07_simulated_nested_class_student_EEG.mat')
 chanlocs_1020 = readlocs('standard_1005.elc');
 
 chanLabels_32 = {
