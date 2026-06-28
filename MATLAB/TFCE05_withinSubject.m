@@ -20,7 +20,7 @@
 %% ==========================================================
 
 clear; clc; close all;
-
+fprintf('\nStarting TFCE analysis...\n');
 %% ==========================================================
 % Load data
 %% ==========================================================
@@ -86,7 +86,7 @@ Subject = categorical(Subject);
 %% ==========================================================
 % Step 1: Observed LME t-map
 %% ==========================================================
-
+fprintf('Step 1: Computing observed t-statistic map...\n');
 t_Obs = zeros(nChan, nTime);
 
 for ch = 1:nChan
@@ -107,22 +107,26 @@ for ch = 1:nChan
 
     end
 end
-
+fprintf('Observed t-statistic map completed.\n');
 %% ==========================================================
 % Step 2: Observed TFCE map
 %% ==========================================================
+fprintf('Step 2: Computing observed TFCE map...\n');
 
 ChN = ept_ChN2(e_loc);
 E_H = [0.66, 2];
 
 TFCE_Obs = ept_mex_TFCE2D(t_Obs, ChN, E_H);
 
+fprintf('Observed TFCE map completed.\n');
 %% ==========================================================
 % Step 3: Permutation using within-subject condition flipping
 %% ==========================================================
 
 nPerm = 999;
 TFCE_permMax = nan(nPerm,1);
+
+fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
 
 parfor p = 1:nPerm
 
@@ -156,6 +160,8 @@ parfor p = 1:nPerm
 
         end
     end
+    
+    fprintf('At the %dth permutation\n', p);
 
     TFCE_perm = ept_mex_TFCE2D(perm_t, ChN, E_H);
 
@@ -163,9 +169,11 @@ parfor p = 1:nPerm
 
 end
 
+fprintf('\nPermutation testing completed.\n');
 %% ==========================================================
 % Step 4: TFCE correction
 %% ==========================================================
+fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
 alpha = 0.05;
 
@@ -183,9 +191,12 @@ for i = 1:numel(TFCE_Obs)
 
 end
 
+fprintf('TFCE-corrected significance completed.\n');
+fprintf('Critical TFCE value = %.4f\n', critTFCE);
 %% ==========================================================
 % Step 5: Store results
 %% ==========================================================
+fprintf('Step 5: Storing results...\n');
 
 Results = struct();
 
@@ -200,6 +211,7 @@ Results.nPerm        = nPerm;
 Results.model        = 'EEG ~ Condition + (1|Subject)';
 Results.test         = 'Treatment - Control fixed effect';
 
+fprintf('Results stored.\n');
 %% ==========================================================
 % Step 6: Plot significant observed t-values
 %% ==========================================================

@@ -18,12 +18,13 @@
 %% ==========================================================
 
 clear; clc; close all;
+fprintf('\nStarting TFCE analysis...\n');
 
 %% ==========================================================
-% Load data
+% Load simulated data
 %% ==========================================================
 
-load('../data/02_simulated_between_subject_2by2_EEG.mat');
+load('../data/03_simulated_between_subject_2by2_EEG.mat');
 
 %% ==========================================================
 % Load channel locations
@@ -99,6 +100,7 @@ coefRow_var2 = 3;
 %% ==========================================================
 % Step 1: Observed t-maps
 %% ==========================================================
+fprintf('Step 1: Computing observed t-statistic map...\n');
 
 t_Obs_var1 = zeros(nChan, nTime);
 t_Obs_var2 = zeros(nChan, nTime);
@@ -116,9 +118,11 @@ for ch = 1:nChan
     end
 end
 
+fprintf('Observed t-statistic map completed.\n');
 %% ==========================================================
 % Step 2: Observed TFCE maps
 %% ==========================================================
+fprintf('Step 2: Computing observed TFCE map...\n');
 
 ChN = ept_ChN2(e_loc);
 E_H = [0.66, 2];
@@ -126,6 +130,7 @@ E_H = [0.66, 2];
 TFCE_Obs_var1 = ept_mex_TFCE2D(t_Obs_var1, ChN, E_H);
 TFCE_Obs_var2 = ept_mex_TFCE2D(t_Obs_var2, ChN, E_H);
 
+fprintf('Observed TFCE map completed.\n');
 %% ==========================================================
 % Step 3: Freedman-Lane permutation
 %% ==========================================================
@@ -134,6 +139,8 @@ nPerms = 999;
 
 TFCE_permMax_var1 = nan(nPerms, 1);
 TFCE_permMax_var2 = nan(nPerms, 1);
+
+fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
 
 % Reduced model for testing var1:
 %   EEG ~ var2
@@ -190,6 +197,8 @@ parfor p = 1:nPerms
 
         end
     end
+    
+    fprintf('At the %dth permutation\n', p);
 
     TFCE_perm_var1 = ept_mex_TFCE2D(perm_t_var1, ChN, E_H);
     TFCE_perm_var2 = ept_mex_TFCE2D(perm_t_var2, ChN, E_H);
@@ -199,9 +208,12 @@ parfor p = 1:nPerms
 
 end
 
+fprintf('\nPermutation testing completed.\n');
 %% ==========================================================
 % Step 4: TFCE-corrected significance
 %% ==========================================================
+
+fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
 alpha = 0.05;
 
@@ -228,9 +240,12 @@ for ch = 1:nChan
     end
 end
 
+fprintf('TFCE-corrected significance completed.\n');
+fprintf('Critical TFCE value = %.4f\n', critTFCE);
 %% ==========================================================
 % Step 5: Store results
 %% ==========================================================
+fprintf('Step 5: Storing results...\n');
 
 Results = struct();
 
@@ -252,6 +267,7 @@ Results.alpha = alpha;
 Results.nPerm = nPerms;
 Results.model = 'EEG ~ var1 + var2';
 
+fprintf('Results stored.\n');
 %% ==========================================================
 % Step 6: Plot significant observed effects
 %% ==========================================================
@@ -272,7 +288,7 @@ if ~exist('../results', 'dir')
     mkdir('../results');
 end
 
-save('../results/02_TFCE_between_subject_2by2_no_interaction_results.mat', ...
+save('../results/03_TFCE_between_subject_2by2_no_interaction_results.mat', ...
      'Results', ...
      't_Obs_var1', ...
      't_Obs_var2', ...
@@ -288,35 +304,3 @@ save('../results/02_TFCE_between_subject_2by2_no_interaction_results.mat', ...
      'e_loc');
 
 disp('TFCE analysis completed and saved.');
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Local function
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-function plot_tfce_results(Obs, Mask, times, e_loc, plot_title)
-
-    mT = Obs;
-    mT(~Mask) = 0;
-
-    figure;
-
-    imagesc(times, 1:size(mT,1), mT);
-    axis xy;
-
-    xlim([-200 800]);
-
-    set(gca, ...
-        'YTick', 1:size(mT,1), ...
-        'YTickLabel', {e_loc.labels}, ...
-        'XTick', -200:200:800, ...
-        'TickLength', [0 0], ...
-        'FontSize', 15, ...
-        'FontName', 'Arial');
-
-    xlabel('Time (ms)');
-    ylabel('Channel');
-    title(plot_title);
-
-    colorbar;
-
-end

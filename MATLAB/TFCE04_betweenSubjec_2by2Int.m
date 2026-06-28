@@ -18,11 +18,12 @@
 
 clear; clc; close all;
 
+fprintf('\nStarting TFCE analysis...\n');
 %% ==========================================================
 % Load data
 %% ==========================================================
 
-load('../data/03_simulated_between_subject_2by2Int_EEG.mat');
+load('../data/04_simulated_between_subject_2by2Int_EEG.mat');
 
 %% ==========================================================
 % Load channel locations
@@ -104,6 +105,7 @@ interactionCoefRow = 4;
 %% ==========================================================
 % Step 1: Observed interaction t-map
 %% ==========================================================
+fprintf('Step 1: Computing observed t-statistic map...\n');
 
 t_Obs_Int = zeros(nChan, nTime);
 
@@ -120,15 +122,18 @@ for ch = 1:nChan
     end
 end
 
+fprintf('Observed t-statistic map completed.\n');
 %% ==========================================================
 % Step 2: Observed TFCE map
 %% ==========================================================
+fprintf('Step 2: Computing observed TFCE map...\n');
 
 ChN = ept_ChN2(e_loc);
 E_H = [0.66, 2];
 
 TFCE_Obs_Int = ept_mex_TFCE2D(t_Obs_Int, ChN, E_H);
 
+fprintf('Observed TFCE map completed.\n');
 %% ==========================================================
 % Step 3: Freedman-Lane permutation test
 %% ==========================================================
@@ -137,6 +142,7 @@ nPerm = 999;
 
 TFCE_permMax_Int = nan(nPerm, 1);
 
+fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
 parfor p = 1:nPerm
 
     perm_t_local = nan(nChan, nTime);
@@ -167,6 +173,8 @@ parfor p = 1:nPerm
 
         end
     end
+    
+    fprintf('At the %dth permutation\n', p);
 
     TFCE_perm = ept_mex_TFCE2D(perm_t_local, ChN, E_H);
 
@@ -174,9 +182,11 @@ parfor p = 1:nPerm
 
 end
 
+fprintf('\nPermutation testing completed.\n');
 %% ==========================================================
 % Step 4: TFCE-corrected significance
 %% ==========================================================
+fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
 alpha = 0.05;
 
@@ -191,19 +201,22 @@ P_Values_Int = ...
 
 P_Values_Int = reshape(P_Values_Int,size(TFCE_Obs_Int));
 
-% for ch = 1:nChan
-%     for tpoint = 1:nTime
-% 
-%         P_Values_Int(ch, tpoint) = ...
-%             (sum(TFCE_permMax_Int >= abs(TFCE_Obs_Int(ch, tpoint))) + 1) / ...
-%             (nPerm + 1);
-% 
-%     end
-% end
+for ch = 1:nChan
+    for tpoint = 1:nTime
 
+        P_Values_Int(ch, tpoint) = ...
+            (sum(TFCE_permMax_Int >= abs(TFCE_Obs_Int(ch, tpoint))) + 1) / ...
+            (nPerm + 1);
+
+    end
+end
+
+fprintf('TFCE-corrected significance completed.\n');
+fprintf('Critical TFCE value = %.4f\n', critTFCE);
 %% ==========================================================
 % Step 5: Store results
 %% ==========================================================
+fprintf('Step 5: Storing results...\n');
 
 Results = struct();
 
@@ -219,6 +232,7 @@ Results.nPerm = nPerm;
 Results.model = 'EEG ~ var1 + var2 + var1:var2';
 Results.test  = 'Interaction effect';
 
+fprintf('Results stored.\n');
 %% ==========================================================
 % Step 6: Plot significant interaction effects
 %% ==========================================================
@@ -280,7 +294,7 @@ if ~exist('../results', 'dir')
     mkdir('../results');
 end
 
-save('../results/03_TFCE_between_subject_2by2_interaction_results.mat', ...
+save('../results/04_TFCE_between_subject_2by2_interaction_results.mat', ...
      'Results', ...
      't_Obs_Int', ...
      'TFCE_Obs_Int', ...
