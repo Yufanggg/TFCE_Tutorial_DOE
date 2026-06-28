@@ -332,5 +332,5 @@ save('../data/02_simulated_between_subject_covariate_EEG.mat', ...
      'groupDiff', ...
      'truthDiff');
  
- 
+
 disp('Dataset saved: ../data/02_simulated_between_subject_covariate_EEG.mat');
