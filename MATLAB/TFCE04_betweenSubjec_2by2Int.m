@@ -57,8 +57,8 @@ e_loc = chanlocs_1020(idx);
 
 [nSubj, nChan, nTime] = size(data);
 
-var1 = var1(:);
-var2 = var2(:);
+var1 = A(:);
+var2 = B(:);
 
 if length(var1) ~= nSubj
     error('Length of var1 does not match number of subjects.');
