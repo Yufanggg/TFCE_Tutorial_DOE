@@ -119,9 +119,11 @@ for ch = 1:nChan
 end
 
 fprintf('Observed t-statistic map completed.\n');
+
 %% ==========================================================
 % Step 2: Observed TFCE maps
 %% ==========================================================
+
 fprintf('Step 2: Computing observed TFCE map...\n');
 
 ChN = ept_ChN2(e_loc);
@@ -131,8 +133,12 @@ TFCE_Obs_var1 = ept_mex_TFCE2D(t_Obs_var1, ChN, E_H);
 TFCE_Obs_var2 = ept_mex_TFCE2D(t_Obs_var2, ChN, E_H);
 
 fprintf('Observed TFCE map completed.\n');
+
+
 %% ==========================================================
-% Step 3: Freedman-Lane permutation
+% Step 3: Restricted permutation for 2-by-2 design
+% Main effect of var1: permute var1 within levels of var2
+% Main effect of var2: permute var2 within levels of var1
 %% ==========================================================
 
 nPerms = 999;
@@ -140,66 +146,82 @@ nPerms = 999;
 TFCE_permMax_var1 = nan(nPerms, 1);
 TFCE_permMax_var2 = nan(nPerms, 1);
 
-fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerms);
+fprintf('Step 3: Starting restricted permutation testing: %d permutations...\n', nPerms);
 
-% Reduced model for testing var1:
-%   EEG ~ var2
-X_red_var1 = var2;
+% Get factor levels automatically
+var1_levels = unique(var1);
+var2_levels = unique(var2);
 
-% Reduced model for testing var2:
-%   EEG ~ var1
-X_red_var2 = var1;
+if numel(var1_levels) ~= 2 || numel(var2_levels) ~= 2
+    error('var1 and var2 must each have exactly two levels for a 2-by-2 design.');
+end
 
 parfor p = 1:nPerms
 
     perm_t_var1 = zeros(nChan, nTime);
     perm_t_var2 = zeros(nChan, nTime);
 
-    perm_idx_var1 = randperm(nSubj);
-    perm_idx_var2 = randperm(nSubj);
+    %% ------------------------------------------------------
+    % Test main effect of var1
+    % Permute var1 within each level of var2
+    %% ------------------------------------------------------
+
+    var1_perm = var1;
+
+    for lv = 1:numel(var2_levels)
+
+        idx = find(var2 == var2_levels(lv));
+
+        var1_perm(idx) = var1_perm(idx(randperm(numel(idx))));
+
+    end
+
+    X_perm_var1 = [var1_perm var2];
+
+    %% ------------------------------------------------------
+    % Test main effect of var2
+    % Permute var2 within each level of var1
+    %% ------------------------------------------------------
+
+    var2_perm = var2;
+
+    for lv = 1:numel(var1_levels)
+
+        idx = find(var1 == var1_levels(lv));
+
+        var2_perm(idx) = var2_perm(idx(randperm(numel(idx))));
+
+    end
+
+    X_perm_var2 = [var1 var2_perm];
+
+    %% ------------------------------------------------------
+    % Mass-univariate regression over channels and time
+    %% ------------------------------------------------------
 
     for ch = 1:nChan
         for tp = 1:nTime
 
             Y = double(data(:, ch, tp));
 
-            %% ----------------------------------------------
-            % Test var1 adjusted for var2
-            %% ----------------------------------------------
-
-            lm_red_var1 = fitlm(X_red_var1, Y);
-
-            Y_hat_red_var1 = lm_red_var1.Fitted;
-            resid_red_var1 = lm_red_var1.Residuals.Raw;
-
-            Y_perm_var1 = Y_hat_red_var1 + resid_red_var1(perm_idx_var1);
-
-            lm_perm_var1 = fitlm(X_full, Y_perm_var1);
-
+            % Main effect of var1, preserving var2 structure
+            lm_perm_var1 = fitlm(X_perm_var1, Y);
             perm_t_var1(ch, tp) = ...
                 lm_perm_var1.Coefficients.tStat(coefRow_var1);
 
-            %% ----------------------------------------------
-            % Test var2 adjusted for var1
-            %% ----------------------------------------------
-
-            lm_red_var2 = fitlm(X_red_var2, Y);
-
-            Y_hat_red_var2 = lm_red_var2.Fitted;
-            
-            resid_red_var2 = lm_red_var2.Residuals.Raw;
-
-            Y_perm_var2 = Y_hat_red_var2 + resid_red_var2(perm_idx_var2);
-
-            lm_perm_var2 = fitlm(X_full, Y_perm_var2);
-
+            % Main effect of var2, preserving var1 structure
+            lm_perm_var2 = fitlm(X_perm_var2, Y);
             perm_t_var2(ch, tp) = ...
                 lm_perm_var2.Coefficients.tStat(coefRow_var2);
 
         end
     end
-    
+
     fprintf('At the %dth permutation\n', p);
+
+    %% ------------------------------------------------------
+    % TFCE transform and max statistic
+    %% ------------------------------------------------------
 
     TFCE_perm_var1 = ept_mex_TFCE2D(perm_t_var1, ChN, E_H);
     TFCE_perm_var2 = ept_mex_TFCE2D(perm_t_var2, ChN, E_H);
@@ -210,6 +232,7 @@ parfor p = 1:nPerms
 end
 
 fprintf('\nPermutation testing completed.\n');
+
 %% ==========================================================
 % Step 4: TFCE-corrected significance
 %% ==========================================================
