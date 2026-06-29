@@ -158,8 +158,8 @@ parfor p = 1:nPerm
             % EEG ~ var1 + var2
             lm_red = fitlm(X_red, Y);
 
-            Y_hat_red = fitted(lm_red);
-            resid_red = residuals(lm_red);
+            Y_hat_red = lm_red.Fitted;
+            resid_red = lm_red.Residuals.Raw;
 
             % Freedman-Lane permuted response
             Y_perm = Y_hat_red + resid_red(perm_idx);
@@ -212,7 +212,6 @@ for ch = 1:nChan
 end
 
 fprintf('TFCE-corrected significance completed.\n');
-fprintf('Critical TFCE value = %.4f\n', critTFCE);
 %% ==========================================================
 % Step 5: Store results
 %% ==========================================================
