@@ -140,7 +140,7 @@ nPerms = 999;
 TFCE_permMax_var1 = nan(nPerms, 1);
 TFCE_permMax_var2 = nan(nPerms, 1);
 
-fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
+fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerms);
 
 % Reduced model for testing var1:
 %   EEG ~ var2
@@ -169,8 +169,8 @@ parfor p = 1:nPerms
 
             lm_red_var1 = fitlm(X_red_var1, Y);
 
-            Y_hat_red_var1 = fitted(lm_red_var1);
-            resid_red_var1 = residuals(lm_red_var1);
+            Y_hat_red_var1 = lm_red_var1.Fitted;
+            resid_red_var1 = lm_red_var1.Residuals.Raw;
 
             Y_perm_var1 = Y_hat_red_var1 + resid_red_var1(perm_idx_var1);
 
@@ -185,8 +185,9 @@ parfor p = 1:nPerms
 
             lm_red_var2 = fitlm(X_red_var2, Y);
 
-            Y_hat_red_var2 = fitted(lm_red_var2);
-            resid_red_var2 = residuals(lm_red_var2);
+            Y_hat_red_var2 = lm_red_var2.Fitted;
+            
+            resid_red_var2 = lm_red_var2.Residuals.Raw;
 
             Y_perm_var2 = Y_hat_red_var2 + resid_red_var2(perm_idx_var2);
 
