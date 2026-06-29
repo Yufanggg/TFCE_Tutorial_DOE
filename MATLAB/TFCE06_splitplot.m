@@ -1,21 +1,24 @@
 %% ==========================================================
 % TFCE analysis for split-plot EEG design
 %
-% Between-subject factor:
-%   Group: -1 = HC, 1 = Patient
+% Group:
+%   -1 = HC, 1 = Patient
 %
-% Within-subject factor:
-%   WordType/Condition: -1 = Noun, 1 = Verb
+% WordType:
+%   -1 = Noun, 1 = Verb
 %
-% Additive model, no interaction:
-%   EEG ~ Group * WordType + (1|Subject)
+% Effects tested:
+%   1. Group main effect
+%   2. WordType main effect
+%   3. Group x WordType interaction
 %
-% Data format:
-%   data = Subjects x Conditions x Channels x Time
+% Data:
+%   Subjects x Conditions x Channels x Time
 %% ==========================================================
 
 clear; clc; close all;
 fprintf('\nStarting TFCE analysis...\n');
+
 %% Load data
 
 load('../data/06_simulated_split_plot_EEG.mat');
@@ -79,9 +82,8 @@ Group = kron(group, ones(nCond,1));
 %  1 = Verb
 WordType = repmat([-1; 1], nSubj, 1);
 
-%% Long-format EEG data
-
 nObs = nSubj * nCond;
+%% Long-format EEG data
 
 data_long = zeros(nObs, nChan, nTime);
 
@@ -104,26 +106,23 @@ t_Int_Obs   = zeros(nChan, nTime);
 
 for ch = 1:nChan
     for tp = 1:nTime
-
-        nounVals = squeeze(data(:,1,ch,tp));
-        verbVals = squeeze(data(:,2,ch,tp));
-
-        EEG = reshape([nounVals verbVals]', [], 1);
+        
+        EEG = double(data_long(:, ch, tp));
 
         tbl = table(EEG, Group, WordType, Subject, ...
             'VariableNames', {'EEG','Group','WordType','Subject'});
 
         lme = fitlme(tbl, 'EEG ~ Group * WordType + (1|Subject)');
 
-        % Coefficient rows:
-        % 1 = Intercept
-        % 2 = Group
-        % 3 = WordType
-        % 4 = Group:WordType
+        coefNames = lme.CoefficientNames;
 
-        t_Group_Obs(ch,tp) = lme.Coefficients.tStat(2);
-        t_Word_Obs(ch,tp)  = lme.Coefficients.tStat(3);
-        t_Int_Obs(ch,tp)   = lme.Coefficients.tStat(4);
+        row_Group = find(strcmp(coefNames, 'Group'));
+        row_WordType = find(strcmp(coefNames, 'WordType'));
+        row_Interaction = find(strcmp(coefNames, 'Group:WordType'));
+
+        t_Group_Obs(ch,tp) = lme.Coefficients.tStat(row_Group);
+        t_Word_Obs(ch,tp)  = lme.Coefficients.tStat(row_WordType);
+        t_Int_Obs(ch,tp)   = lme.Coefficients.tStat(row_Interaction);
 
     end
 end
@@ -157,77 +156,101 @@ fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
 
 parfor p = 1:nPerm
 
-    perm_t_Group = nan(nChan,nTime);
-    perm_t_Word  = nan(nChan,nTime);
-    perm_t_Int   = nan(nChan,nTime);
+    perm_t_Group = zeros(nChan, nTime);
+    perm_t_Word  = zeros(nChan, nTime);
+    perm_t_Int   = zeros(nChan, nTime);
+    
+    
+    %% ------------------------------------------------------
+    % Group main effect:
+    % permute group labels across subjects
+    %% ------------------------------------------------------
+    group_perm_subject = group(randperm(nSubj));
+    Group_perm = kron(group_perm_subject, ones(nCond,1));
+    
+        %% ------------------------------------------------------
+    % WordType main effect:
+    % swap Noun / Verb labels within subjects
+    %% ------------------------------------------------------
 
-    %% Group permutation: shuffle group labels between subjects
-    permGroup = group(randperm(nSubj));
-    Group_perm = kron(permGroup, ones(nCond,1));
+    WordType_perm = WordType;
 
-    %% WordType permutation: flip Noun/Verb labels within subjects
-    flip = randi([0 1], nSubj, 1);
-
-    WordType_perm = zeros(nSubj*nCond, 1);
-
+    row = 0;
     for s = 1:nSubj
-        idx_s = (2*s-1):(2*s);
 
-        if flip(s) == 0
-            WordType_perm(idx_s) = [0; 1];
-        else
-            WordType_perm(idx_s) = [1; 0];
+        rows_s = row + (1:nCond);
+        row = row + nCond;
+
+        if rand > 0.5
+            WordType_perm(rows_s) = flip(WordType_perm(rows_s));
         end
+
     end
 
-    %% Interaction permutation:
-    % shuffle group labels between subjects while preserving within-subject structure
-    permGroup_Int = group(randperm(nSubj));
-    Group_perm_Int = kron(permGroup_Int, ones(nCond,1));
+    %% ------------------------------------------------------
+    % Interaction:
+    % permute group labels across subject-level
+    % Verb-minus-Noun difference waves
+    %% ------------------------------------------------------
+
+    group_perm_interaction = group(randperm(nSubj));
 
     for ch = 1:nChan
         for tp = 1:nTime
+            
+            
+            EEG = double(data_long(:, ch, tp));
 
-            nounVals = squeeze(data(:,1,ch,tp));
-            verbVals = squeeze(data(:,2,ch,tp));
+            %% Group permutation model
 
-            EEG = reshape([nounVals verbVals]', [], 1);
-
-            %% Group main effect permutation
-            tbl_group = table(EEG, Group_perm, WordType, Subject, ...
-                'VariableNames', {'EEG','Group','WordType','Subject'});
-
-            lme_group = fitlme(tbl_group, ...
+            tbl_Group = table(EEG, Subject, Group_perm, WordType, ...
+                'VariableNames', {'EEG','Subject','Group','WordType'});
+            
+            lme_Group = fitlme(tbl_Group, ...
                 'EEG ~ Group * WordType + (1|Subject)');
 
-            perm_t_Group(ch,tp) = lme_group.Coefficients.tStat(2);
+            coefNames = lme_Group.CoefficientNames;
+            row_Group = find(strcmp(coefNames, 'Group'));
 
-            %% WordType main effect permutation
-            tbl_word = table(EEG, Group, WordType_perm, Subject, ...
-                'VariableNames', {'EEG','Group','WordType','Subject'});
+            perm_t_Group(ch,tp) = ...
+                lme_Group.Coefficients.tStat(row_Group);
+            
+            %% WordType permutation model
 
-            lme_word = fitlme(tbl_word, ...
+            tbl_WordType = table(EEG, Subject, Group, WordType_perm, ...
+                'VariableNames', {'EEG','Subject','Group','WordType'});
+
+            lme_WordType = fitlme(tbl_WordType, ...
                 'EEG ~ Group * WordType + (1|Subject)');
 
-            perm_t_Word(ch,tp) = lme_word.Coefficients.tStat(3);
+            coefNames = lme_WordType.CoefficientNames;
+            row_WordType = find(strcmp(coefNames, 'WordType'));
 
-            %% Interaction permutation
-            tbl_int = table(EEG, Group_perm_Int, WordType, Subject, ...
-                'VariableNames', {'EEG','Group','WordType','Subject'});
+            perm_t_Word(ch,tp) = ...
+                lme_WordType.Coefficients.tStat(row_WordType);
+            
+            
+            %% Interaction permutation using difference scores
 
-            lme_int = fitlme(tbl_int, ...
-                'EEG ~ Group * WordType + (1|Subject)');
+            diffWave = squeeze(data(:,2,ch,tp) - data(:,1,ch,tp));
 
-            perm_t_Int(ch,tp) = lme_int.Coefficients.tStat(4);
+            diff_HC = diffWave(group_perm_interaction == -1);
+            diff_Patient = diffWave(group_perm_interaction == 1);
+
+            [~,~,~,stats] = ttest2(diff_Patient, diff_HC);
 
         end
     end
     
     fprintf('At the %dth permutation\n', p);
-
+    
+    %% TFCE transform
+    
     TFCE_perm_Group = ept_mex_TFCE2D(perm_t_Group, ChN, E_H);
     TFCE_perm_Word  = ept_mex_TFCE2D(perm_t_Word,  ChN, E_H);
     TFCE_perm_Int   = ept_mex_TFCE2D(perm_t_Int,   ChN, E_H);
+    
+    %% Max absolute TFCE statistic
 
     TFCE_permMax_Group(p) = max(abs(TFCE_perm_Group(:)));
     TFCE_permMax_Word(p)  = max(abs(TFCE_perm_Word(:)));

@@ -3,13 +3,13 @@
 % Split-plot mixed design
 %
 % Between-subject factor:
-%   Group: HC vs Patients
+%   Group: -1 = HC, 1 = Patient
 %
 % Within-subject factor:
-%   Word Type: Noun vs Verb
+%   Condition: -1 = Noun, 1 = Verb
 %
 % Model:
-%   EEG ~ Group * WordType + (1 | Subject)
+%   EEG ~ Group * Condition + (1 | Subject)
 %
 % Noise sources:
 %   1. Subject-wise noise
@@ -22,39 +22,44 @@
 clear; clc; close all;
 rng(123);
 
-%% Simulation settings
+%% ==========================================================
+% 1. Simulation settings
+%% ==========================================================
 
 nHC = 30;
 nPatient = 30;
 nSub = nHC + nPatient;
 
 nCond = 2;
+
 condNames = {'Noun','Verb'};
 groupNames = {'HC','Patient'};
 
 times = -200:4:800;
 nTime = length(times);
 
-%% Subject and group labels
-
 subjectID = (1:nSub)';
 
+% Group coding:
 % -1 = HC, 1 = Patient
 group = [-ones(nHC,1); ones(nPatient,1)];
 
-%% Load channel locations
+
+%% ==========================================================
+% 2. Load and select EEG channels
+%% ==========================================================
 
 chanlocs_1020 = readlocs('standard_1005.elc');
 
 chanLabels_32 = {
-'Fp1','Fp2',...
-'F7','F3','Fz','F4','F8',...
-'FC5','FC1','FC2','FC6',...
-'T7','C3','Cz','C4','T8',...
-'CP5','CP1','CP2','CP6',...
-'P7','P3','Pz','P4','P8',...
-'PO9','O1','Oz','O2','PO10',...
-'TP9','TP10'
+    'Fp1','Fp2', ...
+    'F7','F3','Fz','F4','F8', ...
+    'FC5','FC1','FC2','FC6', ...
+    'T7','C3','Cz','C4','T8', ...
+    'CP5','CP1','CP2','CP6', ...
+    'P7','P3','Pz','P4','P8', ...
+    'PO9','O1','Oz','O2','PO10', ...
+    'TP9','TP10'
 };
 
 allLabels = {chanlocs_1020.labels};
@@ -67,7 +72,10 @@ end
 chanlocs_EEG = chanlocs_1020(idx);
 nChan = length(chanlocs_EEG);
 
-%% Define ERP effect
+
+%% ==========================================================
+% 3. Define ERP effect
+%% ==========================================================
 
 p300Latency = 300;
 p300Width   = 70;
@@ -76,10 +84,14 @@ p300Shape = exp(-(times - p300Latency).^2 ./ ...
                 (2 * p300Width^2));
 p300Shape = p300Shape(:);
 
-% Amplitudes for each cell
-% Rows = Group, Columns = Word Type
-% Group -1 = HC, Group 1 = Patient
-% Condition -1 = Noun, Condition 1 = Verb
+% Cell amplitudes
+% Rows:
+%   1 = HC
+%   2 = Patient
+%
+% Columns:
+%   1 = Noun
+%   2 = Verb
 
 amp_HC_Noun      = 3.0;
 amp_HC_Verb      = 6.0;
@@ -92,7 +104,10 @@ cellAmps = [
     amp_Patient_Noun, amp_Patient_Verb
 ];
 
-%% Define effect channels
+
+%% ==========================================================
+% 4. Define effect channels
+%% ==========================================================
 
 effectChanLabels = {'Cz','CP1','CP2','Pz','P3','P4'};
 
@@ -104,13 +119,15 @@ end
 
 weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 
-%% Simulate EEG data
 
-% Data size:
+%% ==========================================================
+% 5. Simulate EEG data
+%% ==========================================================
+
+% Data:
 % Subjects x Conditions x Channels x Time
 data = zeros(nSub, nCond, nChan, nTime);
 
-% Noise settings
 subjectNoiseSD    = 1.5;
 backgroundNoiseSD = 0.8;
 
@@ -121,7 +138,8 @@ subjectNoise = subjectNoiseSD * randn(nSub, nChan, nTime);
 
 for s = 1:nSub
 
-    % groupIndex: 1 = HC, 2 = Patient
+    % Convert group code to row index:
+    % -1 -> 1, 1 -> 2
     groupIndex = (group(s) + 3) / 2;
 
     for c = 1:nCond
@@ -149,7 +167,10 @@ for s = 1:nSub
     end
 end
 
-%% Design table
+
+%% ==========================================================
+% 6. Create design table
+%% ==========================================================
 
 Subject = [];
 Group = {};
@@ -161,15 +182,16 @@ for s = 1:nSub
     for c = 1:nCond
 
         Subject(end+1,1) = subjectID(s);
-        
+
         GroupCode(end+1,1) = group(s);
-        
+
         if group(s) == -1
             Group{end+1,1} = 'HC';
         else
             Group{end+1,1} = 'Patient';
         end
-        
+
+        % Condition coding:
         % -1 = Noun, 1 = Verb
         ConditionCode(end+1,1) = 2*c - 3;
 
@@ -183,7 +205,10 @@ designTable = table(Subject, Group, GroupCode, ...
 
 disp(designTable(1:20,:));
 
-%% Compute grand average ERPs
+
+%% ==========================================================
+% 7. Compute grand average ERPs
+%% ==========================================================
 
 HC_Noun = squeeze(mean(data(group == -1, 1, :, :), 1));
 HC_Verb = squeeze(mean(data(group == -1, 2, :, :), 1));
@@ -191,15 +216,20 @@ HC_Verb = squeeze(mean(data(group == -1, 2, :, :), 1));
 Patient_Noun = squeeze(mean(data(group == 1, 1, :, :), 1));
 Patient_Verb = squeeze(mean(data(group == 1, 2, :, :), 1));
 
-%% Compute contrasts
 
-% Between-subject contrast: Patients minus HC
+%% ==========================================================
+% 8. Compute observed contrasts
+%% ==========================================================
+
+% Group contrast:
+% Patients minus HC, averaged over noun and verb
 HC_mean = squeeze(mean(mean(data(group == -1,:,:,:), 2), 1));
 Patient_mean = squeeze(mean(mean(data(group == 1,:,:,:), 2), 1));
 
 groupDiff = Patient_mean - HC_mean;
 
-% Within-subject contrast: Verb minus Noun
+% Word-type contrast:
+% Verb minus Noun
 verbNoun_HC = HC_Verb - HC_Noun;
 verbNoun_Patient = Patient_Verb - Patient_Noun;
 
@@ -209,7 +239,10 @@ wordTypeDiff = squeeze(mean(data(:,2,:,:) - data(:,1,:,:), 1));
 % (Verb - Noun) in Patients minus (Verb - Noun) in HC
 interactionDiff = verbNoun_Patient - verbNoun_HC;
 
-%% Ground-truth effects
+
+%% ==========================================================
+% 9. Compute ground-truth effects
+%% ==========================================================
 
 truth_HC_Noun      = zeros(nChan, nTime);
 truth_HC_Verb      = zeros(nChan, nTime);
@@ -239,14 +272,18 @@ truthInteractionDiff = ...
     (truth_Patient_Verb - truth_Patient_Noun) - ...
     (truth_HC_Verb - truth_HC_Noun);
 
-%% Figure 1: ERP waveform at Pz
+
+%% ==========================================================
+% 10. Figure 1: ERP waveform at Pz
+%% ==========================================================
 
 channelToPlot = find(strcmp({chanlocs_EEG.labels}, 'Pz'));
 
 figure;
 
 plot(times, HC_Noun(channelToPlot,:), ...
-    'Color', [0.00 0.45 0.74], 'LineWidth', 2); hold on;
+    'Color', [0.00 0.45 0.74], 'LineWidth', 2); 
+hold on;
 
 plot(times, HC_Verb(channelToPlot,:), ...
     'Color', [0.00 0.45 0.74], 'LineStyle', '--', 'LineWidth', 2);
@@ -266,7 +303,10 @@ legend('HC Noun', 'HC Verb', ...
 
 grid on;
 
-%% Figure 2: HC Verb - Noun
+
+%% ==========================================================
+% 11. Figure 2: HC Verb - Noun
+%% ==========================================================
 
 figure;
 
@@ -287,7 +327,10 @@ ylabel('Channel');
 title('HC Within-subject Effect: Verb - Noun');
 colorbar;
 
-%% Figure 3: Patient Verb - Noun
+
+%% ==========================================================
+% 12. Figure 3: Patient Verb - Noun
+%% ==========================================================
 
 figure;
 
@@ -308,7 +351,10 @@ ylabel('Channel');
 title('Patient Within-subject Effect: Verb - Noun');
 colorbar;
 
-%% Figure 4: Interaction effect
+
+%% ==========================================================
+% 13. Figure 4: Interaction effect
+%% ==========================================================
 
 figure;
 
@@ -329,7 +375,10 @@ ylabel('Channel');
 title('Interaction: Patient(Verb - Noun) - HC(Verb - Noun)');
 colorbar;
 
-%% Figure 5: Ground-truth interaction
+
+%% ==========================================================
+% 14. Figure 5: Ground-truth interaction
+%% ==========================================================
 
 figure;
 
@@ -350,7 +399,10 @@ ylabel('Channel');
 title('Ground-Truth Interaction Effect');
 colorbar;
 
-%% Topography at 300 ms
+
+%% ==========================================================
+% 15. Topography at 300 ms
+%% ==========================================================
 
 chanlocs_plot = chanlocs_EEG;
 
@@ -375,10 +427,13 @@ else
 
 end
 
-%% Save dataset
+
+%% ==========================================================
+% 16. Save dataset
+%% ==========================================================
 
 if ~exist('../data', 'dir')
-    mkdir('./data');
+    mkdir('../data');
 end
 
 save('../data/06_simulated_split_plot_EEG.mat', ...
