@@ -39,8 +39,8 @@ nTime = length(times);
 
 subjectID = (1:nSub)';
 
-% 0 = HC, 1 = Patient
-group = [zeros(nHC,1); ones(nPatient,1)];
+% -1 = HC, 1 = Patient
+group = [-ones(nHC,1); ones(nPatient,1)];
 
 %% Load channel locations
 
@@ -78,8 +78,8 @@ p300Shape = p300Shape(:);
 
 % Amplitudes for each cell
 % Rows = Group, Columns = Word Type
-% Group 1 = HC, Group 2 = Patient
-% Condition 1 = Noun, Condition 2 = Verb
+% Group -1 = HC, Group 1 = Patient
+% Condition -1 = Noun, Condition 1 = Verb
 
 amp_HC_Noun      = 3.0;
 amp_HC_Verb      = 6.0;
@@ -122,7 +122,7 @@ subjectNoise = subjectNoiseSD * randn(nSub, nChan, nTime);
 for s = 1:nSub
 
     % groupIndex: 1 = HC, 2 = Patient
-    groupIndex = group(s) + 1;
+    groupIndex = (group(s) + 3) / 2;
 
     for c = 1:nCond
 
@@ -161,10 +161,18 @@ for s = 1:nSub
     for c = 1:nCond
 
         Subject(end+1,1) = subjectID(s);
+        
         GroupCode(end+1,1) = group(s);
-        Group{end+1,1} = groupNames{group(s)+1};
+        
+        if group(s) == -1
+            Group{end+1,1} = 'HC';
+        else
+            Group{end+1,1} = 'Patient';
+        end
+        
+        % -1 = Noun, 1 = Verb
+        ConditionCode(end+1,1) = 2*c - 3;
 
-        ConditionCode(end+1,1) = c - 1;  % 0 = Noun, 1 = Verb
         Condition{end+1,1} = condNames{c};
 
     end
@@ -177,8 +185,8 @@ disp(designTable(1:20,:));
 
 %% Compute grand average ERPs
 
-HC_Noun = squeeze(mean(data(group == 0, 1, :, :), 1));
-HC_Verb = squeeze(mean(data(group == 0, 2, :, :), 1));
+HC_Noun = squeeze(mean(data(group == -1, 1, :, :), 1));
+HC_Verb = squeeze(mean(data(group == -1, 2, :, :), 1));
 
 Patient_Noun = squeeze(mean(data(group == 1, 1, :, :), 1));
 Patient_Verb = squeeze(mean(data(group == 1, 2, :, :), 1));
@@ -186,7 +194,7 @@ Patient_Verb = squeeze(mean(data(group == 1, 2, :, :), 1));
 %% Compute contrasts
 
 % Between-subject contrast: Patients minus HC
-HC_mean = squeeze(mean(mean(data(group == 0,:,:,:), 2), 1));
+HC_mean = squeeze(mean(mean(data(group == -1,:,:,:), 2), 1));
 Patient_mean = squeeze(mean(mean(data(group == 1,:,:,:), 2), 1));
 
 groupDiff = Patient_mean - HC_mean;

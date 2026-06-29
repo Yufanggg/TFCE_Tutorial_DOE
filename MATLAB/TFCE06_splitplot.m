@@ -2,19 +2,16 @@
 % TFCE analysis for split-plot EEG design
 %
 % Between-subject factor:
-%   Group: HC vs Patient
+%   Group: -1 = HC, 1 = Patient
 %
 % Within-subject factor:
-%   WordType: Noun vs Verb
+%   WordType/Condition: -1 = Noun, 1 = Verb
 %
-% Model:
+% Additive model, no interaction:
 %   EEG ~ Group * WordType + (1|Subject)
 %
 % Data format:
 %   data = Subjects x Conditions x Channels x Time
-%
-% Condition 1 = Noun
-% Condition 2 = Verb
 %% ==========================================================
 
 clear; clc; close all;
@@ -55,22 +52,46 @@ if nCond ~= 2
     error('Expected data format: Subjects x 2 Conditions x Channels x Time');
 end
 
-group = group(:);  % 0 = HC, 1 = Patient
+group = group(:);  % -1 = HC, 1 = Patient
 
 if length(group) ~= nSubj
     error('Length of group does not match number of subjects.');
 end
 
+if ~all(ismember(unique(group), [-1 1]))
+    error('Group must be coded as -1 = HC and 1 = Patient.');
+end
+
+%% Long-format design variables
 %% Long-format design variables
 
+% Subject ID repeated for Noun and Verb
 Subject = kron((1:nSubj)', ones(nCond,1));
 Subject = categorical(Subject);
 
-% Group: 0 = HC, 1 = Patient
+% Group:
+% -1 = HC
+%  1 = Patient
 Group = kron(group, ones(nCond,1));
 
-% WordType: 0 = Noun, 1 = Verb
-WordType = repmat([0; 1], nSubj, 1);
+% WordType:
+% -1 = Noun
+%  1 = Verb
+WordType = repmat([-1; 1], nSubj, 1);
+
+%% Long-format EEG data
+
+nObs = nSubj * nCond;
+
+data_long = zeros(nObs, nChan, nTime);
+
+row = 0;
+for s = 1:nSubj
+    for c = 1:nCond
+        row = row + 1;
+        data_long(row,:,:) = squeeze(data(s,c,:,:));
+    end
+end
 
 %% ==========================================================
 % Step 1: Observed LME t-maps
