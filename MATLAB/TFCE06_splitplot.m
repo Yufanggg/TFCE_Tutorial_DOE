@@ -231,13 +231,10 @@ parfor p = 1:nPerm
             
             
             %% Interaction permutation using difference scores
+            row_Int = find(strcmp(coefNames, 'Group:WordType'));
 
-            diffWave = squeeze(data(:,2,ch,tp) - data(:,1,ch,tp));
-
-            diff_HC = diffWave(group_perm_interaction == -1);
-            diff_Patient = diffWave(group_perm_interaction == 1);
-
-            [~,~,~,stats] = ttest2(diff_Patient, diff_HC);
+            perm_t_Int(ch,tp) = ...
+                lme_Group.Coefficients.tStat(row_Int);
 
         end
     end
@@ -341,7 +338,7 @@ plot_tfce_result(t_Word_Obs, Mask_Word, times, e_loc, ...
     'TFCE-corrected WordType Main Effect');
 
 %plot_tfce_result(t_Int_Obs, Mask_Int, times, e_loc, ...
-    'TFCE-corrected Group x WordType Interaction');
+plot_tfce_result('TFCE-corrected Group x WordType Interaction');
 
 %% ==========================================================
 % Step 7: Save results
