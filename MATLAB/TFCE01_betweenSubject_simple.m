@@ -153,12 +153,7 @@ fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
 alpha = 0.05;
 
-nullDist = sort(TFCE_permMax);
-
-critIndex = ceil((1 - alpha) * nPerm);
-critIndex = min(max(critIndex, 1), nPerm);
-
-critTFCE = nullDist(critIndex);
+critTFCE = prctile(TFCE_permMax, 100 * (1 - alpha));
 
 Mask = abs(TFCE_Obs) >= critTFCE;
 
