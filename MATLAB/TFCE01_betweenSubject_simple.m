@@ -1,26 +1,30 @@
 %% ==========================================================
 % TFCE analysis for simple between-subject EEG design
 %
-% Design:
-%   Control vs Treatment
+% Loads only:
+%   EEGdata
+%   designTable
 %
-% Data dimensions:
+% GroupLabel:
+%   Control -1 vs Treatment 1
+%
+% EEGdata dimensions:
 %   Subjects x Channels x Time
-%
-% Required variables in loaded file:
-%   data
-%   group        % -1 = Control, 1 = Treatment
-%   times
 %% ==========================================================
 
 clear; clc; close all;
 fprintf('\nStarting TFCE analysis...\n');
 
 %% ==========================================================
-% Load simulated data
+% Load dataset
 %% ==========================================================
 
-load('../data/01_simulated_between_subject_EEG.mat');
+load('../data/01_simulated_between_subject_EEG.mat', ...
+     'EEGdata', 'designTable');
+
+group = designTable.GroupCode;
+
+times = -200:4:800;
 
 %% ==========================================================
 % Load channel locations
@@ -52,7 +56,7 @@ e_loc = chanlocs_1020(idx);
 % Basic checks
 %% ==========================================================
 
-[nSub, nChan, nTime] = size(data);
+[nSub, nChan, nTime] = size(EEGdata);
 
 if length(group) ~= nSub
     error('Length of group must match number of subjects.');
@@ -84,7 +88,7 @@ tObs = zeros(nChan, nTime);
 for ch = 1:nChan
     for t = 1:nTime
 
-        EEG_local = double(data(:, ch, t));
+        EEG_local = double(EEGdata(:, ch, t));
 
         lm_local = fitlm(X, EEG_local);
 
@@ -125,7 +129,7 @@ parfor p = 1:nPerm
 
         for t = 1:nTime
 
-            EEG_local = double(data(:, ch, t));
+            EEG_local = double(EEGdata(:, ch, t));
 
             lm_perm = fitlm(permX, EEG_local);
 

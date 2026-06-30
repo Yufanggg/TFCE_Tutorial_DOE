@@ -2,22 +2,9 @@
 % Simulated EEG/ERP dataset
 % Simple between-subject design: Control vs Treatment
 %
-% Control:   n = 30
-% Treatment: n = 30
-%
-% Group coding:
-%   -1 = Control
-%    1 = Treatment
-%
-% Data dimensions:
-%   Subjects x Channels x Time
-%
-% Noise:
-%   Background Gaussian noise only
-%
-% Ground truth:
-%   P300 effect around 300 ms
-%   Larger P300 amplitude in Treatment than Control
+% Final saved variables:
+%   EEGdata
+%   designTable
 %% ==========================================================
 
 clear; clc; close all;
@@ -69,10 +56,7 @@ nChan = length(chanlocs_EEG);
 % Group labels
 %% ==========================================================
 
-% -1 = Control
-%  1 = Treatment
 group = [-ones(nControl,1); ones(nTreatment,1)];
-
 subjectID = (1:nSub)';
 
 %% ==========================================================
@@ -108,17 +92,16 @@ weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 
 %% ==========================================================
 % Simulate EEG/ERP data
+% Dimensions: Subjects x Channels x Time
 %% ==========================================================
 
-% Background noise only
-% Subjects x Channels x Time
-data = noiseSD * randn(nSub, nChan, nTime);
+EEGdata = noiseSD * randn(nSub, nChan, nTime);
 
 for s = 1:nSub
 
     if group(s) == -1
         p300 = controlP300;
-    elseif group(s) == 1
+    else
         p300 = treatmentP300;
     end
 
@@ -126,10 +109,10 @@ for s = 1:nSub
 
         ch = effectChans(ch_idx);
 
-        tmp = squeeze(data(s, ch, :));
+        tmp = squeeze(EEGdata(s, ch, :));
         tmp = tmp + weights(ch_idx) * p300;
 
-        data(s, ch, :) = reshape(tmp, 1, 1, nTime);
+        EEGdata(s, ch, :) = reshape(tmp, 1, 1, nTime);
 
     end
 
@@ -139,8 +122,8 @@ end
 % Compute group-level ERPs
 %% ==========================================================
 
-controlData   = data(group == -1, :, :);
-treatmentData = data(group ==  1, :, :);
+controlData   = EEGdata(group == -1, :, :);
+treatmentData = EEGdata(group ==  1, :, :);
 
 controlERP   = squeeze(mean(controlData, 1));
 treatmentERP = squeeze(mean(treatmentData, 1));
@@ -295,6 +278,7 @@ disp(designTable(1:10,:));
 
 %% ==========================================================
 % Save dataset
+% Only EEGdata and designTable will be saved
 %% ==========================================================
 
 if ~exist('../data', 'dir')
@@ -302,21 +286,8 @@ if ~exist('../data', 'dir')
 end
 
 save('../data/01_simulated_between_subject_EEG.mat', ...
-     'data', ...
-     'group', ...
-     'subjectID', ...
-     'designTable', ...
-     'times', ...
-     'effectChans', ...
-     'effectChanLabels', ...
-     'chanlocs_EEG', ...
-     'condNames', ...
-     'noiseSD', ...
-     'controlAmp', ...
-     'treatmentAmp', ...
-     'p300Latency', ...
-     'p300Width', ...
-     'groupDiff', ...
-     'truthDiff');
+     'EEGdata', ...
+     'designTable');
 
 disp('Dataset saved: ../data/01_simulated_between_subject_EEG.mat');
+disp('Saved variables: EEGdata, designTable');

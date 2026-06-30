@@ -16,29 +16,33 @@ from ..utils import (
     warn,
 )
 
-def ch_neg(n_ch=32, montage="standard_1020", sfreq=512, return_sparse=False):
-    """
-    Generate the EEG channel adjacency matrix.
+class TFCE_trans:
+    def __init__(self, tmap):
+        self.tmap = tmap
 
-    Parameters
-    ----------
-    n_ch : int
-        Number of EEG channels (32 or 64).
-    montage : str
-        Name of the MNE montage. Default is "standard_1020".
-    sfreq : float
-        Sampling frequency (only required for creating the Info object).
+    def chT_neg(self, n_ch=32, montage="standard_1020", sfreq=512):
+        """
+        Generate the EEG channel adjacency matrix.
 
-    Returns
-    -------
-    ch_adjacency : scipy.sparse.csr_matrix
-        Channel adjacency matrix.
-    ch_names : list of str
-        Channel names corresponding to the adjacency matrix.
-    """
+        Parameters
+        ----------
+        n_ch : int
+             Number of EEG channels (32 or 64).
+        montage : str
+            Name of the MNE montage. Default is "standard_1020".
+        sfreq : float
+            Sampling frequency (only required for creating the Info object).
 
-    if n_ch == 32:
-        ch_names = [
+        Returns
+        -------
+        ch_adjacency : scipy.sparse.csr_matrix
+            Channel adjacency matrix.
+        ch_names : list of str
+            Channel names corresponding to the adjacency matrix.
+        """
+
+        if n_ch == 32:
+            ch_names = [
             'Fp1','Fp2',
             'F7','F3','Fz','F4','F8',
             'FC5','FC1','FC2','FC6',
@@ -49,40 +53,39 @@ def ch_neg(n_ch=32, montage="standard_1020", sfreq=512, return_sparse=False):
             'TP9','TP10'
         ]
 
-    elif n_ch == 64:
-        ch_names = [
-            'Fp1','AF7','AF3','F1','F3','F5','F7',
-            'FT7','FC5','FC3','FC1','C1','C3','C5','T7',
-            'TP7','CP5','CP3','CP1','P1','P3','P5','P7',
-            'P9','PO7','PO3','O1','Iz','Oz','POz','Pz','CPz',
-            'Fpz','Fp2','AF8','AF4','AFz','Fz','F2','F4','F6','F8',
-            'FT8','FC6','FC4','FC2','FCz','Cz','C2','C4','C6','T8',
-            'TP8','CP6','CP4','CP2','P2','P4','P6','P8','P10',
-            'PO8','PO4','O2'
-        ]
+        elif n_ch == 64:
+            ch_names = [
+                'Fp1','AF7','AF3','F1','F3','F5','F7',
+                'FT7','FC5','FC3','FC1','C1','C3','C5','T7',
+                'TP7','CP5','CP3','CP1','P1','P3','P5','P7',
+                'P9','PO7','PO3','O1','Iz','Oz','POz','Pz','CPz',
+                'Fpz','Fp2','AF8','AF4','AFz','Fz','F2','F4','F6','F8',
+                'FT8','FC6','FC4','FC2','FCz','Cz','C2','C4','C6','T8',
+                'TP8','CP6','CP4','CP2','P2','P4','P6','P8','P10',
+                'PO8','PO4','O2'
+            ]
 
-    else:
-        raise ValueError("Only 32- and 64-channel layouts are currently supported.")
+        else:
+            raise ValueError("Only 32- and 64-channel layouts are currently supported.")
 
-    info = mne.create_info(
-        ch_names=ch_names,
-        sfreq=sfreq,
-        ch_types="eeg",
-    )
+        info = mne.create_info(
+            ch_names=ch_names,
+            sfreq=sfreq,
+            ch_types="eeg",
+        )
 
-    info.set_montage(montage)
+        info.set_montage(montage)
 
-    ch_adj, ch_names = mne.channels.find_ch_adjacency(
-        info,
-        ch_type="eeg",
-    )
-    
-    return info, ch_adj, ch_names
+        ch_adj, ch_names = mne.channels.find_ch_adjacency(
+            info,
+            ch_type="eeg",
+        )
+
+        adj = mne.stats.combine_adjacency(n_times, ch_adj)
+
+        return info, ch_adj, ch_names, adj
 
 
-
-def tfce2d(ch_adj, n_times = 10):
-    adj = mne.stats.combine_adjacency(n_times, ch_adj)
 
 def _get_components(x_in, adjacency, return_list=True):
     """Get connected components from a mask and a adjacency matrix."""
