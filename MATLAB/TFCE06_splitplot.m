@@ -291,7 +291,6 @@ for i = 1:numel(TFCE_Group_Obs)
 end
 
 fprintf('TFCE-corrected significance completed.\n');
-fprintf('Critical TFCE value = %.4f\n', critTFCE);
 %% ==========================================================
 % Step 5: Store results
 %% ==========================================================
