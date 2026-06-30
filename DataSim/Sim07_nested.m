@@ -36,7 +36,7 @@ nTime = length(times);
 %% ==========================================================
 
 classID = kron((1:nClass)', ones(nStudentPerClass,1));
-studentID = (1:nSub)';
+studentID = repmat((1:nStudentPerClass)', nClass, 1);
 
 %% ==========================================================
 % Load channel locations
