@@ -25,8 +25,6 @@ fprintf('\nStarting TFCE analysis...\n');
 load('../data/02_simulated_between_subject_covariate_EEG.mat', ...
      'EEGdata', 'designTable');
 
-data = EEGdata;
-
 group     = designTable.GroupCode;
 covariate = designTable.Covariate;
 
@@ -62,7 +60,7 @@ e_loc = chanlocs_1020(idx);
 % Basic settings
 %% ==========================================================
 
-[nSubj, nChan, nTime] = size(data);
+[nSubj, nChan, nTime] = size(EEGdata);
 
 group     = group(:);
 covariate = covariate(:);
@@ -105,7 +103,7 @@ t_Obs = zeros(nChan, nTime);
 for ch = 1:nChan
     for tpoint = 1:nTime
 
-        Y = double(data(:, ch, tpoint));
+        Y = double(EEGdata(:, ch, tpoint));
 
         lm_local = fitlm(X, Y);
 
@@ -151,7 +149,7 @@ parfor p = 1:nPerm
     for ch = 1:nChan
         for tpoint = 1:nTime
 
-            Y = double(data(:, ch, tpoint));
+            Y = double(EEGdata(:, ch, tpoint));
 
             % Reduced model: EEG ~ Covariate
             lm_red = fitlm(X_red, Y);

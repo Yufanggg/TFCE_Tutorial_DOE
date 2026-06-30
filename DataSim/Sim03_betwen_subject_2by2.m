@@ -2,20 +2,12 @@
 % Simulated EEG/ERP dataset
 % Between-subject 2 x 2 factorial design
 %
-% Factor A: A- / A+
-% Factor B: B- / B+
-%
-% Groups:
-% 0 = A- B-
-% 1 = A- B+
-% 2 = A+ B-
-% 3 = A+ B+
+% Final saved variables:
+%   EEGdata
+%   designTable
 %
 % Data dimensions:
-% Subjects x Channels x Time
-%
-% Noise:
-% Background Gaussian noise only
+%   Subjects x Channels x Time
 %% ==========================================================
 
 clear; clc; close all;
@@ -70,9 +62,9 @@ group = [
     3 * ones(nFactor11, 1)
 ];
 
-var1 = 2 * ismember(group, [2 3]) - 1;   % Factor A
-var2 = 2 * ismember(group, [1 3]) - 1;   % Factor B
-varInt = var1 .* var2;                   % A x B
+var1   = 2 * ismember(group, [2 3]) - 1;   % Factor A
+var2   = 2 * ismember(group, [1 3]) - 1;   % Factor B
+varInt = var1 .* var2;                     % A x B
 
 designCheck = table(group, var1, var2, varInt, ...
     'VariableNames', {'group','FactorA','FactorB','Interaction'});
@@ -108,10 +100,8 @@ weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 
 %% Simulate EEG/ERP data
 
-% Background noise only
-data = noiseSD * randn(nSub, nChan, nTime);
+EEGdata = noiseSD * randn(nSub, nChan, nTime);
 
-% Add deterministic group-specific P300 signal
 for s = 1:nSub
 
     amp = cellAmps(group(s) + 1);
@@ -121,27 +111,27 @@ for s = 1:nSub
         ch = effectChans(chIdx);
         effectWave = weights(chIdx) * amp * p300;
 
-        tmp = squeeze(data(s, ch, :));
+        tmp = squeeze(EEGdata(s, ch, :));
         tmp = tmp + effectWave;
 
-        data(s, ch, :) = reshape(tmp, 1, 1, nTime);
+        EEGdata(s, ch, :) = reshape(tmp, 1, 1, nTime);
 
     end
 end
 
 %% Compute observed effects
 
-erp_Aminus = squeeze(mean(data(var1 == -1, :, :), 1));
-erp_Aplus  = squeeze(mean(data(var1 ==  1, :, :), 1));
+erp_Aminus = squeeze(mean(EEGdata(var1 == -1, :, :), 1));
+erp_Aplus  = squeeze(mean(EEGdata(var1 ==  1, :, :), 1));
 
-erp_Bminus = squeeze(mean(data(var2 == -1, :, :), 1));
-erp_Bplus  = squeeze(mean(data(var2 ==  1, :, :), 1));
+erp_Bminus = squeeze(mean(EEGdata(var2 == -1, :, :), 1));
+erp_Bplus  = squeeze(mean(EEGdata(var2 ==  1, :, :), 1));
 
 groupADiff = erp_Aplus - erp_Aminus;
 groupBDiff = erp_Bplus - erp_Bminus;
 
-interactionDiff = squeeze(mean(data(varInt == 1, :, :), 1) - ...
-                          mean(data(varInt == -1, :, :), 1));
+interactionDiff = squeeze(mean(EEGdata(varInt == 1, :, :), 1) - ...
+                          mean(EEGdata(varInt == -1, :, :), 1));
 
 %% Figure 1: ERP waveform at Pz
 
@@ -350,7 +340,36 @@ else
 end
 
 %% ==========================================================
+% Design table
+%% ==========================================================
+
+Subject = (1:nSub)';
+
+FactorA_Label = cell(nSub,1);
+FactorB_Label = cell(nSub,1);
+GroupLabel    = cell(nSub,1);
+
+FactorA_Label(var1 == -1) = {'A-'};
+FactorA_Label(var1 ==  1) = {'A+'};
+
+FactorB_Label(var2 == -1) = {'B-'};
+FactorB_Label(var2 ==  1) = {'B+'};
+
+GroupLabel(group == 0) = {'A- B-'};
+GroupLabel(group == 1) = {'A- B+'};
+GroupLabel(group == 2) = {'A+ B-'};
+GroupLabel(group == 3) = {'A+ B+'};
+
+designTable = table(Subject, group, GroupLabel, var1, FactorA_Label, ...
+    var2, FactorB_Label, varInt, ...
+    'VariableNames', {'Subject','GroupCode','GroupLabel', ...
+    'FactorA','FactorA_Label','FactorB','FactorB_Label','Interaction'});
+
+disp(designTable(1:10,:));
+
+%% ==========================================================
 % Save dataset
+% Only EEGdata and designTable are saved
 %% ==========================================================
 
 if ~exist('../data', 'dir')
@@ -358,13 +377,8 @@ if ~exist('../data', 'dir')
 end
 
 save('../data/03_simulated_between_subject_2by2_EEG.mat', ...
-     'data', ...
-     'group', ...
-     'var1', ...
-     'var2', ...
-     'varInt', ...
-     'times', ...
-     'effectChans', ...
-     'chanlocs_EEG');
- 
+     'EEGdata', ...
+     'designTable');
+
 disp('Dataset saved: ../data/03_simulated_between_subject_2by2_EEG.mat');
+disp('Saved variables: EEGdata, designTable');

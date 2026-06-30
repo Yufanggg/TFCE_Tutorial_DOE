@@ -2,33 +2,32 @@
 % TFCE analysis
 % Between-subject 2 x 2 design without interaction
 %
+% Input file contains only:
+%   EEGdata
+%   designTable
+%
 % Model:
-%   EEG ~ var1 + var2
+%   EEG ~ FactorA + FactorB
 %
 % Tests:
-%   Main effect of var1, adjusted for var2
-%   Main effect of var2, adjusted for var1
-%
-% Factor coding:
-%   var1 = -1 / +1
-%   var2 = -1 / +1
-%
-% Permutation:
-%   Freedman-Lane
+%   Main effect of FactorA, adjusted for FactorB
+%   Main effect of FactorB, adjusted for FactorA
 %% ==========================================================
 
 clear; clc; close all;
 fprintf('\nStarting TFCE analysis...\n');
 
-%% ==========================================================
-% Load simulated data
-%% ==========================================================
+%% Load simulated data
 
-load('../data/03_simulated_between_subject_2by2_EEG.mat');
+load('../data/03_simulated_between_subject_2by2_EEG.mat', ...
+     'EEGdata', 'designTable');
 
-%% ==========================================================
-% Load channel locations
-%% ==========================================================
+var1 = designTable.FactorA;
+var2 = designTable.FactorB;
+
+times = -200:4:800;
+
+%% Load channel locations
 
 chanlocs_1020 = readlocs('standard_1005.elc');
 
@@ -52,21 +51,23 @@ end
 
 e_loc = chanlocs_1020(idx);
 
-%% ==========================================================
-% Basic checks
-%% ==========================================================
+%% Basic checks
 
-[nSubj, nChan, nTime] = size(data);
+[nSubj, nChan, nTime] = size(EEGdata);
 
 var1 = var1(:);
 var2 = var2(:);
 
+if height(designTable) ~= nSubj
+    error('Number of rows in designTable does not match number of subjects.');
+end
+
 if length(var1) ~= nSubj
-    error('Length of var1 does not match number of subjects.');
+    error('Length of FactorA does not match number of subjects.');
 end
 
 if length(var2) ~= nSubj
-    error('Length of var2 does not match number of subjects.');
+    error('Length of FactorB does not match number of subjects.');
 end
 
 if length(times) ~= nTime
@@ -77,30 +78,16 @@ if length(e_loc) ~= nChan
     error('Number of channel locations does not match number of channels.');
 end
 
-%% ==========================================================
-% Design matrices for fitlm
-%% ==========================================================
-
-% Do not include intercept.
-% fitlm adds the intercept automatically.
-%
-% fitlm(X_full, Y) fits:
-%   EEG ~ Intercept + var1 + var2
-%
-% Coefficient rows:
-%   1 = Intercept
-%   2 = var1
-%   3 = var2
+%% Design matrices
 
 X_full = [var1, var2];
 
 coefRow_var1 = 2;
 coefRow_var2 = 3;
 
-%% ==========================================================
-% Step 1: Observed t-maps
-%% ==========================================================
-fprintf('Step 1: Computing observed t-statistic map...\n');
+%% Step 1: Observed t-maps
+
+fprintf('Step 1: Computing observed t-statistic maps...\n');
 
 t_Obs_var1 = zeros(nChan, nTime);
 t_Obs_var2 = zeros(nChan, nTime);
@@ -108,7 +95,7 @@ t_Obs_var2 = zeros(nChan, nTime);
 for ch = 1:nChan
     for tp = 1:nTime
 
-        Y = double(data(:, ch, tp));
+        Y = double(EEGdata(:, ch, tp));
 
         lm_full = fitlm(X_full, Y);
 
@@ -118,13 +105,11 @@ for ch = 1:nChan
     end
 end
 
-fprintf('Observed t-statistic map completed.\n');
+fprintf('Observed t-statistic maps completed.\n');
 
-%% ==========================================================
-% Step 2: Observed TFCE maps
-%% ==========================================================
+%% Step 2: Observed TFCE maps
 
-fprintf('Step 2: Computing observed TFCE map...\n');
+fprintf('Step 2: Computing observed TFCE maps...\n');
 
 ChN = ept_ChN2(e_loc);
 E_H = [0.66, 2];
@@ -132,14 +117,9 @@ E_H = [0.66, 2];
 TFCE_Obs_var1 = ept_mex_TFCE2D(t_Obs_var1, ChN, E_H);
 TFCE_Obs_var2 = ept_mex_TFCE2D(t_Obs_var2, ChN, E_H);
 
-fprintf('Observed TFCE map completed.\n');
+fprintf('Observed TFCE maps completed.\n');
 
-
-%% ==========================================================
-% Step 3: Restricted permutation for 2-by-2 design
-% Main effect of var1: permute var1 within levels of var2
-% Main effect of var2: permute var2 within levels of var1
-%% ==========================================================
+%% Step 3: Restricted permutation testing
 
 nPerms = 999;
 
@@ -148,12 +128,11 @@ TFCE_permMax_var2 = nan(nPerms, 1);
 
 fprintf('Step 3: Starting restricted permutation testing: %d permutations...\n', nPerms);
 
-% Get factor levels automatically
 var1_levels = unique(var1);
 var2_levels = unique(var2);
 
 if numel(var1_levels) ~= 2 || numel(var2_levels) ~= 2
-    error('var1 and var2 must each have exactly two levels for a 2-by-2 design.');
+    error('FactorA and FactorB must each have exactly two levels.');
 end
 
 parfor p = 1:nPerms
@@ -161,55 +140,45 @@ parfor p = 1:nPerms
     perm_t_var1 = zeros(nChan, nTime);
     perm_t_var2 = zeros(nChan, nTime);
 
-    %% ------------------------------------------------------
-    % Test main effect of var1
-    % Permute var1 within each level of var2
-    %% ------------------------------------------------------
+    %% Main effect of FactorA
+    % Permute FactorA within each level of FactorB
 
     var1_perm = var1;
 
     for lv = 1:numel(var2_levels)
 
-        idx = find(var2 == var2_levels(lv));
-
-        var1_perm(idx) = var1_perm(idx(randperm(numel(idx))));
+        idx_lv = find(var2 == var2_levels(lv));
+        var1_perm(idx_lv) = var1_perm(idx_lv(randperm(numel(idx_lv))));
 
     end
 
-    X_perm_var1 = [var1_perm var2];
+    X_perm_var1 = [var1_perm, var2];
 
-    %% ------------------------------------------------------
-    % Test main effect of var2
-    % Permute var2 within each level of var1
-    %% ------------------------------------------------------
+    %% Main effect of FactorB
+    % Permute FactorB within each level of FactorA
 
     var2_perm = var2;
 
     for lv = 1:numel(var1_levels)
 
-        idx = find(var1 == var1_levels(lv));
-
-        var2_perm(idx) = var2_perm(idx(randperm(numel(idx))));
+        idx_lv = find(var1 == var1_levels(lv));
+        var2_perm(idx_lv) = var2_perm(idx_lv(randperm(numel(idx_lv))));
 
     end
 
-    X_perm_var2 = [var1 var2_perm];
+    X_perm_var2 = [var1, var2_perm];
 
-    %% ------------------------------------------------------
-    % Mass-univariate regression over channels and time
-    %% ------------------------------------------------------
+    %% Mass-univariate regression
 
     for ch = 1:nChan
         for tp = 1:nTime
 
-            Y = double(data(:, ch, tp));
+            Y = double(EEGdata(:, ch, tp));
 
-            % Main effect of var1, preserving var2 structure
             lm_perm_var1 = fitlm(X_perm_var1, Y);
             perm_t_var1(ch, tp) = ...
                 lm_perm_var1.Coefficients.tStat(coefRow_var1);
 
-            % Main effect of var2, preserving var1 structure
             lm_perm_var2 = fitlm(X_perm_var2, Y);
             perm_t_var2(ch, tp) = ...
                 lm_perm_var2.Coefficients.tStat(coefRow_var2);
@@ -218,10 +187,6 @@ parfor p = 1:nPerms
     end
 
     fprintf('At the %dth permutation\n', p);
-
-    %% ------------------------------------------------------
-    % TFCE transform and max statistic
-    %% ------------------------------------------------------
 
     TFCE_perm_var1 = ept_mex_TFCE2D(perm_t_var1, ChN, E_H);
     TFCE_perm_var2 = ept_mex_TFCE2D(perm_t_var2, ChN, E_H);
@@ -233,9 +198,7 @@ end
 
 fprintf('\nPermutation testing completed.\n');
 
-%% ==========================================================
-% Step 4: TFCE-corrected significance
-%% ==========================================================
+%% Step 4: TFCE-corrected significance
 
 fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
@@ -265,9 +228,9 @@ for ch = 1:nChan
 end
 
 fprintf('TFCE-corrected significance completed.\n');
-%% ==========================================================
-% Step 5: Store results
-%% ==========================================================
+
+%% Step 5: Store results
+
 fprintf('Step 5: Storing results...\n');
 
 Results = struct();
@@ -288,42 +251,29 @@ Results.Mask_var2      = Mask_var2;
 
 Results.alpha = alpha;
 Results.nPerm = nPerms;
-Results.model = 'EEG ~ var1 + var2';
+Results.model = 'EEG ~ FactorA + FactorB';
+Results.times = times;
+Results.e_loc = e_loc;
 
 fprintf('Results stored.\n');
-%% ==========================================================
-% Step 6: Plot significant observed effects
-%% ==========================================================
+
+%% Step 6: Plot significant observed effects
 
 plot_tfce_results(Results.Obs_var1, Results.Mask_var1, ...
                   times, e_loc, ...
-                  'TFCE-corrected Main Effect: var1');
+                  'TFCE-corrected Main Effect: FactorA');
 
 plot_tfce_results(Results.Obs_var2, Results.Mask_var2, ...
                   times, e_loc, ...
-                  'TFCE-corrected Main Effect: var2');
+                  'TFCE-corrected Main Effect: FactorB');
 
-%% ==========================================================
-% Step 7: Save results
-%% ==========================================================
+%% Step 7: Save results
 
 if ~exist('../results', 'dir')
     mkdir('../results');
 end
 
 save('../results/03_TFCE_between_subject_2by2_no_interaction_results.mat', ...
-     'Results', ...
-     't_Obs_var1', ...
-     't_Obs_var2', ...
-     'TFCE_Obs_var1', ...
-     'TFCE_Obs_var2', ...
-     'TFCE_permMax_var1', ...
-     'TFCE_permMax_var2', ...
-     'Mask_var1', ...
-     'Mask_var2', ...
-     'P_Values_var1', ...
-     'P_Values_var2', ...
-     'times', ...
-     'e_loc');
+     'Results');
 
 disp('TFCE analysis completed and saved.');
