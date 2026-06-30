@@ -25,7 +25,7 @@ fprintf('\nStarting TFCE analysis...\n');
 % Load data
 %% ==========================================================
 
-load('data/05_simulated_within_subject_EEG.mat');
+load('../data/05_simulated_within_subject_EEG.mat');
 
 %% ==========================================================
 % Load channel locations
