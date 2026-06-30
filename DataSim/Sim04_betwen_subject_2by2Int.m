@@ -2,6 +2,10 @@
 % Simulated EEG/ERP dataset
 % 2 x 2 between-subject factorial design
 %
+% Final saved variables:
+%   EEGdata
+%   designTable
+%
 % Factor A: A- / A+
 % Factor B: B- / B+
 %
@@ -13,9 +17,6 @@
 %
 % Data dimensions:
 % Subjects x Channels x Time
-%
-% Noise:
-% Background Gaussian noise only
 %% ==========================================================
 
 clear; clc; close all;
@@ -88,10 +89,32 @@ B = [
 
 AB = A .* B;
 
-designTable = table(group, A, B, AB, ...
-    'VariableNames', {'Group','FactorA','FactorB','Interaction'});
+%% ==========================================================
+% Design table
+%% ==========================================================
 
-disp(unique(designTable, 'rows'));
+Subject = (1:nSub)';
+
+GroupLabel = cell(nSub,1);
+GroupLabel(group == 0) = {'A- B-'};
+GroupLabel(group == 1) = {'A- B+'};
+GroupLabel(group == 2) = {'A+ B-'};
+GroupLabel(group == 3) = {'A+ B+'};
+
+FactorA_Label = cell(nSub,1);
+FactorA_Label(A == -1) = {'A-'};
+FactorA_Label(A ==  1) = {'A+'};
+
+FactorB_Label = cell(nSub,1);
+FactorB_Label(B == -1) = {'B-'};
+FactorB_Label(B ==  1) = {'B+'};
+
+designTable = table(Subject, group, GroupLabel, A, FactorA_Label, ...
+    B, FactorB_Label, AB, ...
+    'VariableNames', {'Subject','GroupCode','GroupLabel', ...
+    'FactorA','FactorA_Label','FactorB','FactorB_Label','Interaction'});
+
+disp(unique(designTable(:, {'GroupCode','GroupLabel','FactorA','FactorB','Interaction'}), 'rows'));
 
 %% ==========================================================
 % Define P300 signal
@@ -133,10 +156,8 @@ weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 % Simulate EEG/ERP data
 %% ==========================================================
 
-% Background noise only
-data = noiseSD * randn(nSub, nChan, nTime);
+EEGdata = noiseSD * randn(nSub, nChan, nTime);
 
-% Add deterministic cell-specific P300 signal
 for s = 1:nSub
 
     amp = cellAmps(group(s) + 1);
@@ -147,10 +168,10 @@ for s = 1:nSub
 
         effectWave = weights(chIdx) * amp * p300;
 
-        tmp = squeeze(data(s, ch, :));
+        tmp = squeeze(EEGdata(s, ch, :));
         tmp = tmp + effectWave;
 
-        data(s, ch, :) = reshape(tmp, 1, 1, nTime);
+        EEGdata(s, ch, :) = reshape(tmp, 1, 1, nTime);
 
     end
 end
@@ -159,20 +180,20 @@ end
 % Compute cell-level ERPs
 %% ==========================================================
 
-erp00 = squeeze(mean(data(group == 0, :, :), 1));   % A- B-
-erp01 = squeeze(mean(data(group == 1, :, :), 1));   % A- B+
-erp10 = squeeze(mean(data(group == 2, :, :), 1));   % A+ B-
-erp11 = squeeze(mean(data(group == 3, :, :), 1));   % A+ B+
+erp00 = squeeze(mean(EEGdata(group == 0, :, :), 1));   % A- B-
+erp01 = squeeze(mean(EEGdata(group == 1, :, :), 1));   % A- B+
+erp10 = squeeze(mean(EEGdata(group == 2, :, :), 1));   % A+ B-
+erp11 = squeeze(mean(EEGdata(group == 3, :, :), 1));   % A+ B+
 
 %% ==========================================================
 % Compute observed factorial effects
 %% ==========================================================
 
-erp_Aminus = squeeze(mean(data(A == -1, :, :), 1));
-erp_Aplus  = squeeze(mean(data(A ==  1, :, :), 1));
+erp_Aminus = squeeze(mean(EEGdata(A == -1, :, :), 1));
+erp_Aplus  = squeeze(mean(EEGdata(A ==  1, :, :), 1));
 
-erp_Bminus = squeeze(mean(data(B == -1, :, :), 1));
-erp_Bplus  = squeeze(mean(data(B ==  1, :, :), 1));
+erp_Bminus = squeeze(mean(EEGdata(B == -1, :, :), 1));
+erp_Bplus  = squeeze(mean(EEGdata(B ==  1, :, :), 1));
 
 ADiff = erp_Aplus - erp_Aminus;
 BDiff = erp_Bplus - erp_Bminus;
@@ -411,13 +432,8 @@ else
 end
 
 %% ==========================================================
-% Design matrix for later GLM
-%% ==========================================================
-
-X = [A, B, AB];
-
-%% ==========================================================
 % Save dataset
+% Only EEGdata and designTable are saved
 %% ==========================================================
 
 if ~exist('../data', 'dir')
@@ -425,14 +441,8 @@ if ~exist('../data', 'dir')
 end
 
 save('../data/04_simulated_between_subject_2by2Int_EEG.mat', ...
-    'data', ...
-    'group', ...
-    'A', ...
-    'B', ...
-    'AB', ...
-    'X', ...
-    'times', ...
-    'effectChans', ...
-    'chanlocs_EEG');
+    'EEGdata', ...
+    'designTable');
 
 disp('Dataset saved: ../data/04_simulated_between_subject_2by2Int_EEG.mat');
+disp('Saved variables: EEGdata, designTable');

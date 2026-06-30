@@ -2,15 +2,16 @@
 % TFCE analysis
 % Between-subject 2 x 2 design with interaction
 %
+% Input file contains only:
+%   EEGdata
+%   designTable
+%
 % Model:
-%   EEG ~ var1 + var2 + var1:var2
+%   EEG ~ FactorA + FactorB + FactorA:FactorB
 %
 % Test:
-%   Interaction effect
-%
-% Factor coding:
-%   var1 = -1 / +1
-%   var2 = -1 / +1
+%   FactorA x FactorB interaction adjusted by
+%   main effects of FactorA and FactorB
 %
 % Permutation:
 %   Freedman-Lane
@@ -18,12 +19,19 @@
 
 clear; clc; close all;
 
-fprintf('\nStarting TFCE analysis...\n');
+fprintf('\nStarting TFCE interaction analysis...\n');
+
 %% ==========================================================
 % Load data
 %% ==========================================================
 
-load('../data/04_simulated_between_subject_2by2Int_EEG.mat');
+load('../data/04_simulated_between_subject_2by2Int_EEG.mat', ...
+     'EEGdata', 'designTable');
+
+var1 = designTable.FactorA;
+var2 = designTable.FactorB;
+
+times = -200:4:800;
 
 %% ==========================================================
 % Load channel locations
@@ -55,17 +63,21 @@ e_loc = chanlocs_1020(idx);
 % Basic checks
 %% ==========================================================
 
-[nSubj, nChan, nTime] = size(data);
+[nSubj, nChan, nTime] = size(EEGdata);
 
-var1 = A(:);
-var2 = B(:);
+var1 = var1(:);
+var2 = var2(:);
+
+if height(designTable) ~= nSubj
+    error('Number of rows in designTable does not match number of subjects.');
+end
 
 if length(var1) ~= nSubj
-    error('Length of var1 does not match number of subjects.');
+    error('Length of FactorA does not match number of subjects.');
 end
 
 if length(var2) ~= nSubj
-    error('Length of var2 does not match number of subjects.');
+    error('Length of FactorB does not match number of subjects.');
 end
 
 if length(times) ~= nTime
@@ -80,24 +92,23 @@ end
 % Design matrices for fitlm
 %% ==========================================================
 
-% Do not include intercept.
 % fitlm adds the intercept automatically.
 %
 % Full model:
-%   EEG ~ var1 + var2 + interaction
+%   EEG ~ Intercept + FactorA + FactorB + Interaction
 %
 % Coefficient rows:
 %   1 = Intercept
-%   2 = var1
-%   3 = var2
-%   4 = interaction
+%   2 = FactorA
+%   3 = FactorB
+%   4 = Interaction
 
 interaction = var1 .* var2;
 
 X_full = [var1, var2, interaction];
 
 % Reduced model for testing interaction:
-%   EEG ~ var1 + var2
+%   EEG ~ Intercept + FactorA + FactorB
 X_red = [var1, var2];
 
 interactionCoefRow = 4;
@@ -105,14 +116,15 @@ interactionCoefRow = 4;
 %% ==========================================================
 % Step 1: Observed interaction t-map
 %% ==========================================================
-fprintf('Step 1: Computing observed t-statistic map...\n');
+
+fprintf('Step 1: Computing observed interaction t-statistic map...\n');
 
 t_Obs_Int = zeros(nChan, nTime);
 
 for ch = 1:nChan
     for tpoint = 1:nTime
 
-        Y = double(data(:, ch, tpoint));
+        Y = double(EEGdata(:, ch, tpoint));
 
         lm_full = fitlm(X_full, Y);
 
@@ -123,9 +135,11 @@ for ch = 1:nChan
 end
 
 fprintf('Observed t-statistic map completed.\n');
+
 %% ==========================================================
 % Step 2: Observed TFCE map
 %% ==========================================================
+
 fprintf('Step 2: Computing observed TFCE map...\n');
 
 ChN = ept_ChN2(e_loc);
@@ -134,6 +148,7 @@ E_H = [0.66, 2];
 TFCE_Obs_Int = ept_mex_TFCE2D(t_Obs_Int, ChN, E_H);
 
 fprintf('Observed TFCE map completed.\n');
+
 %% ==========================================================
 % Step 3: Freedman-Lane permutation test
 %% ==========================================================
@@ -143,6 +158,7 @@ nPerm = 999;
 TFCE_permMax_Int = nan(nPerm, 1);
 
 fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
+
 parfor p = 1:nPerm
 
     perm_t_local = nan(nChan, nTime);
@@ -152,10 +168,10 @@ parfor p = 1:nPerm
     for ch = 1:nChan
         for tpoint = 1:nTime
 
-            Y = double(data(:, ch, tpoint));
+            Y = double(EEGdata(:, ch, tpoint));
 
             % Reduced model:
-            % EEG ~ var1 + var2
+            % EEG ~ FactorA + FactorB
             lm_red = fitlm(X_red, Y);
 
             Y_hat_red = lm_red.Fitted;
@@ -165,7 +181,7 @@ parfor p = 1:nPerm
             Y_perm = Y_hat_red + resid_red(perm_idx);
 
             % Full model on permuted data:
-            % EEG_perm ~ var1 + var2 + interaction
+            % EEG_perm ~ FactorA + FactorB + Interaction
             lm_perm = fitlm(X_full, Y_perm);
 
             perm_t_local(ch, tpoint) = ...
@@ -173,7 +189,7 @@ parfor p = 1:nPerm
 
         end
     end
-    
+
     fprintf('At the %dth permutation\n', p);
 
     TFCE_perm = ept_mex_TFCE2D(perm_t_local, ChN, E_H);
@@ -183,9 +199,11 @@ parfor p = 1:nPerm
 end
 
 fprintf('\nPermutation testing completed.\n');
+
 %% ==========================================================
 % Step 4: TFCE-corrected significance
 %% ==========================================================
+
 fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
 alpha = 0.05;
@@ -195,11 +213,6 @@ critTFCE_Int = prctile(TFCE_permMax_Int, 100 * (1 - alpha));
 Mask_Int = abs(TFCE_Obs_Int) >= critTFCE_Int;
 
 P_Values_Int = nan(nChan, nTime);
-
-P_Values_Int = ...
-    (sum(TFCE_permMax_Int >= abs(TFCE_Obs_Int(:))',1)+1)/(nPerm+1);
-
-P_Values_Int = reshape(P_Values_Int,size(TFCE_Obs_Int));
 
 for ch = 1:nChan
     for tpoint = 1:nTime
@@ -212,9 +225,12 @@ for ch = 1:nChan
 end
 
 fprintf('TFCE-corrected significance completed.\n');
+fprintf('Critical TFCE value = %.4f\n', critTFCE_Int);
+
 %% ==========================================================
 % Step 5: Store results
 %% ==========================================================
+
 fprintf('Step 5: Storing results...\n');
 
 Results = struct();
@@ -228,10 +244,13 @@ Results.Mask_Int      = Mask_Int;
 
 Results.alpha = alpha;
 Results.nPerm = nPerm;
-Results.model = 'EEG ~ var1 + var2 + var1:var2';
-Results.test  = 'Interaction effect';
+Results.model = 'EEG ~ FactorA + FactorB + FactorA:FactorB';
+Results.test  = 'Interaction effect adjusted for FactorA and FactorB';
+Results.times = times;
+Results.e_loc = e_loc;
 
 fprintf('Results stored.\n');
+
 %% ==========================================================
 % Step 6: Plot significant interaction effects
 %% ==========================================================
@@ -294,14 +313,6 @@ if ~exist('../results', 'dir')
 end
 
 save('../results/04_TFCE_between_subject_2by2_interaction_results.mat', ...
-     'Results', ...
-     't_Obs_Int', ...
-     'TFCE_Obs_Int', ...
-     'TFCE_permMax_Int', ...
-     'critTFCE_Int', ...
-     'P_Values_Int', ...
-     'Mask_Int', ...
-     'times', ...
-     'e_loc');
+     'Results');
 
 disp('TFCE interaction analysis completed and saved.');
