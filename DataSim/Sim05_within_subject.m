@@ -2,19 +2,18 @@
 % Simulated EEG/ERP dataset
 % Within-subject experimental design
 %
-% Same subjects measured in two conditions:
-% Condition 1 = Control
-% Condition 2 = Treatment
+% Final saved variables:
+%   EEGdata
+%   designTable
 %
-% Data dimensions:
-% Subjects x Conditions x Channels x Time
+% Final EEGdata dimensions:
+%   Subject-condition rows x Channels x Time
+%   60 x 32 x 251
 %
-% Key within-subject feature:
-% Control and Treatment are correlated within each subject
-%
-% Ground truth:
-% Treatment has larger positive ERP effect at 300 ms
-% Effect channels: Cz, CP1, CP2, Pz, P3, P4
+% designTable variables:
+%   Subject
+%   CondCode    % -1 = Control, 1 = Treatment
+%   CondName    % Control / Treatment
 %% ==========================================================
 
 clear; clc; close all; rng(123);
@@ -27,6 +26,7 @@ nSub  = 30;
 nCond = 2;
 
 condNames = {'Control','Treatment'};
+condCodes = [-1, 1];
 
 times = -200:4:800;
 nTime = length(times);
@@ -95,58 +95,86 @@ weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 % Simulate within-subject EEG/ERP data
 %% ==========================================================
 
-% Data size:
+% Temporary data size:
 % Subjects x Conditions x Channels x Time
-data = zeros(nSub, nCond, nChan, nTime);
+data4D = zeros(nSub, nCond, nChan, nTime);
 
-% Noise settings
-subjectNoiseSD    = 1.5;  % subject-wise noise shared across conditions
-backgroundNoiseSD = 0.8;  % background EEG noise
+subjectNoiseSD    = 1.5;
+backgroundNoiseSD = 0.8;
 
 for s = 1:nSub
 
-    % Subject-wise noise: same for both conditions
     subjectNoise = subjectNoiseSD * randn(nChan, nTime);
 
     for c = 1:nCond
 
-        % Background noise: independent random EEG noise
         backgroundNoise = backgroundNoiseSD * randn(nChan, nTime);
 
-        % Only two noise sources
-        data(s,c,:,:) = subjectNoise + backgroundNoise;
+        data4D(s,c,:,:) = subjectNoise + backgroundNoise;
 
     end
 
-    % Inject P300 into Control and Treatment
     for ch_idx = 1:length(effectChans)
 
         ch = effectChans(ch_idx);
 
-        % Control condition
-        tmp = squeeze(data(s,1,ch,:));
+        tmp = squeeze(data4D(s,1,ch,:));
         tmp = tmp + weights(ch_idx) * controlP300;
-        data(s,1,ch,:) = reshape(tmp, 1, 1, 1, nTime);
+        data4D(s,1,ch,:) = reshape(tmp, 1, 1, 1, nTime);
 
-        % Treatment condition
-        tmp = squeeze(data(s,2,ch,:));
+        tmp = squeeze(data4D(s,2,ch,:));
         tmp = tmp + weights(ch_idx) * treatmentP300;
-        data(s,2,ch,:) = reshape(tmp, 1, 1, 1, nTime);
+        data4D(s,2,ch,:) = reshape(tmp, 1, 1, 1, nTime);
 
     end
 
 end
 
 %% ==========================================================
-% Within-subject difference
+% Reshape to long format
+%
+% Final EEGdata:
+%   Rows x Channels x Time
+%   60 x 32 x 251
+%
+% designTable:
+%   Subject
+%   CondCode
+%   CondName
 %% ==========================================================
 
-% Difference is computed subject-by-subject first
-% Subjects x Channels x Time
-subjectDiff = squeeze(data(:,2,:,:) - data(:,1,:,:));
+EEGdata = zeros(nSub * nCond, nChan, nTime);
 
-% Average paired difference
-% Channels x Time
+Subject  = zeros(nSub * nCond, 1);
+CondCode = zeros(nSub * nCond, 1);
+CondName = cell(nSub * nCond, 1);
+
+row = 0;
+
+for s = 1:nSub
+    for c = 1:nCond
+
+        row = row + 1;
+
+        EEGdata(row,:,:) = squeeze(data4D(s,c,:,:));
+
+        Subject(row)  = s;
+        CondCode(row) = condCodes(c);
+        CondName{row} = condNames{c};
+
+    end
+end
+
+designTable = table(Subject, CondCode, CondName, ...
+    'VariableNames', {'Subject','CondCode','CondName'});
+
+disp(designTable(1:10,:));
+
+%% ==========================================================
+% Within-subject difference for plotting
+%% ==========================================================
+
+subjectDiff = squeeze(data4D(:,2,:,:) - data4D(:,1,:,:));
 conditionDiff = squeeze(mean(subjectDiff,1));
 
 %% ==========================================================
@@ -155,8 +183,8 @@ conditionDiff = squeeze(mean(subjectDiff,1));
 
 channelToPlot = find(strcmp({chanlocs_EEG.labels}, 'Pz'));
 
-controlERP = squeeze(mean(data(:,1,channelToPlot,:),1));
-treatmentERP = squeeze(mean(data(:,2,channelToPlot,:),1));
+controlERP   = squeeze(mean(data4D(:,1,channelToPlot,:),1));
+treatmentERP = squeeze(mean(data4D(:,2,channelToPlot,:),1));
 
 figure;
 
@@ -233,82 +261,8 @@ title('Ground-truth Within-subject Effect');
 
 colorbar;
 
-% %% ==========================================================
-% % Figure 4: Paired t-test map
-% %% ==========================================================
-% 
-% tMap = zeros(nChan,nTime);
-% pMap = zeros(nChan,nTime);
-% 
-% for ch = 1:nChan
-% 
-%     for t = 1:nTime
-% 
-%         controlVals   = squeeze(data(:,1,ch,t));
-%         treatmentVals = squeeze(data(:,2,ch,t));
-% 
-%         [~,p,~,stats] = ttest(treatmentVals, controlVals);
-% 
-%         tMap(ch,t) = stats.tstat;
-%         pMap(ch,t) = p;
-% 
-%     end
-% 
-% end
-% 
-% figure;
-% 
-% imagesc(times, 1:nChan, tMap);
-% axis xy;
-% 
-% xlim([-200 800]);
-% 
-% set(gca, ...
-%     'YTick', 1:nChan, ...
-%     'YTickLabel', {chanlocs_EEG.labels}, ...
-%     'XTick', -200:200:800, ...
-%     'TickLength', [0 0], ...
-%     'FontSize', 15, ...
-%     'FontName', 'Arial');
-% 
-% xlabel('Time (ms)');
-% ylabel('Channel');
-% title('Paired t-test Map: Treatment vs Control');
-% 
-% colorbar;
-% 
-% %% ==========================================================
-% % Figure 5: Significant paired t-test map
-% %% ==========================================================
-% 
-% alpha = 0.05;
-% 
-% sigMap = tMap;
-% sigMap(pMap >= alpha) = 0;
-% 
-% figure;
-% 
-% imagesc(times, 1:nChan, sigMap);
-% axis xy;
-% 
-% xlim([-200 800]);
-% 
-% set(gca, ...
-%     'YTick', 1:nChan, ...
-%     'YTickLabel', {chanlocs_EEG.labels}, ...
-%     'XTick', -200:200:800, ...
-%     'TickLength', [0 0], ...
-%     'FontSize', 15, ...
-%     'FontName', 'Arial');
-% 
-% xlabel('Time (ms)');
-% ylabel('Channel');
-% title('Significant Paired t-test Map, p < 0.05');
-% 
-% colorbar;
-
 %% ==========================================================
-% Figure 6: Topography at 300 ms
+% Figure 4: Topography at 300 ms
 %% ==========================================================
 
 chanlocs_plot = chanlocs_EEG;
@@ -339,6 +293,7 @@ end
 
 %% ==========================================================
 % Save dataset
+% Only EEGdata and designTable are saved
 %% ==========================================================
 
 if ~exist('../data','dir')
@@ -346,13 +301,10 @@ if ~exist('../data','dir')
 end
 
 save('../data/05_simulated_within_subject_EEG.mat', ...
-     'data', ...
-     'subjectDiff', ...
-     'conditionDiff', ...
-     'times', ...
-     'effectChans', ...
-     'effectChansLabl', ...
-     'chanlocs_EEG', ...
-     'condNames');
+     'EEGdata', ...
+     'designTable');
 
 disp('Dataset saved: ../data/05_simulated_within_subject_EEG.mat');
+disp('Saved variables: EEGdata, designTable');
+disp('Final EEGdata size:');
+disp(size(EEGdata));
