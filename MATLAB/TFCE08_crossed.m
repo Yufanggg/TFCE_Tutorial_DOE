@@ -1,6 +1,6 @@
 
 clear all; clc; close all;
-load('data/08_simulated_fully_crossed_subject_item_EEG.mat')
+load('../data/08_simulated_fully_crossed_subject_item_EEG.mat')
 chanlocs_1020 = readlocs('standard_1005.elc');
 
 chanLabels_32 = {
@@ -49,11 +49,10 @@ for ch = 1:nChan
 
     for tpoint = 1:nTime
 
-        diffVals = double(squeeze(diffData(:,ch,tpoint)));
-        
-        tic;
+         EEG = double(squeeze(data(ch,tpoint,:)));
+         tbl = table(EEG, Condition, Subject, ...
+                'VariableNames', {'EEG','Condition','Subject'});
 
-        [~,~,~,stats] = ttest(diffVals, 0);
 
         t_Obs(ch,tpoint) = stats.tstat;
         
