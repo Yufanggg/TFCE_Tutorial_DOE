@@ -1,27 +1,39 @@
 %% ==========================================================
-% TFCE analysis for split-plot EEG design
+% TFCE analysis
+% Split-plot mixed design
 %
-% Group:
-%   -1 = HC, 1 = Patient
+% Input file contains only:
+%   EEGdata
+%   designTable
 %
-% WordType:
-%   -1 = Noun, 1 = Verb
+% EEGdata:
+%   Subject-condition rows x Channels x Time
 %
-% Effects tested:
-%   1. Group main effect
-%   2. WordType main effect
-%   3. Group x WordType interaction
+% designTable:
+%   Subject
+%   GroupCode   % -1 = HC, 1 = Patient
+%   GroupName
+%   CondCode    % -1 = Noun, 1 = Verb
+%   CondName
 %
-% Data:
-%   Subjects x Conditions x Channels x Time
+% Model:
+%   EEG ~ GroupCode * CondCode + (1|Subject)
+%
+% Tests:
+%   Group main effect
+%   Condition main effect
+%   Group x Condition interaction
 %% ==========================================================
 
 clear; clc; close all;
-fprintf('\nStarting TFCE analysis...\n');
+fprintf('\nStarting split-plot TFCE analysis...\n');
 
 %% Load data
 
-load('../data/06_simulated_split_plot_EEG.mat');
+load('../data/06_simulated_split_plot_EEG.mat', ...
+     'EEGdata', 'designTable');
+
+times = -200:4:800;
 
 %% Load channel locations
 
@@ -49,323 +61,290 @@ e_loc = chanlocs_1020(idx);
 
 %% Basic checks
 
-[nSubj, nCond, nChan, nTime] = size(data);
+[nRows, nChan, nTime] = size(EEGdata);
 
-if nCond ~= 2
-    error('Expected data format: Subjects x 2 Conditions x Channels x Time');
+Subject   = designTable.Subject;
+GroupCode = designTable.GroupCode;
+CondCode  = designTable.CondCode;
+
+if height(designTable) ~= nRows
+    error('Rows in designTable must match rows in EEGdata.');
 end
 
-group = group(:);  % -1 = HC, 1 = Patient
-
-if length(group) ~= nSubj
-    error('Length of group does not match number of subjects.');
+if length(times) ~= nTime
+    error('Length of times does not match number of time points.');
 end
 
-if ~all(ismember(unique(group), [-1 1]))
-    error('Group must be coded as -1 = HC and 1 = Patient.');
+if length(e_loc) ~= nChan
+    error('Number of channel locations does not match number of channels.');
 end
 
-%% Long-format design variables
-%% Long-format design variables
+subjects = unique(Subject);
+nSubj = length(subjects);
 
-% Subject ID repeated for Noun and Verb
-Subject = kron((1:nSubj)', ones(nCond,1));
-Subject = categorical(Subject);
+if nRows ~= nSubj * 2
+    error('Expected exactly two condition rows per subject.');
+end
 
-% Group:
-% -1 = HC
-%  1 = Patient
-Group = kron(group, ones(nCond,1));
-
-% WordType:
-% -1 = Noun
-%  1 = Verb
-WordType = repmat([-1; 1], nSubj, 1);
-
-nObs = nSubj * nCond;
-%% Long-format EEG data
-
-data_long = zeros(nObs, nChan, nTime);
-
-row = 0;
 for s = 1:nSubj
-    for c = 1:nCond
-        row = row + 1;
-        data_long(row,:,:) = squeeze(data(s,c,:,:));
+
+    subj = subjects(s);
+    idxSubj = Subject == subj;
+
+    if sum(idxSubj) ~= 2
+        error('Each subject must have exactly two rows.');
     end
+
+    if ~all(sort(CondCode(idxSubj)) == [-1; 1])
+        error('Each subject must have one Noun (-1) and one Verb (1).');
+    end
+
 end
 
-%% ==========================================================
-% Step 1: Observed LME t-maps
-%% ==========================================================
-fprintf('Step 1: Computing observed t-statistic map...\n');
+%% Variables for LME
 
-t_Group_Obs = zeros(nChan, nTime);
-t_Word_Obs  = zeros(nChan, nTime);
-t_Int_Obs   = zeros(nChan, nTime);
+SubjectLME = categorical(Subject);
 
-for ch = 1:nChan
-    for tp = 1:nTime
-        
-        EEG = double(data_long(:, ch, tp));
+Group = GroupCode;
+Cond  = CondCode;
+Interaction = Group .* Cond;
 
-        tbl = table(EEG, Group, WordType, Subject, ...
-            'VariableNames', {'EEG','Group','WordType','Subject'});
+%% TFCE settings
 
-        lme = fitlme(tbl, 'EEG ~ Group * WordType + (1|Subject)');
-
-        coefNames = lme.CoefficientNames;
-
-        row_Group = find(strcmp(coefNames, 'Group'));
-        row_WordType = find(strcmp(coefNames, 'WordType'));
-        row_Interaction = find(strcmp(coefNames, 'Group:WordType'));
-
-        t_Group_Obs(ch,tp) = lme.Coefficients.tStat(row_Group);
-        t_Word_Obs(ch,tp)  = lme.Coefficients.tStat(row_WordType);
-        t_Int_Obs(ch,tp)   = lme.Coefficients.tStat(row_Interaction);
-
-    end
-end
-
-fprintf('Observed t-statistic map completed.\n');
-
-%% ==========================================================
-% Step 2: TFCE transformation
-%% ==========================================================
-fprintf('Step 2: Computing observed TFCE map...\n');
+nPerm = 999;
+alpha = 0.05;
 
 ChN = ept_ChN2(e_loc);
 E_H = [0.66, 2];
 
-TFCE_Group_Obs = ept_mex_TFCE2D(t_Group_Obs, ChN, E_H);
-TFCE_Word_Obs  = ept_mex_TFCE2D(t_Word_Obs,  ChN, E_H);
-TFCE_Int_Obs   = ept_mex_TFCE2D(t_Int_Obs,   ChN, E_H);
-
-fprintf('Observed TFCE map completed.\n');
 %% ==========================================================
-% Step 3: Permutation tests
+% Step 1: Observed LME t-maps
 %% ==========================================================
 
-nPerm = 999;
+fprintf('Step 1: Computing observed t-statistic maps...\n');
+
+t_Obs_Group = zeros(nChan, nTime);
+t_Obs_Cond  = zeros(nChan, nTime);
+t_Obs_Int   = zeros(nChan, nTime);
+
+for ch = 1:nChan
+    for tp = 1:nTime
+
+        EEG = double(squeeze(EEGdata(:, ch, tp)));
+
+        tbl = table(EEG, Group, Cond, Interaction, SubjectLME, ...
+            'VariableNames', {'EEG','Group','Cond','Interaction','Subject'});
+
+        lme = fitlme(tbl, 'EEG ~ Group + Cond + Interaction + (1|Subject)');
+
+        % Coefficient rows:
+        % 1 = Intercept
+        % 2 = Group
+        % 3 = Cond
+        % 4 = Interaction
+        t_Obs_Group(ch,tp) = lme.Coefficients.tStat(2);
+        t_Obs_Cond(ch,tp)  = lme.Coefficients.tStat(3);
+        t_Obs_Int(ch,tp)   = lme.Coefficients.tStat(4);
+
+    end
+end
+
+fprintf('Observed t-statistic maps completed.\n');
+
+%% Step 2: Observed TFCE maps
+
+fprintf('Step 2: Computing observed TFCE maps...\n');
+
+TFCE_Obs_Group = ept_mex_TFCE2D(t_Obs_Group, ChN, E_H);
+TFCE_Obs_Cond  = ept_mex_TFCE2D(t_Obs_Cond,  ChN, E_H);
+TFCE_Obs_Int   = ept_mex_TFCE2D(t_Obs_Int,   ChN, E_H);
+
+fprintf('Observed TFCE maps completed.\n');
+
+%% ==========================================================
+% Step 3: Permutation testing
+%
+% Group main effect:
+%   shuffle GroupCode between subjects, keeping both rows together
+%
+% Condition main effect:
+%   flip CondCode within subjects
+%
+% Interaction:
+%   flip CondCode within subjects
+%% ==========================================================
 
 TFCE_permMax_Group = nan(nPerm,1);
-TFCE_permMax_Word  = nan(nPerm,1);
+TFCE_permMax_Cond  = nan(nPerm,1);
 TFCE_permMax_Int   = nan(nPerm,1);
 
 fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
 
 parfor p = 1:nPerm
 
-    perm_t_Group = zeros(nChan, nTime);
-    perm_t_Word  = zeros(nChan, nTime);
-    perm_t_Int   = zeros(nChan, nTime);
-    
-    
-    %% ------------------------------------------------------
-    % Group main effect:
-    % permute group labels across subjects
-    %% ------------------------------------------------------
-    group_perm_subject = group(randperm(nSubj));
-    Group_perm = kron(group_perm_subject, ones(nCond,1));
-    
-        %% ------------------------------------------------------
-    % WordType main effect:
-    % swap Noun / Verb labels within subjects
-    %% ------------------------------------------------------
+    perm_t_Group = nan(nChan, nTime);
+    perm_t_Cond  = nan(nChan, nTime);
+    perm_t_Int   = nan(nChan, nTime);
 
-    WordType_perm = WordType;
+    %% Permute Group between subjects
 
-    row = 0;
+    subjGroup = zeros(nSubj,1);
+
+    for s = 1:nSubj
+        idxSubj = Subject == subjects(s);
+        subjGroup(s) = unique(GroupCode(idxSubj));
+    end
+
+    subjGroup_perm = subjGroup(randperm(nSubj));
+
+    Group_perm = GroupCode;
+
+    for s = 1:nSubj
+        idxSubj = Subject == subjects(s);
+        Group_perm(idxSubj) = subjGroup_perm(s);
+    end
+
+    Int_perm_Group = Group_perm .* Cond;
+
+    %% Flip condition labels within subjects
+
+    Cond_perm = CondCode;
+
     for s = 1:nSubj
 
-        rows_s = row + (1:nCond);
-        row = row + nCond;
+        idxSubj = find(Subject == subjects(s));
 
         if rand > 0.5
-            WordType_perm(rows_s) = flip(WordType_perm(rows_s));
+            Cond_perm(idxSubj) = flipud(Cond_perm(idxSubj));
         end
 
     end
 
-    %% ------------------------------------------------------
-    % Interaction:
-    % permute group labels across subject-level
-    % Verb-minus-Noun difference waves
-    %% ------------------------------------------------------
+    Int_perm_Cond = Group .* Cond_perm;
 
-    group_perm_interaction = group(randperm(nSubj));
+    %% Mass-univariate LME
 
     for ch = 1:nChan
         for tp = 1:nTime
-            
-            
-            EEG = double(data_long(:, ch, tp));
 
-            %% Group permutation model
+            EEG = double(squeeze(EEGdata(:, ch, tp)));
 
-            tbl_Group = table(EEG, Subject, Group_perm, WordType, ...
-                'VariableNames', {'EEG','Subject','Group','WordType'});
-            
-            lme_Group = fitlme(tbl_Group, ...
-                'EEG ~ Group * WordType + (1|Subject)');
+            % Group effect permutation
+            tbl_G = table(EEG, Group_perm, Cond, Int_perm_Group, SubjectLME, ...
+                'VariableNames', {'EEG','Group','Cond','Interaction','Subject'});
 
-            coefNames = lme_Group.CoefficientNames;
-            row_Group = find(strcmp(coefNames, 'Group'));
+            lme_G = fitlme(tbl_G, ...
+                'EEG ~ Group + Cond + Interaction + (1|Subject)');
 
-            perm_t_Group(ch,tp) = ...
-                lme_Group.Coefficients.tStat(row_Group);
-            
-            %% WordType permutation model
+            perm_t_Group(ch,tp) = lme_G.Coefficients.tStat(2);
 
-            tbl_WordType = table(EEG, Subject, Group, WordType_perm, ...
-                'VariableNames', {'EEG','Subject','Group','WordType'});
+            % Condition effect permutation
+            tbl_C = table(EEG, Group, Cond_perm, Int_perm_Cond, SubjectLME, ...
+                'VariableNames', {'EEG','Group','Cond','Interaction','Subject'});
 
-            lme_WordType = fitlme(tbl_WordType, ...
-                'EEG ~ Group * WordType + (1|Subject)');
+            lme_C = fitlme(tbl_C, ...
+                'EEG ~ Group + Cond + Interaction + (1|Subject)');
 
-            coefNames = lme_WordType.CoefficientNames;
-            row_WordType = find(strcmp(coefNames, 'WordType'));
-
-            perm_t_Word(ch,tp) = ...
-                lme_WordType.Coefficients.tStat(row_WordType);
-            
-            
-            %% Interaction permutation using difference scores
-            row_Int = find(strcmp(coefNames, 'Group:WordType'));
-
-            perm_t_Int(ch,tp) = ...
-                lme_Group.Coefficients.tStat(row_Int);
+            perm_t_Cond(ch,tp) = lme_C.Coefficients.tStat(3);
+            perm_t_Int(ch,tp)  = lme_C.Coefficients.tStat(4);
 
         end
     end
-    
+
     fprintf('At the %dth permutation\n', p);
-    
-    %% TFCE transform
-    
+
     TFCE_perm_Group = ept_mex_TFCE2D(perm_t_Group, ChN, E_H);
-    TFCE_perm_Word  = ept_mex_TFCE2D(perm_t_Word,  ChN, E_H);
+    TFCE_perm_Cond  = ept_mex_TFCE2D(perm_t_Cond,  ChN, E_H);
     TFCE_perm_Int   = ept_mex_TFCE2D(perm_t_Int,   ChN, E_H);
-    
-    %% Max absolute TFCE statistic
 
     TFCE_permMax_Group(p) = max(abs(TFCE_perm_Group(:)));
-    TFCE_permMax_Word(p)  = max(abs(TFCE_perm_Word(:)));
+    TFCE_permMax_Cond(p)  = max(abs(TFCE_perm_Cond(:)));
     TFCE_permMax_Int(p)   = max(abs(TFCE_perm_Int(:)));
 
 end
 
 fprintf('\nPermutation testing completed.\n');
-%% ==========================================================
-% Step 4: TFCE correction
-%% ==========================================================
+
+%% Step 4: TFCE correction
+
 fprintf('Step 4: Computing TFCE-corrected significance...\n');
-alpha = 0.05;
 
-crit_Group = prctile(TFCE_permMax_Group, 100*(1-alpha));
-crit_Word  = prctile(TFCE_permMax_Word,  100*(1-alpha));
-crit_Int   = prctile(TFCE_permMax_Int,   100*(1-alpha));
+critTFCE_Group = prctile(TFCE_permMax_Group, 100 * (1 - alpha));
+critTFCE_Cond  = prctile(TFCE_permMax_Cond,  100 * (1 - alpha));
+critTFCE_Int   = prctile(TFCE_permMax_Int,   100 * (1 - alpha));
 
-Mask_Group = abs(TFCE_Group_Obs) >= crit_Group;
-Mask_Word  = abs(TFCE_Word_Obs)  >= crit_Word;
-Mask_Int   = abs(TFCE_Int_Obs)   >= crit_Int;
+Mask_Group = abs(TFCE_Obs_Group) >= critTFCE_Group;
+Mask_Cond  = abs(TFCE_Obs_Cond)  >= critTFCE_Cond;
+Mask_Int   = abs(TFCE_Obs_Int)   >= critTFCE_Int;
 
-P_Group = nan(nChan,nTime);
-P_Word  = nan(nChan,nTime);
-P_Int   = nan(nChan,nTime);
+P_Values_Group = nan(nChan, nTime);
+P_Values_Cond  = nan(nChan, nTime);
+P_Values_Int   = nan(nChan, nTime);
 
-for i = 1:numel(TFCE_Group_Obs)
-
-    P_Group(i) = ...
-        (sum(TFCE_permMax_Group >= abs(TFCE_Group_Obs(i))) + 1) / ...
-        (nPerm + 1);
-
-    P_Word(i) = ...
-        (sum(TFCE_permMax_Word >= abs(TFCE_Word_Obs(i))) + 1) / ...
-        (nPerm + 1);
-
-    P_Int(i) = ...
-        (sum(TFCE_permMax_Int >= abs(TFCE_Int_Obs(i))) + 1) / ...
-        (nPerm + 1);
-
+for ch = 1:nChan
+    for tpoint = 1:nTime
+        P_Values_Group(ch, tpoint) = ...
+            (sum(TFCE_permMax_Group >= abs(TFCE_Obs_Group(ch, tpoint))) + 1) / ...
+            (nPerm + 1);
+        
+        P_Values_Cond(ch, tpoint) = ...
+            (sum(TFCE_permMax_Cond >= abs(TFCE_Obs_Cond(ch, tpoint))) + 1) / ...
+            (nPerm + 1);
+        P_Values_Int(ch, tpoint) = ...
+            (sum(TFCE_permMax_Int >= abs(TFCE_Obs_Int(ch, tpoint))) + 1) / ...
+            (nPerm + 1);
+    end
 end
 
-fprintf('TFCE-corrected significance completed.\n');
-%% ==========================================================
-% Step 5: Store results
-%% ==========================================================
-fprintf('Step 5: Storing results...\n');
+%% Step 5: Store results
+
 Results = struct();
 
-Results.t_Group_Obs = t_Group_Obs;
-Results.t_Word_Obs  = t_Word_Obs;
-Results.t_Int_Obs   = t_Int_Obs;
+Results.Obs_Group       = t_Obs_Group;
+Results.TFCE_Obs_Group  = TFCE_Obs_Group;
+Results.TFCE_Null_Group = TFCE_permMax_Group;
+Results.critTFCE_Group  = critTFCE_Group;
+Results.P_Values_Group  = P_Values_Group;
+Results.Mask_Group      = Mask_Group;
 
-Results.TFCE_Group_Obs = TFCE_Group_Obs;
-Results.TFCE_Word_Obs  = TFCE_Word_Obs;
-Results.TFCE_Int_Obs   = TFCE_Int_Obs;
+Results.Obs_Cond       = t_Obs_Cond;
+Results.TFCE_Obs_Cond  = TFCE_Obs_Cond;
+Results.TFCE_Null_Cond = TFCE_permMax_Cond;
+Results.critTFCE_Cond  = critTFCE_Cond;
+Results.P_Values_Cond  = P_Values_Cond;
+Results.Mask_Cond      = Mask_Cond;
 
-Results.TFCE_permMax_Group = TFCE_permMax_Group;
-Results.TFCE_permMax_Word  = TFCE_permMax_Word;
-Results.TFCE_permMax_Int   = TFCE_permMax_Int;
-
-Results.crit_Group = crit_Group;
-Results.crit_Word  = crit_Word;
-Results.crit_Int   = crit_Int;
-
-Results.Mask_Group = Mask_Group;
-Results.Mask_Word  = Mask_Word;
-Results.Mask_Int   = Mask_Int;
-
-Results.P_Group = P_Group;
-Results.P_Word  = P_Word;
-Results.P_Int   = P_Int;
+Results.Obs_Int       = t_Obs_Int;
+Results.TFCE_Obs_Int  = TFCE_Obs_Int;
+Results.TFCE_Null_Int = TFCE_permMax_Int;
+Results.critTFCE_Int  = critTFCE_Int;
+Results.P_Values_Int  = P_Values_Int;
+Results.Mask_Int      = Mask_Int;
 
 Results.alpha = alpha;
 Results.nPerm = nPerm;
-Results.model = 'EEG ~ Group * WordType + (1|Subject)';
+Results.model = 'EEG ~ Group + Cond + Interaction + (1|Subject)';
+Results.times = times;
+Results.e_loc = e_loc;
 
-fprintf('Results stored.\n');
-%% ==========================================================
-% Step 6: Plot significant effects
-%% ==========================================================
+%% Step 6: Plot results
 
-plot_tfce_result(t_Group_Obs, Mask_Group, times, e_loc, ...
-    'TFCE-corrected Group Main Effect');
+plot_tfce_results(t_Obs_Group, Mask_Group, times, e_loc, ...
+    'TFCE-corrected Group Effect');
 
-plot_tfce_result(t_Word_Obs, Mask_Word, times, e_loc, ...
-    'TFCE-corrected WordType Main Effect');
+plot_tfce_results(t_Obs_Cond, Mask_Cond, times, e_loc, ...
+    'TFCE-corrected Condition Effect');
 
-%plot_tfce_result(t_Int_Obs, Mask_Int, times, e_loc, ...
-plot_tfce_result('TFCE-corrected Group x WordType Interaction');
+plot_tfce_results(t_Obs_Int, Mask_Int, times, e_loc, ...
+    'TFCE-corrected Group x Condition Interaction');
 
-%% ==========================================================
-% Step 7: Save results
-%% ==========================================================
+%% Step 7: Save results
 
 if ~exist('../results', 'dir')
     mkdir('../results');
 end
 
-save('../results/06_TFCE_split_plot_LME_results.mat', ...
-     'Results', ...
-     't_Group_Obs', ...
-     't_Word_Obs', ...
-     't_Int_Obs', ...
-     'TFCE_Group_Obs', ...
-     'TFCE_Word_Obs', ...
-     'TFCE_Int_Obs', ...
-     'TFCE_permMax_Group', ...
-     'TFCE_permMax_Word', ...
-     'TFCE_permMax_Int', ...
-     'Mask_Group', ...
-     'Mask_Word', ...
-     'Mask_Int', ...
-     'P_Group', ...
-     'P_Word', ...
-     'P_Int', ...
-     'times', ...
-     'e_loc');
+save('../results/06_TFCE_split_plot_results.mat', ...
+     'Results');
 
-disp('Split-plot LME TFCE analysis completed and saved.');
-
+disp('Split-plot TFCE analysis completed and saved.');

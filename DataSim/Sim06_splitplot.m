@@ -2,21 +2,20 @@
 % Simulated EEG/ERP dataset
 % Split-plot mixed design
 %
-% Between-subject factor:
-%   Group: -1 = HC, 1 = Patient
+% Final saved variables:
+%   EEGdata
+%   designTable
 %
-% Within-subject factor:
-%   Condition: -1 = Noun, 1 = Verb
+% Final EEGdata:
+%   Subject-condition rows x Channels x Time
+%   120 x 32 x 251
 %
-% Model:
-%   EEG ~ Group * Condition + (1 | Subject)
-%
-% Noise sources:
-%   1. Subject-wise noise
-%   2. Background noise
-%
-% Data dimensions:
-%   Subjects x Conditions x Channels x Time
+% designTable:
+%   Subject
+%   GroupCode   % -1 = HC, 1 = Patient
+%   GroupName
+%   CondCode    % -1 = Noun, 1 = Verb
+%   CondName
 %% ==========================================================
 
 clear; clc; close all;
@@ -32,7 +31,9 @@ nSub = nHC + nPatient;
 
 nCond = 2;
 
-condNames = {'Noun','Verb'};
+condNames  = {'Noun','Verb'};
+condCodes  = [-1, 1];
+
 groupNames = {'HC','Patient'};
 
 times = -200:4:800;
@@ -40,10 +41,8 @@ nTime = length(times);
 
 subjectID = (1:nSub)';
 
-% Group coding:
 % -1 = HC, 1 = Patient
 group = [-ones(nHC,1); ones(nPatient,1)];
-
 
 %% ==========================================================
 % 2. Load and select EEG channels
@@ -72,7 +71,6 @@ end
 chanlocs_EEG = chanlocs_1020(idx);
 nChan = length(chanlocs_EEG);
 
-
 %% ==========================================================
 % 3. Define ERP effect
 %% ==========================================================
@@ -84,18 +82,8 @@ p300Shape = exp(-(times - p300Latency).^2 ./ ...
                 (2 * p300Width^2));
 p300Shape = p300Shape(:);
 
-% Cell amplitudes
-% Rows:
-%   1 = HC
-%   2 = Patient
-%
-% Columns:
-%   1 = Noun
-%   2 = Verb
-
 amp_HC_Noun      = 3.0;
 amp_HC_Verb      = 6.0;
-
 amp_Patient_Noun = 2.0;
 amp_Patient_Verb = 3.5;
 
@@ -103,7 +91,6 @@ cellAmps = [
     amp_HC_Noun,      amp_HC_Verb;
     amp_Patient_Noun, amp_Patient_Verb
 ];
-
 
 %% ==========================================================
 % 4. Define effect channels
@@ -119,38 +106,31 @@ end
 
 weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 
-
 %% ==========================================================
 % 5. Simulate EEG data
+%
+% Temporary data4D:
+% Subjects x Conditions x Channels x Time
 %% ==========================================================
 
-% Data:
-% Subjects x Conditions x Channels x Time
-data = zeros(nSub, nCond, nChan, nTime);
+data4D = zeros(nSub, nCond, nChan, nTime);
 
 subjectNoiseSD    = 1.5;
 backgroundNoiseSD = 0.8;
 
-% Subject-wise noise:
-% one stable EEG pattern per subject,
-% shared across noun and verb
 subjectNoise = subjectNoiseSD * randn(nSub, nChan, nTime);
 
 for s = 1:nSub
 
-    % Convert group code to row index:
     % -1 -> 1, 1 -> 2
     groupIndex = (group(s) + 3) / 2;
 
     for c = 1:nCond
 
-        % Background noise:
-        % unique for each subject x condition observation
         backgroundNoise = backgroundNoiseSD * randn(nChan, nTime);
 
-        data(s,c,:,:) = squeeze(subjectNoise(s,:,:)) + backgroundNoise;
+        data4D(s,c,:,:) = squeeze(subjectNoise(s,:,:)) + backgroundNoise;
 
-        % Add deterministic ERP signal
         amp = cellAmps(groupIndex, c);
         erpWave = amp * p300Shape;
 
@@ -158,87 +138,81 @@ for s = 1:nSub
 
             ch = effectChans(ch_idx);
 
-            tmp = squeeze(data(s,c,ch,:));
+            tmp = squeeze(data4D(s,c,ch,:));
             tmp = tmp + weights(ch_idx) * erpWave;
 
-            data(s,c,ch,:) = reshape(tmp, 1, 1, 1, nTime);
+            data4D(s,c,ch,:) = reshape(tmp, 1, 1, 1, nTime);
 
         end
     end
 end
 
-
 %% ==========================================================
-% 6. Create design table
+% 6. Convert to long-format EEGdata and designTable
 %% ==========================================================
 
-Subject = [];
-Group = {};
-GroupCode = [];
-Condition = {};
-ConditionCode = [];
+EEGdata = zeros(nSub * nCond, nChan, nTime);
+
+Subject   = zeros(nSub * nCond, 1);
+GroupCode = zeros(nSub * nCond, 1);
+GroupName = cell(nSub * nCond, 1);
+CondCode  = zeros(nSub * nCond, 1);
+CondName  = cell(nSub * nCond, 1);
+
+row = 0;
 
 for s = 1:nSub
     for c = 1:nCond
 
-        Subject(end+1,1) = subjectID(s);
+        row = row + 1;
 
-        GroupCode(end+1,1) = group(s);
+        EEGdata(row,:,:) = squeeze(data4D(s,c,:,:));
+
+        Subject(row)   = subjectID(s);
+        GroupCode(row) = group(s);
 
         if group(s) == -1
-            Group{end+1,1} = 'HC';
+            GroupName{row} = 'HC';
         else
-            Group{end+1,1} = 'Patient';
+            GroupName{row} = 'Patient';
         end
 
-        % Condition coding:
-        % -1 = Noun, 1 = Verb
-        ConditionCode(end+1,1) = 2*c - 3;
-
-        Condition{end+1,1} = condNames{c};
+        CondCode(row) = condCodes(c);
+        CondName{row} = condNames{c};
 
     end
 end
 
-designTable = table(Subject, Group, GroupCode, ...
-                    Condition, ConditionCode);
+designTable = table(Subject, GroupCode, GroupName, CondCode, CondName, ...
+    'VariableNames', {'Subject','GroupCode','GroupName','CondCode','CondName'});
 
 disp(designTable(1:20,:));
-
 
 %% ==========================================================
 % 7. Compute grand average ERPs
 %% ==========================================================
 
-HC_Noun = squeeze(mean(data(group == -1, 1, :, :), 1));
-HC_Verb = squeeze(mean(data(group == -1, 2, :, :), 1));
+HC_Noun = squeeze(mean(data4D(group == -1, 1, :, :), 1));
+HC_Verb = squeeze(mean(data4D(group == -1, 2, :, :), 1));
 
-Patient_Noun = squeeze(mean(data(group == 1, 1, :, :), 1));
-Patient_Verb = squeeze(mean(data(group == 1, 2, :, :), 1));
-
+Patient_Noun = squeeze(mean(data4D(group == 1, 1, :, :), 1));
+Patient_Verb = squeeze(mean(data4D(group == 1, 2, :, :), 1));
 
 %% ==========================================================
 % 8. Compute observed contrasts
 %% ==========================================================
 
-% Group contrast:
-% Patients minus HC, averaged over noun and verb
-HC_mean = squeeze(mean(mean(data(group == -1,:,:,:), 2), 1));
-Patient_mean = squeeze(mean(mean(data(group == 1,:,:,:), 2), 1));
+HC_mean = squeeze(mean(mean(data4D(group == -1,:,:,:), 2), 1));
+Patient_mean = squeeze(mean(mean(data4D(group == 1,:,:,:), 2), 1));
 
 groupDiff = Patient_mean - HC_mean;
 
-% Word-type contrast:
-% Verb minus Noun
 verbNoun_HC = HC_Verb - HC_Noun;
 verbNoun_Patient = Patient_Verb - Patient_Noun;
 
-wordTypeDiff = squeeze(mean(data(:,2,:,:) - data(:,1,:,:), 1));
+wordTypeDiff = squeeze(mean(data4D(:,2,:,:) - data4D(:,1,:,:), 1));
 
-% Interaction:
-% (Verb - Noun) in Patients minus (Verb - Noun) in HC
 interactionDiff = verbNoun_Patient - verbNoun_HC;
-
 
 %% ==========================================================
 % 9. Compute ground-truth effects
@@ -272,7 +246,6 @@ truthInteractionDiff = ...
     (truth_Patient_Verb - truth_Patient_Noun) - ...
     (truth_HC_Verb - truth_HC_Noun);
 
-
 %% ==========================================================
 % 10. Figure 1: ERP waveform at Pz
 %% ==========================================================
@@ -303,7 +276,6 @@ legend('HC Noun', 'HC Verb', ...
 
 grid on;
 
-
 %% ==========================================================
 % 11. Figure 2: HC Verb - Noun
 %% ==========================================================
@@ -326,7 +298,6 @@ xlabel('Time (ms)');
 ylabel('Channel');
 title('HC Within-subject Effect: Verb - Noun');
 colorbar;
-
 
 %% ==========================================================
 % 12. Figure 3: Patient Verb - Noun
@@ -351,7 +322,6 @@ ylabel('Channel');
 title('Patient Within-subject Effect: Verb - Noun');
 colorbar;
 
-
 %% ==========================================================
 % 13. Figure 4: Interaction effect
 %% ==========================================================
@@ -375,7 +345,6 @@ ylabel('Channel');
 title('Interaction: Patient(Verb - Noun) - HC(Verb - Noun)');
 colorbar;
 
-
 %% ==========================================================
 % 14. Figure 5: Ground-truth interaction
 %% ==========================================================
@@ -398,7 +367,6 @@ xlabel('Time (ms)');
 ylabel('Channel');
 title('Ground-Truth Interaction Effect');
 colorbar;
-
 
 %% ==========================================================
 % 15. Topography at 300 ms
@@ -427,9 +395,9 @@ else
 
 end
 
-
 %% ==========================================================
 % 16. Save dataset
+% Only EEGdata and designTable are saved
 %% ==========================================================
 
 if ~exist('../data', 'dir')
@@ -437,26 +405,10 @@ if ~exist('../data', 'dir')
 end
 
 save('../data/06_simulated_split_plot_EEG.mat', ...
-     'data', ...
-     'group', ...
-     'subjectID', ...
-     'designTable', ...
-     'times', ...
-     'chanlocs_EEG', ...
-     'effectChans', ...
-     'effectChanLabels', ...
-     'condNames', ...
-     'groupNames', ...
-     'subjectNoise', ...
-     'subjectNoiseSD', ...
-     'backgroundNoiseSD', ...
-     'groupDiff', ...
-     'wordTypeDiff', ...
-     'interactionDiff', ...
-     'verbNoun_HC', ...
-     'verbNoun_Patient', ...
-     'truthGroupDiff', ...
-     'truthWordTypeDiff', ...
-     'truthInteractionDiff');
+     'EEGdata', ...
+     'designTable');
 
 disp('Dataset saved: ../data/06_simulated_split_plot_EEG.mat');
+disp('Saved variables: EEGdata, designTable');
+disp('Final EEGdata size:');
+disp(size(EEGdata));
