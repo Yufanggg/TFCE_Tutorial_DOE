@@ -133,7 +133,6 @@ parfor p = 1:nPerm
     perm_t = nan(nChan, nTime);
 
     % Randomly flip Control/Treatment labels within each subject
-    flip = randi(nSubj, 1);
 
     for ch = 1:nChan
         for tpoint = 1:nTime
@@ -142,7 +141,7 @@ parfor p = 1:nPerm
             permTreatment  = squeeze(data(:,2,ch,tpoint));
 
             for s = 1:nSubj
-                if flip(s)
+                if rand > 0.5
                     tmp = permControl(s);
                     permControl(s)   = permTreatment(s);
                     permTreatment(s) = tmp;
