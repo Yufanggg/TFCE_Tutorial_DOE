@@ -3,16 +3,12 @@
 % Between-subject design: Control vs Treatment
 % With covariate effect
 %
+% Final saved variables:
+%   EEGdata
+%   designTable
+%
 % Data dimensions:
-% Subjects x Channels x Time
-%
-% Noise:
-% Background Gaussian noise only
-%
-% Ground truth:
-% P300 component centered at 300 ms
-% Larger P300 amplitude in Treatment than Control
-% Covariate also modulates P300 amplitude
+%   Subjects x Channels x Time
 %% ==========================================================
 
 clear; clc; close all;
@@ -69,7 +65,6 @@ nChan = length(chanlocs_EEG);
 group = [-ones(nControl, 1); ones(nTreatment, 1)];
 
 % Subject-level covariate
-% Example: standardized age / symptom score / behavioral score
 covariate = randn(nSub, 1);
 covariate = covariate - mean(covariate);
 
@@ -109,7 +104,7 @@ weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 %% ==========================================================
 
 % Background noise only
-data = noiseSD * randn(nSub, nChan, nTime);
+EEGdata = noiseSD * randn(nSub, nChan, nTime);
 
 for s = 1:nSub
 
@@ -128,10 +123,10 @@ for s = 1:nSub
 
         ch = effectChans(ch_idx);
 
-        tmp = squeeze(data(s, ch, :));
+        tmp = squeeze(EEGdata(s, ch, :));
         tmp = tmp + weights(ch_idx) * subjectP300;
 
-        data(s, ch, :) = reshape(tmp, 1, 1, nTime);
+        EEGdata(s, ch, :) = reshape(tmp, 1, 1, nTime);
 
     end
 
@@ -141,8 +136,8 @@ end
 % Compute group-level ERPs
 %% ==========================================================
 
-controlData   = data(group == -1, :, :);
-treatmentData = data(group == 1, :, :);
+controlData   = EEGdata(group == -1, :, :);
+treatmentData = EEGdata(group == 1, :, :);
 
 controlERP   = squeeze(mean(controlData, 1));
 treatmentERP = squeeze(mean(treatmentData, 1));
@@ -309,6 +304,7 @@ disp(designTable(1:10,:));
 
 %% ==========================================================
 % Save dataset
+% Only EEGdata and designTable are saved
 %% ==========================================================
 
 if ~exist('../data', 'dir')
@@ -316,21 +312,8 @@ if ~exist('../data', 'dir')
 end
 
 save('../data/02_simulated_between_subject_covariate_EEG.mat', ...
-     'data', ...
-     'group', ...
-     'covariate', ...
-     'designTable', ...
-     'times', ...
-     'effectChans', ...
-     'effectChanLabels', ...
-     'chanlocs_EEG', ...
-     'condNames', ...
-     'noiseSD', ...
-     'controlAmp', ...
-     'treatmentAmp', ...
-     'betaCov', ...
-     'groupDiff', ...
-     'truthDiff');
- 
+     'EEGdata', ...
+     'designTable');
 
 disp('Dataset saved: ../data/02_simulated_between_subject_covariate_EEG.mat');
+disp('Saved variables: EEGdata, designTable');

@@ -1,14 +1,18 @@
 %% ==========================================================
 % TFCE for between-subject design with covariate
-% -1 = Control, 1 = Treatment
+%
+% Input file contains only:
+%   EEGdata
+%   designTable
+%
 % Model:
-% EEG ~ Covariate + Group
+%   EEG ~ Covariate + Group
 %
 % Test:
-% Group effect, adjusted for covariate
+%   Group effect, adjusted for covariate
 %
 % Permutation:
-% Freedman-Lane permutation
+%   Freedman-Lane permutation
 %% ==========================================================
 
 clear; clc; close all;
@@ -18,7 +22,15 @@ fprintf('\nStarting TFCE analysis...\n');
 % Load simulated data
 %% ==========================================================
 
-load('../data/02_simulated_between_subject_covariate_EEG.mat');
+load('../data/02_simulated_between_subject_covariate_EEG.mat', ...
+     'EEGdata', 'designTable');
+
+data = EEGdata;
+
+group     = designTable.GroupCode;
+covariate = designTable.Covariate;
+
+times = -200:4:800;
 
 %% ==========================================================
 % Load channel locations
@@ -52,41 +64,66 @@ e_loc = chanlocs_1020(idx);
 
 [nSubj, nChan, nTime] = size(data);
 
-group = group(:);
+group     = group(:);
 covariate = covariate(:);
 
+if height(designTable) ~= nSubj
+    error('Number of rows in designTable does not match number of subjects.');
+end
+
 if length(group) ~= nSubj
-    error('group length does not match number of subjects.');
+    error('GroupCode length does not match number of subjects.');
 end
 
 if length(covariate) ~= nSubj
-    error('covariate length does not match number of subjects.');
+    error('Covariate length does not match number of subjects.');
+end
+
+if length(e_loc) ~= nChan
+    error('Number of channel locations does not match number of channels.');
+end
+
+if length(times) ~= nTime
+    error('Length of times does not match number of time points.');
+end
+
+if sum(group == -1) == 0 || sum(group == 1) == 0
+    error('GroupCode must contain both -1 = Control and 1 = Treatment.');
 end
 
 %% ==========================================================
 % Step 1: Observed t-map
 %% ==========================================================
+
 fprintf('Step 1: Computing observed t-statistic map...\n');
 
-X = [covariate, group];
+X     = [covariate, group];
 X_red = covariate;
+
 t_Obs = zeros(nChan, nTime);
 
 for ch = 1:nChan
     for tpoint = 1:nTime
 
         Y = double(data(:, ch, tpoint));
-        lm_local = fitlm(X,Y);
+
+        lm_local = fitlm(X, Y);
+
         % Column 3 = Group coefficient
-        t_Obs(ch,tpoint) = lm_local.Coefficients.tStat(3);
+        % Intercept = column 1
+        % Covariate = column 2
+        % Group = column 3
+        t_Obs(ch, tpoint) = lm_local.Coefficients.tStat(3);
 
     end
 end
 
 fprintf('Observed t-statistic map completed.\n');
+
 %% ==========================================================
 % Step 2: Observed TFCE map
 %% ==========================================================
+
 fprintf('Step 2: Computing observed TFCE map...\n');
 
 ChN = ept_ChN2(e_loc);
@@ -95,13 +132,13 @@ E_H = [0.66, 2];
 TFCE_Obs = ept_mex_TFCE2D(t_Obs, ChN, E_H);
 
 fprintf('Observed TFCE map completed.\n');
+
 %% ==========================================================
 % Step 3: Freedman-Lane permutation
 %% ==========================================================
-% Reduced model: intercept + covariate
 
 nPerm = 999;
-TFCE_permMax = nan(nPerm,1);
+TFCE_permMax = nan(nPerm, 1);
 
 fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
 
@@ -116,24 +153,29 @@ parfor p = 1:nPerm
 
             Y = double(data(:, ch, tpoint));
 
-             % Reduced model: EEG ~ Covariate
+            % Reduced model: EEG ~ Covariate
             lm_red = fitlm(X_red, Y);
+
             Y_hat_red = lm_red.Fitted;
             resid_red = lm_red.Residuals.Raw;
 
             % Freedman-Lane permuted response
             Y_perm = Y_hat_red + resid_red(perm_idx);
 
-            % Full model on permuted data: EEG_perm ~ Covariate + Group
+            % Full model on permuted data:
+            % EEG_perm ~ Covariate + Group
             lm_perm = fitlm(X, Y_perm);
-            perm_t_local(ch,tpoint) = lm_perm.Coefficients.tStat(3);
+
+            % Column 3 = Group coefficient
+            perm_t_local(ch, tpoint) = lm_perm.Coefficients.tStat(3);
 
         end
     end
-    
+
     fprintf('At the %dth permutation\n', p);
 
     TFCE_perm = ept_mex_TFCE2D(perm_t_local, ChN, E_H);
+
     TFCE_permMax(p) = max(abs(TFCE_perm(:)));
 
 end
@@ -157,8 +199,8 @@ P_Values = nan(nChan, nTime);
 for ch = 1:nChan
     for tpoint = 1:nTime
 
-        P_Values(ch,tpoint) = ...
-            (sum(TFCE_permMax >= abs(TFCE_Obs(ch,tpoint))) + 1) / ...
+        P_Values(ch, tpoint) = ...
+            (sum(TFCE_permMax >= abs(TFCE_Obs(ch, tpoint))) + 1) / ...
             (nPerm + 1);
 
     end
@@ -170,6 +212,7 @@ fprintf('Critical TFCE value = %.4f\n', critTFCE);
 %% ==========================================================
 % Step 5: Store results
 %% ==========================================================
+
 fprintf('Step 5: Storing results...\n');
 
 Results = struct();
@@ -184,8 +227,11 @@ Results.alpha     = alpha;
 Results.nPerm     = nPerm;
 Results.model     = 'EEG ~ Covariate + Group';
 Results.test      = 'Group effect adjusted for covariate';
+Results.times     = times;
+Results.e_loc     = e_loc;
 
 fprintf('Results stored.\n');
+
 %% ==========================================================
 % Step 6: Plot significant effects
 %% ==========================================================
@@ -215,7 +261,32 @@ title('TFCE-corrected Group Effect Adjusted for Covariate');
 colorbar;
 
 %% ==========================================================
-% Step 7: Save results
+% Step 7: Plot observed TFCE values
+%% ==========================================================
+
+figure;
+
+imagesc(times, 1:nChan, TFCE_Obs);
+axis xy;
+
+xlim([-200 800]);
+
+set(gca, ...
+    'YTick', 1:nChan, ...
+    'YTickLabel', {e_loc.labels}, ...
+    'XTick', -200:200:800, ...
+    'TickLength', [0 0], ...
+    'FontSize', 15, ...
+    'FontName', 'Arial');
+
+xlabel('Time (ms)');
+ylabel('Channel');
+title('Observed TFCE Map: Group Effect Adjusted for Covariate');
+
+colorbar;
+
+%% ==========================================================
+% Step 8: Save results
 %% ==========================================================
 
 if ~exist('../results', 'dir')
@@ -223,15 +294,7 @@ if ~exist('../results', 'dir')
 end
 
 save('../results/02_TFCE_between_subject_covariate_results.mat', ...
-     'Results', ...
-     't_Obs', ...
-     'TFCE_Obs', ...
-     'TFCE_permMax', ...
-     'critTFCE', ...
-     'P_Values', ...
-     'Mask', ...
-     'times', ...
-     'e_loc');
+     'Results');
 
 disp('TFCE covariate-adjusted between-subject analysis completed.');
-
+disp('Saved results: ../results/02_TFCE_between_subject_covariate_results.mat');
