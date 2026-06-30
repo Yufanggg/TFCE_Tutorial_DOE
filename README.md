@@ -18,9 +18,13 @@ This project aims to inform cognitive neuroscientist of adapting TFCE to EEG/ERP
 4. Simple fully-crossed experimental structure (e.g., within-subject and within item)
 
 ## Table of Contents:
--[Simulated Data](#simulated-data)
+-[Simulated Data](#Data Simulation)
 
--[MATLAB Code](#matlab)
+-[MATLAB Code](#MATLAB)
+
+-[Python Code] (#Python)
+
+-[R Code] (#R)
 
 
 The respo include MATLAB, R, and Python implemtation of TFCE.
