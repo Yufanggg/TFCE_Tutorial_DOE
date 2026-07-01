@@ -526,9 +526,11 @@ fprintf('Permutation testing completed.\n');
 fprintf('Computing TFCE-corrected p-value map...\n');
 alpha = 0.05;
 
-critTFCE = prctile(TFCE_permMax, 100 * (1 - alpha));
+nPerm = length(TFCE_permMax);
+maxTFCE = sort([TFCE_permMax;max(abs(TFCE_Obs(:)))]);
+maxTFCEcrit = maxTFCE(round(nPerm*(1-Alpha)));
 
-Mask = abs(TFCE_Obs) >= critTFCE;
+Mask = abs(TFCE_Obs) >= maxTFCEcrit;
 
 P_Values = nan(nChan, nTime);
 
@@ -540,7 +542,7 @@ for ch = 1:nChan
 end
 
 fprintf('TFCE-corrected significance completed.\n');
-fprintf('Critical TFCE value = %.4f\n', critTFCE);
+fprintf('Critical TFCE value = %.4f\n', maxTFCEcrit);
 
 %% ==========================================================
 % Step 5: Store results
