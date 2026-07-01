@@ -269,13 +269,20 @@ fprintf('\nPermutation testing completed.\n');
 
 fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
-critTFCE_Group = prctile(TFCE_permMax_Group, 100 * (1 - alpha));
-critTFCE_Cond  = prctile(TFCE_permMax_Cond,  100 * (1 - alpha));
-critTFCE_Int   = prctile(TFCE_permMax_Int,   100 * (1 - alpha));
+nPerm = length(TFCE_permMax_Group);
+maxTFCE_Group = sort([TFCE_permMax_Group;max(abs(TFCE_Obs_Group(:)))]);
+maxTFCEcrit_Group = maxTFCE_Group(round(nPerm*(1-Alpha)));
 
-Mask_Group = abs(TFCE_Obs_Group) >= critTFCE_Group;
-Mask_Cond  = abs(TFCE_Obs_Cond)  >= critTFCE_Cond;
-Mask_Int   = abs(TFCE_Obs_Int)   >= critTFCE_Int;
+maxTFCE_Cond = sort([TFCE_permMax_Cond;max(abs(TFCE_Obs_Cond(:)))]);
+maxTFCEcrit_Cond = maxTFCE_Cond(round(nPerm*(1-Alpha)));
+
+maxTFCE_Int = sort([TFCE_permMax_Int;max(abs(TFCE_Obs_Int(:)))]);
+maxTFCEcrit_Int = maxTFCE_Int(round(nPerm*(1-Alpha)));
+
+
+Mask_Group = abs(TFCE_Obs_Group) >= maxTFCEcrit_Group;
+Mask_Cond  = abs(TFCE_Obs_Cond)  >= maxTFCEcrit_Cond;
+Mask_Int   = abs(TFCE_Obs_Int)   >= maxTFCEcrit_Int;
 
 P_Values_Group = nan(nChan, nTime);
 P_Values_Cond  = nan(nChan, nTime);
@@ -303,21 +310,21 @@ Results = struct();
 Results.Obs_Group       = t_Obs_Group;
 Results.TFCE_Obs_Group  = TFCE_Obs_Group;
 Results.TFCE_Null_Group = TFCE_permMax_Group;
-Results.critTFCE_Group  = critTFCE_Group;
+Results.maxTFCEcrit_Group  = maxTFCEcrit_Group;
 Results.P_Values_Group  = P_Values_Group;
 Results.Mask_Group      = Mask_Group;
 
 Results.Obs_Cond       = t_Obs_Cond;
 Results.TFCE_Obs_Cond  = TFCE_Obs_Cond;
 Results.TFCE_Null_Cond = TFCE_permMax_Cond;
-Results.critTFCE_Cond  = critTFCE_Cond;
+Results.maxTFCEcrit_Cond  = maxTFCEcrit_Cond;
 Results.P_Values_Cond  = P_Values_Cond;
 Results.Mask_Cond      = Mask_Cond;
 
 Results.Obs_Int       = t_Obs_Int;
 Results.TFCE_Obs_Int  = TFCE_Obs_Int;
 Results.TFCE_Null_Int = TFCE_permMax_Int;
-Results.critTFCE_Int  = critTFCE_Int;
+Results.maxTFCEcrit_Int  = maxTFCEcrit_Int;
 Results.P_Values_Int  = P_Values_Int;
 Results.Mask_Int      = Mask_Int;
 

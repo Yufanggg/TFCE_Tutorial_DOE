@@ -156,10 +156,11 @@ fprintf('\nPermutation testing completed.\n');
 fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
 alpha = 0.05;
+nPerm = length(TFCE_permMax);
+maxTFCE = sort([TFCE_permMax;max(abs(TFCE_Obs(:)))]);
+maxTFCEcrit = maxTFCE(round(nPerm*(1-Alpha)));
 
-critTFCE = prctile(TFCE_permMax, 100 * (1 - alpha));
-
-Mask = abs(TFCE_Obs) >= critTFCE;
+Mask = abs(TFCE_Obs) >= maxTFCEcrit;
 
 P_Values = zeros(nChan, nTime);
 
@@ -174,7 +175,7 @@ for ch = 1:nChan
 end
 
 fprintf('TFCE-corrected significance completed.\n');
-fprintf('Critical TFCE value = %.4f\n', critTFCE);
+fprintf('Critical TFCE value = %.4f\n', maxTFCEcrit);
 %% ==========================================================
 % Step 5: Store results
 %% ==========================================================
@@ -185,7 +186,7 @@ Results = struct();
 Results.tObs         = tObs;
 Results.TFCE_Obs     = TFCE_Obs;
 Results.TFCE_Null    = TFCE_permMax;
-Results.critTFCE     = critTFCE;
+Results.maxTFCEcrit     = maxTFCEcrit;
 Results.P_Values     = P_Values;
 Results.Mask         = Mask;
 Results.alpha        = alpha;

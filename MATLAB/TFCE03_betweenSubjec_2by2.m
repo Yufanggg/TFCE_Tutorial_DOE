@@ -203,12 +203,16 @@ fprintf('\nPermutation testing completed.\n');
 fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
 alpha = 0.05;
+nPerm = length(TFCE_permMax_var1);
 
-critTFCE_var1 = prctile(TFCE_permMax_var1, 100 * (1 - alpha));
-critTFCE_var2 = prctile(TFCE_permMax_var2, 100 * (1 - alpha));
+maxTFCE_var1 = sort([TFCE_permMax_var1;max(abs(TFCE_Obs_var1(:)))]);
+maxTFCEcrit_var1 = TFCE_permMax_var1(round(nPerm*(1-Alpha)));
 
-Mask_var1 = abs(TFCE_Obs_var1) >= critTFCE_var1;
-Mask_var2 = abs(TFCE_Obs_var2) >= critTFCE_var2;
+maxTFCE_var2 = sort([TFCE_permMax_var2;max(abs(TFCE_Obs_var2(:)))]);
+maxTFCEcrit_var2 = TFCE_permMax_var2(round(nPerm*(1-Alpha)));
+
+Mask_var1 = abs(TFCE_Obs_var1) >= maxTFCEcrit_var1;
+Mask_var2 = abs(TFCE_Obs_var2) >= maxTFCEcrit_var2;
 
 P_Values_var1 = nan(nChan, nTime);
 P_Values_var2 = nan(nChan, nTime);
@@ -238,14 +242,14 @@ Results = struct();
 Results.Obs_var1       = t_Obs_var1;
 Results.TFCE_Obs_var1  = TFCE_Obs_var1;
 Results.TFCE_Null_var1 = TFCE_permMax_var1;
-Results.critTFCE_var1  = critTFCE_var1;
+Results.maxTFCEcrit_var1  = maxTFCEcrit_var1;
 Results.P_Values_var1  = P_Values_var1;
 Results.Mask_var1      = Mask_var1;
 
 Results.Obs_var2       = t_Obs_var2;
 Results.TFCE_Obs_var2  = TFCE_Obs_var2;
 Results.TFCE_Null_var2 = TFCE_permMax_var2;
-Results.critTFCE_var2  = critTFCE_var2;
+Results.maxTFCEcrit_var2  = maxTFCEcrit_var2;
 Results.P_Values_var2  = P_Values_var2;
 Results.Mask_var2      = Mask_var2;
 
