@@ -1,10 +1,17 @@
-import mne
-import matplotlib.pyplot as plt
+#!/usr/bin/env python
+
+# Authors: The MNE-Python contributors.
+# License: BSD-3-Clause
+# Copyright the MNE-Python contributors.
+
 import numpy as np
 from scipy import ndimage, sparse
+from scipy.sparse.csgraph import connected_components
+from scipy.stats import f as fstat
+from scipy.stats import t as tstat
 
-from ..fixes import jit
-from ..utils import (
+from mne.fixes import _reshape_view, has_numba, jit
+from mne.utils import (
     ProgressBar,
     _check_option,
     _pl,
@@ -15,139 +22,20 @@ from ..utils import (
     verbose,
     warn,
 )
-
-class TFCE_trans:
-    def __init__(self, tmap):
-        self.tmap = tmap
-
-    def chT_neg(self, n_ch=32, montage="standard_1020", sfreq=512):
-        """
-        Generate the EEG channel adjacency matrix.
-
-        Parameters
-        ----------
-        n_ch : int
-             Number of EEG channels (32 or 64).
-        montage : str
-            Name of the MNE montage. Default is "standard_1020".
-        sfreq : float
-            Sampling frequency (only required for creating the Info object).
-
-        Returns
-        -------
-        ch_adjacency : scipy.sparse.csr_matrix
-            Channel adjacency matrix.
-        ch_names : list of str
-            Channel names corresponding to the adjacency matrix.
-        """
-
-        if n_ch == 32:
-            ch_names = [
-            'Fp1','Fp2',
-            'F7','F3','Fz','F4','F8',
-            'FC5','FC1','FC2','FC6',
-            'T7','C3','Cz','C4','T8',
-            'CP5','CP1','CP2','CP6',
-            'P7','P3','Pz','P4','P8',
-            'PO9','O1','Oz','O2','PO10',
-            'TP9','TP10'
-        ]
-
-        elif n_ch == 64:
-            ch_names = [
-                'Fp1','AF7','AF3','F1','F3','F5','F7',
-                'FT7','FC5','FC3','FC1','C1','C3','C5','T7',
-                'TP7','CP5','CP3','CP1','P1','P3','P5','P7',
-                'P9','PO7','PO3','O1','Iz','Oz','POz','Pz','CPz',
-                'Fpz','Fp2','AF8','AF4','AFz','Fz','F2','F4','F6','F8',
-                'FT8','FC6','FC4','FC2','FCz','Cz','C2','C4','C6','T8',
-                'TP8','CP6','CP4','CP2','P2','P4','P6','P8','P10',
-                'PO8','PO4','O2'
-            ]
-
-        else:
-            raise ValueError("Only 32- and 64-channel layouts are currently supported.")
-
-        info = mne.create_info(
-            ch_names=ch_names,
-            sfreq=sfreq,
-            ch_types="eeg",
-        )
-
-        info.set_montage(montage)
-
-        ch_adj, ch_names = mne.channels.find_ch_adjacency(
-            info,
-            ch_type="eeg",
-        )
-
-        adj = mne.stats.combine_adjacency(n_times, ch_adj)
-
-        return info, ch_adj, ch_names, adj
-
-
-
-def _get_components(x_in, adjacency, return_list=True):
-    """Get connected components from a mask and a adjacency matrix."""
-    if adjacency is False:
-        components = np.arange(len(x_in))
-    else:
-        mask = np.logical_and(x_in[adjacency.row], x_in[adjacency.col])
-        data = adjacency.data[mask]
-        row = adjacency.row[mask]
-        col = adjacency.col[mask]
-        shape = adjacency.shape
-        idx = np.where(x_in)[0]
-        row = np.concatenate((row, idx))
-        col = np.concatenate((col, idx))
-        data = np.concatenate((data, np.ones(len(idx), dtype=data.dtype)))
-        adjacency = sparse.coo_array((data, (row, col)), shape=shape)
-        _, components = connected_components(adjacency)
-    if return_list:
-        start = np.min(components)
-        stop = np.max(components)
-        comp_list = [list() for i in range(start, stop + 1, 1)]
-        mask = np.zeros(len(comp_list), dtype=bool)
-        for ii, comp in enumerate(components):
-            comp_list[comp].append(ii)
-            mask[comp] += x_in[ii]
-        clusters = [np.array(k) for k, m in zip(comp_list, mask) if m]
-        return clusters
-    else:
-        return components
-
-@jit()
-def _masked_sum(x, c):
-    return np.sum(x[c])
-
-@jit()
-def _masked_sum_power(x, c, t_power):
-    return np.sum(np.sign(x[c]) * np.abs(x[c]) ** t_power)
-
-def _find_clusters_1dir(x, x_in, adjacency, max_step, t_power, ndimage):
-    """Actually call the clustering algorithm."""
-    if x.ndim > 1:
-        raise Exception(
-            "Data should be 1D when using a adjacency to define clusters."
-        )
-    if isinstance(adjacency, sparse.spmatrix):
-        adjacency = sparse.coo_array(adjacency)
-
-    if sparse.issparse(adjacency) or adjacency is False:
-        clusters = _get_components(x_in, adjacency)
-    # elif isinstance(adjacency, list):  # use temporal adjacency
-    #     clusters = _get_clusters_st(x_in, adjacency, max_step)
-    else:
-        raise TypeError(
-            f"adjacency must be a sparse array or list, got {type(adjacency)}"
-        )
-    if t_power == 1:
-        sums = [_masked_sum(x, c) for c in clusters]
-    else:
-        sums = [_masked_sum_power(x, c, t_power) for c in clusters]
-
-    return clusters, np.atleast_1d(sums)
-
+# from ..parallel import parallel_func
+# from ..source_estimate import MixedSourceEstimate, SourceEstimate, VolSourceEstimate
+# from ..source_space import SourceSpaces
+# from ..utils import (
+#     ProgressBar,
+#     _check_option,
+#     _pl,
+#     _validate_type,
+#     check_random_state,
+#     logger,
+#     split_list,
+#     verbose,
+#     warn,
+# )
 
 
 def _find_clusters(
@@ -157,7 +45,6 @@ def _find_clusters(
     adjacency=None,
     max_step=1,
     include=None,
-    partitions=None,
     t_power=1,
     show_info=False,
 ):
@@ -190,9 +77,6 @@ def _find_clusters(
     include : 1D bool array or None
         Mask to apply to the data of points to cluster. If None, all points
         are used.
-    partitions : array of int or None
-        An array (same size as X) of integers indicating which points belong
-        to each partition.
     t_power : float
         Power to raise the statistical values (usually t-values) by before
         summing (sign will be retained). Note that t_power == 0 will give a
@@ -204,9 +88,6 @@ def _find_clusters(
 
     Returns
     -------
-    clusters : list of slices or list of arrays (boolean masks)
-        We use slices for 1D signals and mask to multidimensional
-        arrays. None is returned if threshold is a dict (TFCE)
     sums : array
         Sum of x values in clusters.
     """
@@ -214,7 +95,6 @@ def _find_clusters(
 
     x = np.asanyarray(x)
 
-    # if not np.isscalar(threshold):
     if not isinstance(threshold, dict):
         raise TypeError(
             "threshold must be a number, or a dict for "
@@ -222,8 +102,7 @@ def _find_clusters(
         )
     if not all(key in threshold for key in ["start", "step"]):
         raise KeyError('threshold, if dict, must have at least "start" and "step"')
-        
-    # tfce = True
+    tfce = True
     use_x = x[np.isfinite(x)]
     if use_x.size == 0:
         raise RuntimeError(
@@ -261,6 +140,7 @@ def _find_clusters(
             )
     scores = np.zeros(x.size)
 
+
     # include all points by default
     if include is None:
         include = np.ones(x.shape, dtype=bool)
@@ -290,10 +170,11 @@ def _find_clusters(
             if np.any(x_in):
                 out = _find_clusters_1dir(
                     x, x_in, adjacency, max_step, t_power, ndimage
-                )
+                ) #partitions = None
                 clusters += out[0]
                 sums.append(out[1])
-
+        # the score of each point is the sum of the h^H * e^E for each
+        # supporting section "rectangle" h x e.
         if ti == 0:
             h = abs(thresh)
         else:
@@ -310,93 +191,297 @@ def _find_clusters(
             else:
                 len_c = len(c)
             scores[c] += h * (len_c**e_power)
-
+    # turn sums into array
     sums = scores
-    clusters = None  # clusters construction is made in _permutation_cluster_test
 
-    return clusters, sums
-
-
-def main():
-    n_ch = 32
-
-    info, ch_adj, ch_names = ch_neg(n_ch=n_ch, return_sparse=True)
-    print(ch_adj, ch_names)
-    print(type(ch_adj))
-
-    # fig = mne.viz.plot_ch_adjacency(
-    #     info,
-    #     ch_adj,
-    #     ch_names,
-    #     show = False)
-    # plt.show()
-
-    mne.viz.plot_sensors(
-        info,
-        kind="topomap",
-        show_names=True
-        )
-    plt.show()
-
-    print(f"Number of channels: {len(ch_names)}")
-    print(f"First 10 channels: {ch_names[:10]}")
+    return sums
 
 
-if __name__ == "__main__":
-    main()
-# def tfce_2d(stat_map, dh = )
-# epochs = mne.Epochs(
-#     raw,
-#     events,
-#     event_id,
-#     tmin,
-#     tmax,
-#     picks=picks,
-#     decim=2,  # just for speed!
-#     baseline=None,
-#     reject=reject,
-#     preload=True,
-# )
+def _find_clusters_1dir(x, x_in, adjacency, max_step, t_power, ndimage):
+    """Actually call the clustering algorithm."""
+    if adjacency is None:
+        labels, n_labels = ndimage.label(x_in)
 
-# # Obtain the data as a 3D matrix and transpose it such that
-# # the dimensions are as expected for the cluster permutation test:
-# # n_epochs × n_times × n_channels
-# X = [epochs[event_name].get_data(copy=False) for event_name in event_id]
-# X = [np.transpose(x, (0, 2, 1)) for x in X]
+        if x.ndim == 1:
+            # slices
+            clusters = ndimage.find_objects(labels, n_labels)
+            # equivalent to if len(clusters) == 0 but faster
+            if not clusters:
+                sums = list()
+            else:
+                index = list(range(1, n_labels + 1))
+                if t_power == 1:
+                    sums = ndimage.sum(x, labels, index=index)
+                else:
+                    sums = ndimage.sum(
+                        np.sign(x) * np.abs(x) ** t_power, labels, index=index
+                    )
+        else:
+            # boolean masks (raveled)
+            clusters = list()
+            sums = np.empty(n_labels)
+            for label in range(n_labels):
+                c = labels == label + 1
+                clusters.append(c.ravel())
+                if t_power == 1:
+                    sums[label] = np.sum(x[c])
+                else:
+                    sums[label] = np.sum(np.sign(x[c]) * np.abs(x[c]) ** t_power)
+    else:
+        if x.ndim > 1:
+            raise Exception(
+                "Data should be 1D when using a adjacency to define clusters."
+            )
+        if isinstance(adjacency, sparse.spmatrix):
+            adjacency = sparse.coo_array(adjacency)
+        if sparse.issparse(adjacency) or adjacency is False:
+            clusters = _get_components(x_in, adjacency)
+        elif isinstance(adjacency, list):  # use temporal adjacency
+            clusters = _get_clusters_st(x_in, adjacency, max_step)
+        else:
+            raise TypeError(
+                f"adjacency must be a sparse array or list, got {type(adjacency)}"
+            )
+        if t_power == 1:
+            sums = [_masked_sum(x, c) for c in clusters]
+        else:
+            sums = [_masked_sum_power(x, c, t_power) for c in clusters]
 
-# adjacency, ch_names = find_ch_adjacency(epochs.info, ch_type="mag")
+    return clusters, np.atleast_1d(sums)
+
+@jit()
+def _masked_sum(x, c):
+    return np.sum(x[c])
 
 
-# # We are running an F test, so we look at the upper tail
-# # see also: https://stats.stackexchange.com/a/73993
-# tail = 1
+@jit()
+def _masked_sum_power(x, c, t_power):
+    return np.sum(np.sign(x[c]) * np.abs(x[c]) ** t_power)
 
-# # We want to set a critical test statistic (here: F), to determine when
-# # clusters are being formed. Using Scipy's percent point function of the F
-# # distribution, we can conveniently select a threshold that corresponds to
-# # some alpha level that we arbitrarily pick.
-# alpha_cluster_forming = 0.001
 
-# # For an F test we need the degrees of freedom for the numerator
-# # (number of conditions - 1) and the denominator (number of observations
-# # - number of conditions):
-# n_conditions = len(event_id)
-# n_observations = len(X[0])
-# dfn = n_conditions - 1
-# dfd = n_observations - n_conditions
+def _get_components(x_in, adjacency, return_list=True):
+    """Get connected components from a mask and a adjacency matrix."""
+    if adjacency is False:
+        components = np.arange(len(x_in))
+    else:
+        mask = np.logical_and(x_in[adjacency.row], x_in[adjacency.col])
+        data = adjacency.data[mask]
+        row = adjacency.row[mask]
+        col = adjacency.col[mask]
+        shape = adjacency.shape
+        idx = np.where(x_in)[0]
+        row = np.concatenate((row, idx))
+        col = np.concatenate((col, idx))
+        data = np.concatenate((data, np.ones(len(idx), dtype=data.dtype)))
+        adjacency = sparse.coo_array((data, (row, col)), shape=shape)
+        _, components = connected_components(adjacency)
+    if return_list:
+        start = np.min(components)
+        stop = np.max(components)
+        comp_list = [list() for i in range(start, stop + 1, 1)]
+        mask = np.zeros(len(comp_list), dtype=bool)
+        for ii, comp in enumerate(components):
+            comp_list[comp].append(ii)
+            mask[comp] += x_in[ii]
+        clusters = [np.array(k) for k, m in zip(comp_list, mask) if m]
+        return clusters
+    else:
+        return components
 
-# # Note: we calculate 1 - alpha_cluster_forming to get the critical value
-# # on the right tail
-# f_thresh = scipy.stats.f.ppf(1 - alpha_cluster_forming, dfn=dfn, dfd=dfd)
 
-# # run the cluster based permutation analysis
-# cluster_stats = spatio_temporal_cluster_test(
-#     X,
-#     n_permutations=1000,
-#     threshold=f_thresh,
-#     tail=tail,
-#     n_jobs=None,
-#     buffer_size=None,
-#     adjacency=adjacency,
-# )
-# F_obs, clusters, p_values, _ = cluster_stats
+def _get_clusters_st(x_in, neighbors, max_step=1):
+    """Choose the most efficient version."""
+    n_src = len(neighbors)
+    n_times = x_in.size // n_src
+    cl_goods = np.where(x_in)[0]
+    if len(cl_goods) > 0:
+        keepers = [np.array([], dtype=int)] * n_times
+        row, col = np.unravel_index(cl_goods, (n_times, n_src))
+        lims = [0]
+        if isinstance(row, int):
+            row = [row]
+            col = [col]
+        else:
+            order = np.argsort(row)
+            row = row[order]
+            col = col[order]
+            lims += (np.where(np.diff(row) > 0)[0] + 1).tolist()
+            lims.append(len(row))
+
+        for start, end in zip(lims[:-1], lims[1:]):
+            keepers[row[start]] = np.sort(col[start:end])
+        if max_step == 1:
+            return _get_clusters_st_1step(keepers, neighbors)
+        else:
+            return _get_clusters_st_multistep(keepers, neighbors, max_step)
+    else:
+        return []
+    
+
+def _get_clusters_st_1step(keepers, neighbors):
+    """Directly calculate clusters.
+
+    This uses knowledge that time points are
+    only adjacent to immediate neighbors for data organized as time x space.
+
+    This algorithm time increases linearly with the number of time points,
+    compared to with the square for the standard (graph) algorithm.
+
+    This algorithm creates clusters for each time point using a method more
+    efficient than the standard graph method (but otherwise equivalent), then
+    combines these clusters across time points in a reasonable way.
+    """
+    n_src = len(neighbors)
+    n_times = len(keepers)
+    # start cluster numbering at 1 for diffing convenience
+    enum_offset = 1
+    check = np.zeros((n_times, n_src), dtype=int)
+    clusters = list()
+    for ii, k in enumerate(keepers):
+        c = _get_clusters_spatial(k, neighbors)
+        for ci, cl in enumerate(c):
+            check[ii, cl] = ci + enum_offset
+        enum_offset += len(c)
+        # give them the correct offsets
+        c = [cl + ii * n_src for cl in c]
+        clusters += c
+
+    # now that each cluster has been assigned a unique number, combine them
+    # by going through each time point
+    for check1, check2, k in zip(check[:-1], check[1:], keepers[:-1]):
+        # go through each one that needs reassignment
+        inds = k[check2[k] - check1[k] > 0]
+        check1_d = check1[inds]
+        n = check2[inds]
+        nexts = np.unique(n)
+        for num in nexts:
+            prevs = check1_d[n == num]
+            base = np.min(prevs)
+            for pr in np.unique(prevs[prevs != base]):
+                _reassign(check1, clusters, base, pr)
+            # reassign values
+            _reassign(check2, clusters, base, num)
+    # clean up clusters
+    clusters = [cl for cl in clusters if len(cl) > 0]
+    return clusters
+
+def _get_clusters_spatial(s, neighbors):
+    """Form spatial clusters using neighbor lists.
+
+    This is equivalent to _get_components with n_times = 1, with a properly
+    reconfigured adjacency matrix (formed as "neighbors" list)
+    """
+    # s is a vector of spatial indices that are significant, like:
+    #     s = np.where(x_in)[0]
+    # for x_in representing a single time-instant
+    r = np.ones(s.shape, bool)
+    clusters = list()
+    next_ind = 0 if s.size > 0 else -1
+    while next_ind >= 0:
+        # put first point in a cluster, adjust remaining
+        t_inds = [next_ind]
+        r[next_ind] = 0
+        icount = 1  # count of nodes in the current cluster
+        while icount <= len(t_inds):
+            ind = t_inds[icount - 1]
+            # look across other vertices
+            buddies = _get_buddies(r, s, neighbors[s[ind]])
+            t_inds.extend(buddies)
+            icount += 1
+        next_ind = _where_first(r)
+        clusters.append(s[t_inds])
+    return clusters
+
+
+def _get_clusters_st_multistep(keepers, neighbors, max_step=1):
+    """Directly calculate clusters.
+
+    This uses knowledge that time points are
+    only adjacent to immediate neighbors for data organized as time x space.
+
+    This algorithm time increases linearly with the number of time points,
+    compared to with the square for the standard (graph) algorithm.
+    """
+    n_src = len(neighbors)
+    n_times = len(keepers)
+    t_border = list()
+    t_border.append(0)
+    for ki, k in enumerate(keepers):
+        keepers[ki] = k + ki * n_src
+        t_border.append(t_border[ki] + len(k))
+    t_border = np.array(t_border)
+    keepers = np.concatenate(keepers)
+    v = keepers
+    t, s = divmod(v, n_src)
+
+    r = np.ones(t.shape, dtype=bool)
+    clusters = list()
+    inds = np.arange(t_border[0], t_border[n_times])
+    next_ind = 0 if s.size > 0 else -1
+    while next_ind >= 0:
+        # put first point in a cluster, adjust remaining
+        t_inds = [next_ind]
+        r[next_ind] = False
+        icount = 1  # count of nodes in the current cluster
+        # look for significant values at the next time point,
+        # same sensor, not placed yet, and add those
+        while icount <= len(t_inds):
+            ind = t_inds[icount - 1]
+            selves = _get_selves(r, s, ind, inds, t, t_border, max_step)
+
+            # look at current time point across other vertices
+            these_inds = inds[t_border[t[ind]] : t_border[t[ind] + 1]]
+            buddies = _get_buddies(r, s, neighbors[s[ind]], these_inds)
+
+            t_inds += buddies + selves
+            icount += 1
+        next_ind = _where_first(r)
+        clusters.append(v[t_inds])
+
+    return clusters
+
+
+def _reassign(check, clusters, base, num):
+    """Reassign cluster numbers."""
+    # reconfigure check matrix
+    check[check == num] = base
+    # concatenate new values into clusters array
+    clusters[base - 1] = np.concatenate((clusters[base - 1], clusters[num - 1]))
+    clusters[num - 1] = np.array([], dtype=int)
+
+
+import numpy as np
+
+# Small channels × time test data
+x = np.array([
+    [0.2, 0.4, 2.1, 2.5, 0.3, 0.1],
+    [0.3, 2.2, 2.6, 2.8, 0.2, 0.1],
+    [0.1, 0.5, 2.0, 2.3, 0.4, 0.2],
+    [0.2, 0.1, 0.3, 0.4, 0.2, 0.1],
+])
+
+threshold = {
+    "start": 0.0,
+    "step": 0.5,
+    "h_power": 2,
+    "e_power": 0.5,
+}
+
+scores = _find_clusters(
+    x=x,
+    threshold=threshold,
+    tail=1,
+    adjacency=None,
+    max_step=1,
+    include=None,
+    t_power=1,
+    show_info=True,
+)
+
+print("Input x shape:", x.shape)
+print("Output scores shape:", scores.shape)
+print("TFCE scores flattened:")
+print(scores)
+
+print("TFCE scores reshaped to channels × time:")
+print(scores.reshape(x.shape))
