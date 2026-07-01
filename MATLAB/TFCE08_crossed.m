@@ -1,26 +1,46 @@
 %% ==========================================================
-% TFCE analysis for fully crossed Subject x Item EEG design
+% TFCE analysis
+% Fully crossed subject-item design
 %
-% Original data:
-%   data = Subjects x Items x Conditions x Channels x Time
+% Input file contains only:
+%   EEGdata
+%   designTable
 %
-% Long-format data:
-%   data_long = Observations x Channels x Time
+% EEGdata:
+%   Subject-item-condition rows x Channels x Time
+%   2400 x 32 x 251
 %
-% Design:
+% designTable:
 %   Subject
 %   Item
-%   ConditionCode: -1 = Control, 1 = Treatment
+%   CondCode    % -1 = Control, 1 = Treatment
+%   CondName
 %
 % Model:
-%   EEG ~ Condition + (1|Subject) + (1|Item)
+%   EEG ~ CondCode + (1|Subject) + (1|Item)
+%
+% Test:
+%   Treatment - Control fixed effect
+%
+% Permutation:
+%   Flip condition labels within each Subject x Item pair
 %% ==========================================================
 
 clear; clc; close all;
+fprintf('\nStarting fully crossed TFCE analysis...\n');
 
-load('../data/08_simulated_fully_crossed_subject_item_EEG.mat');
+%% ==========================================================
+% Load data
+%% ==========================================================
 
-%% Load channel locations
+load('../data/08_simulated_fully_crossed_subject_item_EEG.mat', ...
+     'EEGdata', 'designTable');
+
+times = -200:4:800;
+
+%% ==========================================================
+% Load channel locations
+%% ==========================================================
 
 chanlocs_1020 = readlocs('standard_1005.elc');
 
@@ -44,213 +64,210 @@ end
 
 e_loc = chanlocs_1020(idx);
 
-%% Basic checks
+%% ==========================================================
+% Basic checks
+%% ==========================================================
 
-[nSubj, nItem, nCond, nChan, nTime] = size(data);
+[nRows, nChan, nTime] = size(EEGdata);
 
-if nCond ~= 2
-    error('Expected data format: Subjects x Items x 2 Conditions x Channels x Time');
+Subject  = designTable.Subject(:);
+Item     = designTable.Item(:);
+CondCode = designTable.CondCode(:);
+
+if height(designTable) ~= nRows
+    error('Rows in designTable must match rows in EEGdata.');
 end
 
-%% ==========================================================
-% Step 0: Convert to long format
-%% ==========================================================
+if length(times) ~= nTime
+    error('Length of times does not match number of time points.');
+end
 
-nObs = nSubj * nItem * nCond;
+if length(e_loc) ~= nChan
+    error('Number of channel locations does not match number of channels.');
+end
 
-Subject = zeros(nObs, 1);
-Item = zeros(nObs, 1);
-Condition = zeros(nObs, 1);
+pairID = findgroups(Subject, Item);
+nPairs = max(pairID);
 
-data_long = zeros(nObs, nChan, nTime);
+if nRows ~= nPairs * 2
+    error('Expected exactly two condition rows per Subject x Item pair.');
+end
 
-row = 0;
+for pID = 1:nPairs
 
-for s = 1:nSubj
-    for i = 1:nItem
-        for c = 1:nCond
+    idxPair = pairID == pID;
 
-            row = row + 1;
-
-            Subject(row) = s;
-            Item(row) = i;
-
-            % -1 = Control, 1 = Treatment
-            Condition(row) = 2*c - 3;
-
-            data_long(row,:,:) = squeeze(data(s,i,c,:,:));
-
-        end
+    if sum(idxPair) ~= 2
+        error('Each Subject x Item pair must have exactly two rows.');
     end
+
+    if ~all(sort(CondCode(idxPair)) == [-1; 1])
+        error('Each Subject x Item pair must have one Control (-1) and one Treatment (1).');
+    end
+
 end
 
-Subject = categorical(Subject);
-Item = categorical(Item);
+%% ==========================================================
+% Variables for LME
+%% ==========================================================
 
-designTableLong = table(Subject, Item, Condition);
+SubjectLME = categorical(Subject);
+ItemLME    = categorical(Item);
 
-disp(designTableLong(1:20,:));
+% 0 = Control, 1 = Treatment
+Condition = double(CondCode == 1);
 
 %% ==========================================================
 % Step 1: Observed LME t-map
 %% ==========================================================
 
-fprintf('Computing observed t-map...\n');
+fprintf('Step 1: Computing observed t-statistic map...\n');
 
 t_Obs = zeros(nChan, nTime);
 
 for ch = 1:nChan
-    for tpoint = 1:nTime
+    for tp = 1:nTime
 
-        EEG = double(data_long(:, ch, tpoint));
+        EEG = double(squeeze(EEGdata(:, ch, tp)));
 
-        tbl = table(EEG, Condition, Subject, Item, ...
+        tbl = table(EEG, Condition, SubjectLME, ItemLME, ...
             'VariableNames', {'EEG','Condition','Subject','Item'});
 
         lme = fitlme(tbl, ...
             'EEG ~ Condition + (1|Subject) + (1|Item)');
 
-        t_Obs(ch,tpoint) = lme.Coefficients.tStat(2);
+        % Row 2 = Treatment - Control fixed effect
+        t_Obs(ch,tp) = lme.Coefficients.tStat(2);
 
     end
 end
 
-fprintf('Observed t-map completed.\n');
+fprintf('Observed t-statistic map completed.\n');
 
 %% ==========================================================
-% Step 2: TFCE transform of observed t-map
+% Step 2: Observed TFCE map
 %% ==========================================================
+
+fprintf('Step 2: Computing observed TFCE map...\n');
 
 ChN = ept_ChN2(e_loc);
 E_H = [0.66, 2];
 
 TFCE_Obs = ept_mex_TFCE2D(t_Obs, ChN, E_H);
 
+fprintf('Observed TFCE map completed.\n');
+
 %% ==========================================================
-% Step 3: Permutation test
-%
-% Fully crossed design:
-%   Subject and Item are kept fixed.
-%   Condition labels are swapped within each Subject x Item cell.
-%
-% This preserves:
-%   subject structure,
-%   item structure,
-%   and the paired Control/Treatment comparison.
+% Step 3: Permutation by flipping labels within Subject x Item
 %% ==========================================================
 
-nperms = 999;
+nPerm = 999;
+TFCE_permMax = nan(nPerm,1);
 
-fprintf('Starting block-restricted permutation testing: %d permutations...\n', nperms);
+fprintf('Step 3: Starting condition-label flipping: %d permutations...\n', nPerm);
 
-TFCE_permMax = nan(nperms, 1);
+parfor p = 1:nPerm
 
-parfor p = 1:nperms
+    perm_t = nan(nChan, nTime);
 
-    perm_t_local = zeros(nChan, nTime);
+    CondCode_perm = CondCode;
 
-    %% Swap Control/Treatment within each Subject x Item cell
+    for pID = 1:nPairs
 
-    data_perm = data;
+        idxPair = find(pairID == pID);
 
-    for s = 1:nSubj
-        for i = 1:nItem
-
-            if rand < 0.5
-
-                data_perm(s,i,[1 2],:,:) = ...
-                    data_perm(s,i,[2 1],:,:);
-
-            end
-
+        if rand > 0.5
+            CondCode_perm(idxPair) = flipud(CondCode_perm(idxPair));
         end
+
     end
 
-    %% Convert permuted data to long format
+    Condition_perm = double(CondCode_perm == 1);
 
-    data_perm_long = zeros(nObs, nChan, nTime);
-
-    row = 0;
-
-    for s = 1:nSubj
-        for i = 1:nItem
-            for c = 1:nCond
-
-                row = row + 1;
-                data_perm_long(row,:,:) = squeeze(data_perm(s,i,c,:,:));
-
-            end
-        end
-    end
-
-    %% Compute permuted LME t-map
+    Subject_perm = categorical(Subject);
+    Item_perm    = categorical(Item);
 
     for ch = 1:nChan
-        for tpoint = 1:nTime
+        for tp = 1:nTime
 
-            EEG = double(data_perm_long(:, ch, tpoint));
+            EEG = double(squeeze(EEGdata(:, ch, tp)));
 
-            tbl = table(EEG, Condition, Subject, Item, ...
+            tbl = table(EEG, Condition_perm, Subject_perm, Item_perm, ...
                 'VariableNames', {'EEG','Condition','Subject','Item'});
 
             lme = fitlme(tbl, ...
                 'EEG ~ Condition + (1|Subject) + (1|Item)');
 
-            perm_t_local(ch,tpoint) = lme.Coefficients.tStat(2);
+            perm_t(ch,tp) = lme.Coefficients.tStat(2);
 
         end
     end
 
-    %% TFCE transform and max statistic
+    fprintf('At the %dth permutation\n', p);
 
-    TFCE_perm = ept_mex_TFCE2D(perm_t_local, ChN, E_H);
+    TFCE_perm = ept_mex_TFCE2D(perm_t, ChN, E_H);
 
     TFCE_permMax(p) = max(abs(TFCE_perm(:)));
 
-    fprintf('Finished permutation %d\n', p);
-
 end
 
-fprintf('Permutation testing completed.\n');
+fprintf('\nPermutation testing completed.\n');
 
 %% ==========================================================
 % Step 4: TFCE correction
 %% ==========================================================
 
-Alpha = 0.05;
+fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
-maxTFCEcrit = prctile(TFCE_permMax, 100 * (1 - Alpha));
+alpha = 0.05;
 
-Mask = abs(TFCE_Obs) >= maxTFCEcrit;
+critTFCE = prctile(TFCE_permMax, 100 * (1 - alpha));
+
+Mask = abs(TFCE_Obs) >= critTFCE;
 
 P_Values = nan(nChan, nTime);
 
-for ch = 1:nChan
-    for tpoint = 1:nTime
+for i = 1:numel(TFCE_Obs)
 
-        P_Values(ch,tpoint) = ...
-            (sum(TFCE_permMax >= abs(TFCE_Obs(ch,tpoint))) + 1) / ...
-            (nperms + 1);
+    P_Values(i) = ...
+        (sum(TFCE_permMax >= abs(TFCE_Obs(i))) + 1) / ...
+        (nPerm + 1);
 
-    end
 end
+
+fprintf('TFCE-corrected significance completed.\n');
+fprintf('Critical TFCE value = %.4f\n', critTFCE);
+
+%% ==========================================================
+% Step 5: Store results
+%% ==========================================================
+
+fprintf('Step 5: Storing results...\n');
+
+Results = struct();
 
 Results.Obs          = t_Obs;
 Results.TFCE_Obs     = TFCE_Obs;
-Results.TFCE_permMax = TFCE_permMax;
+Results.TFCE_Null    = TFCE_permMax;
+Results.critTFCE     = critTFCE;
 Results.P_Values     = P_Values;
 Results.Mask         = Mask;
-Results.data_long    = data_long;
-Results.designTable  = designTableLong;
+Results.alpha        = alpha;
+Results.nPerm        = nPerm;
+Results.model        = 'EEG ~ Condition + (1|Subject) + (1|Item)';
+Results.test         = 'Treatment - Control fixed effect';
+Results.permutation  = 'Condition-label flipping within Subject x Item pair';
+Results.times        = times;
+Results.e_loc        = e_loc;
+
+fprintf('Results stored.\n');
 
 %% ==========================================================
-% Step 5: Plot significant observed t-values
+% Step 6: Plot significant observed t-values
 %% ==========================================================
 
-mT = Results.Obs;
-mT(~Results.Mask) = 0;
-
-tick_labels = {e_loc.labels};
+mT = t_Obs;
+mT(~Mask) = 0;
 
 figure;
 
@@ -261,7 +278,7 @@ xlim([-200 800]);
 
 set(gca, ...
     'YTick', 1:nChan, ...
-    'YTickLabel', tick_labels, ...
+    'YTickLabel', {e_loc.labels}, ...
     'XTick', -200:200:800, ...
     'TickLength', [0 0], ...
     'FontSize', 15, ...
@@ -269,24 +286,44 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Significant Condition Effects: Treatment - Control');
+title('TFCE-corrected Fully Crossed LME Effect: Treatment - Control');
 
 colorbar;
 
 %% ==========================================================
-% Step 6: Save results
+% Step 7: Plot observed TFCE map
 %% ==========================================================
 
-save('../data/08_TFCE_fully_crossed_subject_item_results.mat', ...
-    'Results', ...
-    't_Obs', ...
-    'TFCE_Obs', ...
-    'TFCE_permMax', ...
-    'P_Values', ...
-    'Mask', ...
-    'data_long', ...
-    'designTableLong', ...
-    'times', ...
-    'e_loc');
+figure;
 
-disp('TFCE results saved: ../data/08_TFCE_fully_crossed_subject_item_results.mat');
+imagesc(times, 1:nChan, TFCE_Obs);
+axis xy;
+
+xlim([-200 800]);
+
+set(gca, ...
+    'YTick', 1:nChan, ...
+    'YTickLabel', {e_loc.labels}, ...
+    'XTick', -200:200:800, ...
+    'TickLength', [0 0], ...
+    'FontSize', 15, ...
+    'FontName', 'Arial');
+
+xlabel('Time (ms)');
+ylabel('Channel');
+title('Observed TFCE Map: Fully Crossed LME Treatment Effect');
+
+colorbar;
+
+%% ==========================================================
+% Step 8: Save results
+%% ==========================================================
+
+if ~exist('../results', 'dir')
+    mkdir('../results');
+end
+
+save('../results/08_TFCE_fully_crossed_subject_item_results.mat', ...
+     'Results');
+
+disp('Fully crossed subject-item TFCE analysis completed and saved.');

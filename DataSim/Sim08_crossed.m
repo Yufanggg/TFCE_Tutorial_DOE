@@ -1,19 +1,23 @@
 %% ==========================================================
 % Simulated EEG/ERP dataset
-% Fully crossed within-subject and within-item design
+% Fully crossed subject-item design
 %
-% Every subject sees every item in every condition
+% Final saved variables:
+%   EEGdata
+%   designTable
 %
-% Data dimensions:
-% Subjects x Items x Conditions x Channels x Time
+% Final EEGdata dimensions:
+%   Subject-item-condition rows x Channels x Time
+%   2400 x 32 x 251
 %
-% Noise sources:
-% 1. Background noise
-% 2. Subject-wise noise
-% 3. Item-wise noise
+% designTable variables:
+%   Subject
+%   Item
+%   CondCode    % -1 = Control, 1 = Treatment
+%   CondName
 %
 % Model idea:
-% EEG ~ Condition + (1|Subject) + (1|Item)
+%   EEG ~ CondCode + (1|Subject) + (1|Item)
 %% ==========================================================
 
 clear; clc; close all;
@@ -24,10 +28,11 @@ rng(123);
 %% ==========================================================
 
 nSub  = 30;
-nItem = 40;
+nItem = 30;
 nCond = 2;
 
 condNames = {'Control','Treatment'};
+condCodes = [-1, 1];
 
 times = -200:4:800;
 nTime = length(times);
@@ -94,13 +99,13 @@ weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 
 %% ==========================================================
 % Simulate fully crossed EEG/ERP data
+%
+% Temporary data5D:
+%   Subjects x Items x Conditions x Channels x Time
 %% ==========================================================
 
-% Data dimensions:
-% Subjects x Items x Conditions x Channels x Time
-data = zeros(nSub, nItem, nCond, nChan, nTime);
+data5D = zeros(nSub, nItem, nCond, nChan, nTime);
 
-% Noise settings
 backgroundNoiseSD = 0.8;
 subjectNoiseSD    = 1.5;
 itemNoiseSD       = 1.0;
@@ -119,12 +124,9 @@ for s = 1:nSub
 
         for c = 1:nCond
 
-            % Background noise:
-            % unique for each subject-item-condition observation
             backgroundNoise = backgroundNoiseSD * randn(nChan, nTime);
 
-            % Combine exactly three noise sources
-            data(s,i,c,:,:) = ...
+            data5D(s,i,c,:,:) = ...
                 squeeze(subjectNoise(s,:,:)) + ...
                 squeeze(itemNoise(i,:,:)) + ...
                 backgroundNoise;
@@ -146,38 +148,55 @@ for s = 1:nSub
             ch = effectChans(ch_idx);
 
             % Control condition
-            tmp = squeeze(data(s,i,1,ch,:));
+            tmp = squeeze(data5D(s,i,1,ch,:));
             tmp = tmp + weights(ch_idx) * controlP300;
-            data(s,i,1,ch,:) = reshape(tmp, 1, 1, 1, 1, nTime);
+            data5D(s,i,1,ch,:) = reshape(tmp, 1, 1, 1, 1, nTime);
 
             % Treatment condition
-            tmp = squeeze(data(s,i,2,ch,:));
+            tmp = squeeze(data5D(s,i,2,ch,:));
             tmp = tmp + weights(ch_idx) * treatmentP300;
-            data(s,i,2,ch,:) = reshape(tmp, 1, 1, 1, 1, nTime);
+            data5D(s,i,2,ch,:) = reshape(tmp, 1, 1, 1, 1, nTime);
 
         end
     end
 end
 
 %% ==========================================================
-% Design table
+% Convert to long-format EEGdata and designTable
+%
+% Final EEGdata:
+%   Subject-item-condition rows x Channels x Time
+%   2400 x 32 x 251
 %% ==========================================================
 
-Subject = [];
-Item = [];
-Condition = {};
+EEGdata = zeros(nSub * nItem * nCond, nChan, nTime);
+
+Subject  = zeros(nSub * nItem * nCond, 1);
+Item     = zeros(nSub * nItem * nCond, 1);
+CondCode = zeros(nSub * nItem * nCond, 1);
+CondName = cell(nSub * nItem * nCond, 1);
+
+row = 0;
 
 for s = 1:nSub
     for i = 1:nItem
         for c = 1:nCond
-            Subject(end+1,1) = s;
-            Item(end+1,1) = i;
-            Condition{end+1,1} = condNames{c};
+
+            row = row + 1;
+
+            EEGdata(row,:,:) = squeeze(data5D(s,i,c,:,:));
+
+            Subject(row)  = s;
+            Item(row)     = i;
+            CondCode(row) = condCodes(c);
+            CondName{row} = condNames{c};
+
         end
     end
 end
 
-designTable = table(Subject, Item, Condition);
+designTable = table(Subject, Item, CondCode, CondName, ...
+    'VariableNames', {'Subject','Item','CondCode','CondName'});
 
 disp(designTable(1:20,:));
 
@@ -185,11 +204,8 @@ disp(designTable(1:20,:));
 % Condition difference
 %% ==========================================================
 
-% Subjects x Items x Channels x Time
-subjectItemDiff = squeeze(data(:,:,2,:,:) - data(:,:,1,:,:));
+subjectItemDiff = squeeze(data5D(:,:,2,:,:) - data5D(:,:,1,:,:));
 
-% Average over subjects and items
-% Channels x Time
 conditionDiff = squeeze(mean(mean(subjectItemDiff, 1), 2));
 
 %% ==========================================================
@@ -198,8 +214,8 @@ conditionDiff = squeeze(mean(mean(subjectItemDiff, 1), 2));
 
 channelToPlot = find(strcmp({chanlocs_EEG.labels}, 'Pz'));
 
-controlERP = squeeze(mean(mean(data(:,:,1,channelToPlot,:),1),2));
-treatmentERP = squeeze(mean(mean(data(:,:,2,channelToPlot,:),1),2));
+controlERP = squeeze(mean(mean(data5D(:,:,1,channelToPlot,:),1),2));
+treatmentERP = squeeze(mean(mean(data5D(:,:,2,channelToPlot,:),1),2));
 
 figure;
 
@@ -274,84 +290,8 @@ title('Ground-truth Fully Crossed Effect');
 
 colorbar;
 
-% %% ==========================================================
-% % Figure 4: Paired t-test map over subject-item observations
-% %% ==========================================================
-% 
-% tMap = zeros(nChan,nTime);
-% pMap = zeros(nChan,nTime);
-% 
-% for ch = 1:nChan
-% 
-%     for t = 1:nTime
-% 
-%         controlVals = squeeze(data(:,:,1,ch,t));
-%         treatmentVals = squeeze(data(:,:,2,ch,t));
-% 
-%         controlVals = controlVals(:);
-%         treatmentVals = treatmentVals(:);
-% 
-%         [~,p,~,stats] = ttest(treatmentVals, controlVals);
-% 
-%         tMap(ch,t) = stats.tstat;
-%         pMap(ch,t) = p;
-% 
-%     end
-% end
-% 
-% figure;
-% 
-% imagesc(times, 1:nChan, tMap);
-% axis xy;
-% 
-% xlim([-200 800]);
-% 
-% set(gca, ...
-%     'YTick', 1:nChan, ...
-%     'YTickLabel', {chanlocs_EEG.labels}, ...
-%     'XTick', -200:200:800, ...
-%     'TickLength', [0 0], ...
-%     'FontSize', 15, ...
-%     'FontName', 'Arial');
-% 
-% xlabel('Time (ms)');
-% ylabel('Channel');
-% title('Paired t-test Map: Treatment vs Control');
-% 
-% colorbar;
-% 
-% %% ==========================================================
-% % Figure 5: Significant paired t-test map
-% %% ==========================================================
-% 
-% alpha = 0.05;
-% 
-% sigMap = tMap;
-% sigMap(pMap >= alpha) = 0;
-% 
-% figure;
-% 
-% imagesc(times, 1:nChan, sigMap);
-% axis xy;
-% 
-% xlim([-200 800]);
-% 
-% set(gca, ...
-%     'YTick', 1:nChan, ...
-%     'YTickLabel', {chanlocs_EEG.labels}, ...
-%     'XTick', -200:200:800, ...
-%     'TickLength', [0 0], ...
-%     'FontSize', 15, ...
-%     'FontName', 'Arial');
-% 
-% xlabel('Time (ms)');
-% ylabel('Channel');
-% title('Significant Paired t-test Map, p < 0.05');
-% 
-% colorbar;
-
 %% ==========================================================
-% Figure 6: Topography at 300 ms
+% Figure 4: Topography at 300 ms
 %% ==========================================================
 
 chanlocs_plot = chanlocs_EEG;
@@ -382,6 +322,7 @@ end
 
 %% ==========================================================
 % Save dataset
+% Only EEGdata and designTable are saved
 %% ==========================================================
 
 if ~exist('../data','dir')
@@ -389,19 +330,12 @@ if ~exist('../data','dir')
 end
 
 save('../data/08_simulated_fully_crossed_subject_item_EEG.mat', ...
-     'data', ...
-     'subjectItemDiff', ...
-     'conditionDiff', ...
-     'times', ...
-     'effectChans', ...
-     'effectChanLabels', ...
-     'chanlocs_EEG', ...
-     'condNames', ...
-     'designTable', ...
-     'subjectNoise', ...
-     'itemNoise', ...
-     'backgroundNoiseSD', ...
-     'subjectNoiseSD', ...
-     'itemNoiseSD');
+     'EEGdata', ...
+     'designTable');
 
 disp('Dataset saved: ../data/08_simulated_fully_crossed_subject_item_EEG.mat');
+disp('Saved variables: EEGdata, designTable');
+disp('Final EEGdata size:');
+disp(size(EEGdata));
+disp('Final designTable size:');
+disp(size(designTable));
