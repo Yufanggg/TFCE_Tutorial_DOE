@@ -227,12 +227,11 @@ Mask = abs(TFCE_Obs) >= critTFCE;
 
 P_Values = nan(nChan, nTime);
 
-for i = 1:numel(TFCE_Obs)
-
-    P_Values(i) = ...
-        (sum(TFCE_permMax >= abs(TFCE_Obs(i))) + 1) / ...
+for ch = 1:nChan
+    for tpoint = 1:nTime
+        P_Values(ch, tpoint) = (sum(TFCE_permMax >= abs(TFCE_Obs(ch, tpoint))) + 1) / ...
         (nPerm + 1);
-
+    end
 end
 
 fprintf('TFCE-corrected significance completed.\n');
