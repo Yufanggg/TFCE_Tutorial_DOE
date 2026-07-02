@@ -13,8 +13,7 @@
 *.R  	  text
 *.Rproj text
 *.[Rr]md   linguist-detectable
-*.Rmd linguist-language=R
-*.rmd linguist-language=R
+
 
 
  Basic .gitattributes for a python repo.
