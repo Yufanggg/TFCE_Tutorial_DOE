@@ -28,6 +28,8 @@ library(permuco)
 
 source("../R/tfce_transform.R")
 
+cat("\nStarting TFCE simple between-subject analysis...\n")
+
 ## ==========================================================
 ## -1. Load CSV files
 ## ==========================================================
@@ -94,22 +96,40 @@ compute_tmap <- function(data) {
 }
 
 ## ==========================================================
-## 1&2. Observed t-map & Observed TFCE map
+## Step 1: Observed t-map
 ## ==========================================================
 
-obs_tmap <- compute_tmap(dat)
-obs_TFCE <- tfce_transform(obs_tmap)
-colnames(obs_TFCE) <- colnames(obs_tmap)
-rownames(obs_TFCE) <- rownames(obs_tmap)
+cat("Step 1: Computing observed t-map...\n")
+
+t_Obs <- compute_tmap(dat)
+
+cat("Observed t-map completed.\n")
+
+
+## ==========================================================
+## Step 2: Observed TFCE map
+## ==========================================================
+
+cat("Step 2: Computing observed TFCE map...\n")
+
+TFCE_Obs <- tfce_transform(
+  t_Obs,
+  E  = 0.66,
+  H  = 2,
+  dh = 0.1
+)
+
+cat("Observed TFCE map completed.\n")
+
 ## ==========================================================
 ## 3. Permutation distribution
 ## ==========================================================
 
 set.seed(123)
 
-n_perm <- 999
+n_perm <- 1
 
-perm_TFCEMax <- rep(NaN, n_perm)
+TFCE_permMax <- rep(NaN, n_perm)
 
 subject_info <- designTable %>%
   select(Subject, CondCode)
@@ -127,9 +147,9 @@ for (p in seq_len(n_perm)) {
       CondCode = as.numeric(CondCode)
     )
   
-  perm_tmap <- compute_tmap(perm_dat)
-  perm_TFCE <- tfce_transform(perm_tmap)
-  perm_TFCEMax[p] <- max(perm_TFCE)
+  t_perm <- compute_tmap(perm_dat)
+  TFCE_perm <- tfce_transform(t_perm)
+  TFCE_permMax[p] <- max(TFCE_perm)
 
   
   if (p %% 50 == 0) {
@@ -146,25 +166,25 @@ for (p in seq_len(n_perm)) {
 cat("Step 4: Computing TFCE-corrected significance...\n")
 
 alpha <- 0.05
-nPerm <- length(perm_TFCEMax)
+nPerm <- length(TFCE_permMax)
 
-maxTFCE <- sort(c(perm_TFCEMax, max(abs(obs_TFCE), na.rm = TRUE)))
+maxTFCE <- sort(c(TFCE_permMax, max(abs(TFCE_Obs), na.rm = TRUE)))
 maxTFCEcrit <- maxTFCE[round(nPerm * (1 - alpha))]
 
-Mask <- abs(obs_TFCE) >= maxTFCEcrit
+Mask <- abs(TFCE_Obs) >= maxTFCEcrit
 
 P_Values <- matrix(
   NA_real_,
-  nrow = nrow(obs_TFCE),
-  ncol = ncol(obs_TFCE),
-  dimnames = dimnames(obs_TFCE)
+  nrow = nrow(TFCE_Obs),
+  ncol = ncol(TFCE_Obs),
+  dimnames = dimnames(TFCE_Obs)
 )
 
 for (ch in seq_len(n_chan)) {
   for (t in seq_len(n_time)) {
     
     P_Values[ch, t] <-
-      (sum(perm_TFCEMax >= abs(obs_TFCE[ch, t]), na.rm = TRUE) + 1) /
+      (sum(TFCE_permMax >= abs(TFCE_Obs[ch, t]), na.rm = TRUE) + 1) /
       (nPerm + 1)
   }
 }
@@ -180,9 +200,9 @@ cat(sprintf("Critical TFCE value = %.4f\n", maxTFCEcrit))
 cat("Step 5: Storing results...\n")
 
 Results <- list(
-  tObs         = obs_tmap,
-  TFCE_Obs     = obs_TFCE,
-  TFCE_Null    = perm_TFCEMax,
+  tObs         = t_Obs,
+  TFCE_Obs     = TFCE_Obs,
+  TFCE_Null    = TFCE_permMax,
   maxTFCEcrit  = maxTFCEcrit,
   P_Values     = P_Values,
   Mask         = Mask,
@@ -197,12 +217,12 @@ cat("Results stored.\n")
 ## Step 6: Plot TFCE-corrected significant t-values
 ## ==========================================================
 
-sigT <- obs_tmap
+sigT <- t_Obs
 sigT[!Mask] <- 0
 
-times <- as.numeric(colnames(obs_tmap))
-channels <- rownames(obs_tmap)
-nChan <- nrow(obs_tmap)
+times <- as.numeric(colnames(t_Obs))
+channels <- rownames(t_Obs)
+nChan <- nrow(t_Obs)
 
 image(
   x = times,
@@ -232,12 +252,12 @@ xlim <- range(times)
 ## ==========================================================
 ## Step 7: Plot TFCE values
 ## ==========================================================
-sigT[!obs_TFCE] <- 0
+sigT[!TFCE_Obs] <- 0
 
 image(
   x = times,
   y = seq_len(nChan),
-  z = t(obs_TFCE),
+  z = t(TFCE_Obs),
   xlab = "Time (ms)",
   ylab = "Channel",
   main = "Observed TFCE Map",
@@ -265,9 +285,9 @@ if (!dir.exists("../results")) {
 
 save(
   Results,
-  obs_tmap,
-  obs_TFCE,
-  perm_TFCEMax,
+  t_Obs,
+  TFCE_Obs,
+  TFCE_permMax,
   maxTFCEcrit,
   P_Values,
   Mask,
