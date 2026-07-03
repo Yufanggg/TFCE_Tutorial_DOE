@@ -6,239 +6,203 @@ output: html_document
 ---
 ```{r, echo=TRUE}
 ## ==========================================================
-## Regression-based permutation analysis for EEG data
-## Simple between-subject design: Control vs Treatment
+## TFCE analysis in R for exported between-subject EEG CSV
 ##
-## Data dimensions:
-##   Subjects x Channels x Time
+## Input files:
+##   ../data/01_designTable.csv
+##   ../data/01_EEGdata_long.csv
 ##
 ## Model:
-##   EEG ~ group
+##   Amplitude ~ CondCode
 ##
-## Group coding:
-##   -1 = Control
-##    1 = Treatment
+## Important:
+##   This uses permuco:::tfce_distribution()
+##   on a flattened Channel ¡Á Time map.
 ## ==========================================================
 
 rm(list = ls())
 
+library(dplyr)
+library(tidyr)
+library(permuco)
+
+source("../R/tfce_transform.R")
+
+## ==========================================================
+## -1. Load CSV files
+## ==========================================================
+
+designTable <- read.csv("../data/01_designTable.csv")
+EEGlong     <- read.csv("../data/01_EEGdata_long.csv")
+
+## Check column names
+print(names(designTable))
+print(names(EEGlong))
+
+## ==========================================================
+## 0. Merge EEG data with design table
+## ==========================================================
+
+dat <- EEGlong %>%
+  left_join(designTable, by = "Subject")
+
+## Make sure condition is numeric contrast
+## Expected:
+##   CondCode  = -1 control, +1 treatment
+
+dat <- dat %>%
+  mutate(
+    Subject = factor(Subject),
+    Channel = factor(Channel),
+    CondCode = as.numeric(CondCode)
+  )
+
+channels <- unique(EEGlong$Channel)
+times    <- sort(unique(EEGlong$Time))
+
+n_chan <- length(channels)
+n_time <- length(times)
+
+## ==========================================================
+## -2. Function to compute t-map
+## ==========================================================
+
+compute_tmap <- function(data) {
+  
+  res <- data %>%
+    group_by(Channel, Time) %>%
+    summarise(
+      t_value = coef(summary(lm(Amplitude ~ CondCode)))["CondCode", "t value"],
+      .groups = "drop"
+    )
+  
+  tmat <- res %>%
+    mutate(
+      Channel = factor(Channel, levels = channels),
+      Time = factor(Time, levels = times)
+    ) %>%
+    arrange(Channel, Time) %>%
+    pull(t_value)
+  
+  matrix(
+    tmat,
+    nrow = n_chan,
+    ncol = n_time,
+    byrow = TRUE,
+    dimnames = list(channels, times)
+  )
+}
+
+## ==========================================================
+## 1&2. Observed t-map & Observed TFCE map
+## ==========================================================
+
+obs_tmap <- compute_tmap(dat)
+obs_TFCE <- tfce_transform(obs_tmap)
+colnames(obs_TFCE) <- colnames(obs_tmap)
+rownames(obs_TFCE) <- rownames(obs_tmap)
+## ==========================================================
+## 3. Permutation distribution
+## ==========================================================
+
 set.seed(123)
 
-## ==========================================================
-## Load data
-## ==========================================================
+n_perm <- 999
 
-# Example:
-# You need an R object called `data`
-# dimensions: subjects x channels x time
-#
-# You also need:
-# group: length nSub, coded -1 / 1
-# times: time vector
+perm_TFCEMax <- rep(NaN, n_perm)
 
-# If your MATLAB file is saved as .mat, use R.matlab:
-# install.packages("R.matlab")
-library(R.matlab)
+subject_info <- designTable %>%
+  select(Subject, CondCode)
 
-mat <- readMat("../data/01_simulated_between_subject_EEG.mat")
-
-data  <- mat$data
-group <- as.vector(mat$group)
-times <- as.vector(mat$times)
-
-## ==========================================================
-## Basic checks
-## ==========================================================
-
-nSub  <- dim(data)[1]
-nChan <- dim(data)[2]
-nTime <- dim(data)[3]
-
-if (length(group) != nSub) {
-  stop("Length of group does not match number of subjects.")
-}
-
-if (length(times) != nTime) {
-  stop("Length of times does not match number of time points.")
-}
-
-if (!all(group %in% c(-1, 1))) {
-  stop("group must be coded as -1 = Control and 1 = Treatment.")
-}
-
-## ==========================================================
-## Function: compute regression t-map
-## ==========================================================
-
-compute_tmap_lm <- function(data, predictor) {
+for (p in seq_len(n_perm)) {
   
-  nSub  <- dim(data)[1]
-  nChan <- dim(data)[2]
-  nTime <- dim(data)[3]
+  perm_info <- subject_info %>%
+    mutate(CondCode = sample(CondCode))
   
-  tMap <- matrix(NA, nrow = nChan, ncol = nTime)
+  perm_dat <- EEGlong %>%
+    left_join(perm_info, by = "Subject") %>%
+    mutate(
+      Subject = factor(Subject),
+      Channel = factor(Channel),
+      CondCode = as.numeric(CondCode)
+    )
   
-  predictor <- as.vector(predictor)
-  
-  for (ch in seq_len(nChan)) {
-    
-    for (tp in seq_len(nTime)) {
-      
-      eeg_local <- as.numeric(data[, ch, tp])
-      
-      fit <- lm(eeg_local ~ predictor)
-      
-      tMap[ch, tp] <- summary(fit)$coefficients["predictor", "t value"]
-    }
-  }
-  
-  return(tMap)
-}
+  perm_tmap <- compute_tmap(perm_dat)
+  perm_TFCE <- tfce_transform(perm_tmap)
+  perm_TFCEMax[p] <- max(perm_TFCE)
 
-
-tfce_2d <- function(stat_map,
-                    chan_neighbors,
-                    dh = 0.1,
-                    e_power = 2/3,
-                    h_power = 2) {
-  
-  n_chan <- nrow(stat_map)
-  n_time <- ncol(stat_map)
-  
-  abs_map <- abs(stat_map)
-  sign_map <- sign(stat_map)
-  
-  max_h <- max(abs_map, na.rm = TRUE)
-  thresholds <- seq(0, max_h, by = dh)
-  
-  scores <- matrix(0, nrow = n_chan, ncol = n_time)
-  
-  for (ti in seq_along(thresholds)) {
-    
-    thresh <- thresholds[ti]
-    
-    if (ti == 1) {
-      h <- abs(thresh)
-    } else {
-      h <- abs(thresh - thresholds[ti - 1])
-    }
-    
-    h <- h^h_power
-    
-    supra <- abs_map >= thresh
-    visited <- matrix(FALSE, nrow = n_chan, ncol = n_time)
-    
-    for (ch in seq_len(n_chan)) {
-      for (tp in seq_len(n_time)) {
-        
-        if (!supra[ch, tp] || visited[ch, tp]) {
-          next
-        }
-        
-        cluster <- matrix(c(ch, tp), ncol = 2)
-        queue <- matrix(c(ch, tp), ncol = 2)
-        visited[ch, tp] <- TRUE
-        
-        while (nrow(queue) > 0) {
-          
-          current <- queue[1, , drop = FALSE]
-          queue <- queue[-1, , drop = FALSE]
-          
-          c_ch <- current[1, 1]
-          c_tp <- current[1, 2]
-          
-          chan_neigh <- which(chan_neighbors[c_ch, ] == 1)
-          time_neigh <- c(c_tp - 1, c_tp + 1)
-          time_neigh <- time_neigh[time_neigh >= 1 & time_neigh <= n_time]
-          
-          neigh_nodes <- rbind(
-            cbind(chan_neigh, c_tp),
-            cbind(c_ch, time_neigh)
-          )
-          
-          for (k in seq_len(nrow(neigh_nodes))) {
-            
-            nch <- neigh_nodes[k, 1]
-            ntp <- neigh_nodes[k, 2]
-            
-            if (supra[nch, ntp] && !visited[nch, ntp]) {
-              visited[nch, ntp] <- TRUE
-              queue <- rbind(queue, c(nch, ntp))
-              cluster <- rbind(cluster, c(nch, ntp))
-            }
-          }
-        }
-        
-        extent <- nrow(cluster)
-        
-        for (k in seq_len(nrow(cluster))) {
-          c_ch <- cluster[k, 1]
-          c_tp <- cluster[k, 2]
-          
-          scores[c_ch, c_tp] <- scores[c_ch, c_tp] +
-            h * (extent^e_power)
-        }
-      }
-    }
-  }
-  
-  tfce_map <- scores * sign_map
-  
-  return(tfce_map)
-}
-
-## ==========================================================
-## Step 1: Observed regression t-map
-## ==========================================================
-tObs <- compute_tmap_lm(data, group)
-TFCEObs <- 
-## ==========================================================
-## Step 2: Permutation test using max-t correction
-## ==========================================================
-
-nPerm <- 1
-
-permMaxT <- numeric(nPerm)
-
-for (p in seq_len(nPerm)) {
   
   if (p %% 50 == 0) {
-    message("Permutation ", p, " / ", nPerm)
+    cat("Permutation", p, "of", n_perm, "\n")
   }
-  
-  permGroup <- sample(group)
-  
-  permT <- compute_tmap_lm(data, permGroup)
-  
-  permTFCE <- 
-  
-  permMaxTFCE[p] <- max(abs(permTFCE), na.rm = TRUE)
 }
 
 ## ==========================================================
-## Step 3: Corrected p-values
+## 4. TFCE-corrected p-values
 ## ==========================================================
+## ==========================================================
+## Step 4: TFCE-corrected significance
+## ==========================================================
+cat("Step 4: Computing TFCE-corrected significance...\n")
 
-pValues <- matrix(NA, nrow = nChan, ncol = nTime)
+alpha <- 0.05
+nPerm <- length(perm_TFCEMax)
 
-for (ch in seq_len(nChan)) {
-  for (tp in seq_len(nTime)) {
+maxTFCE <- sort(c(perm_TFCEMax, max(abs(obs_TFCE), na.rm = TRUE)))
+maxTFCEcrit <- maxTFCE[round(nPerm * (1 - alpha))]
+
+Mask <- abs(obs_TFCE) >= maxTFCEcrit
+
+P_Values <- matrix(
+  NA_real_,
+  nrow = nrow(obs_TFCE),
+  ncol = ncol(obs_TFCE),
+  dimnames = dimnames(obs_TFCE)
+)
+
+for (ch in seq_len(n_chan)) {
+  for (t in seq_len(n_time)) {
     
-    pValues[ch, tp] <- 
-      (sum(permMaxTFCE >= abs(TFCEObs[ch, tp])) + 1) / 
+    P_Values[ch, t] <-
+      (sum(perm_TFCEMax >= abs(obs_TFCE[ch, t]), na.rm = TRUE) + 1) /
       (nPerm + 1)
   }
 }
 
-alpha <- 0.05
-mask <- pValues < alpha
+cat("TFCE-corrected significance completed.\n")
+cat(sprintf("Critical TFCE value = %.4f\n", maxTFCEcrit))
+
 
 ## ==========================================================
-## Step 4: Plot significant TFCE-values
+## Step 5: Store results
 ## ==========================================================
 
-sigT <- TFCEObs
-sigT[!mask] <- 0
+cat("Step 5: Storing results...\n")
+
+Results <- list(
+  tObs         = obs_tmap,
+  TFCE_Obs     = obs_TFCE,
+  TFCE_Null    = perm_TFCEMax,
+  maxTFCEcrit  = maxTFCEcrit,
+  P_Values     = P_Values,
+  Mask         = Mask,
+  alpha        = alpha,
+  nPerm        = nPerm
+)
+
+cat("Results stored.\n")
+
+
+## ==========================================================
+## Step 6: Plot TFCE-corrected significant t-values
+## ==========================================================
+
+sigT <- obs_tmap
+sigT[!Mask] <- 0
+
+times <- as.numeric(colnames(obs_tmap))
+channels <- rownames(obs_tmap)
+nChan <- nrow(obs_tmap)
 
 image(
   x = times,
@@ -246,29 +210,53 @@ image(
   z = t(sigT),
   xlab = "Time (ms)",
   ylab = "Channel",
-  main = "Regression-based max-t corrected effects",
-  col = hcl.colors(100, "RdBu", rev = TRUE)
+  main = "TFCE-corrected Significant Effects",
+  axes = FALSE
 )
 
-axis(1)
-axis(2)
+axis(1, at = seq(-200, 800, by = 200))
+axis(
+  2,
+  at = seq_len(nChan),
+  labels = channels,
+  las = 2,
+  cex.axis = 0.7
+)
+box()
+colorbar <- function() {
+  # base R image() has no built-in colorbar
+}
+xlim <- range(times)
+
 
 ## ==========================================================
-## Step 5: Store results
+## Step 7: Plot TFCE values
 ## ==========================================================
+sigT[!obs_TFCE] <- 0
 
-Results <- list(
-  tObs = tObs,
-  permMaxT = permMaxT,
-  pValues = pValues,
-  mask = mask,
-  alpha = alpha,
-  nPerm = nPerm,
-  model = "EEG ~ group"
+image(
+  x = times,
+  y = seq_len(nChan),
+  z = t(obs_TFCE),
+  xlab = "Time (ms)",
+  ylab = "Channel",
+  main = "Observed TFCE Map",
+  axes = FALSE
 )
 
+axis(1, at = seq(-200, 800, by = 200))
+axis(
+  2,
+  at = seq_len(nChan),
+  labels = channels,
+  las = 2,
+  cex.axis = 0.7
+)
+box()
+
+
 ## ==========================================================
-## Step 6: Save results
+## Step 8: Save TFCE results
 ## ==========================================================
 
 if (!dir.exists("../results")) {
@@ -277,14 +265,16 @@ if (!dir.exists("../results")) {
 
 save(
   Results,
-  tObs,
-  permMaxT,
-  pValues,
-  mask,
+  obs_tmap,
+  obs_TFCE,
+  perm_TFCEMax,
+  maxTFCEcrit,
+  P_Values,
+  Mask,
   times,
-  group,
-  file = "../results/01_between_subject_regression_permutation_R.RData"
+  channels,
+  file = "../results/01_TFCE_between_subject_results.RData"
 )
 
-message("Regression-based permutation analysis completed.")
+cat("TFCE analysis completed and results saved.\n")
 ```

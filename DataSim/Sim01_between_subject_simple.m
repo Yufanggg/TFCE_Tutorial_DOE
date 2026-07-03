@@ -272,7 +272,7 @@ GroupLabel(group == -1) = {'Control'};
 GroupLabel(group ==  1) = {'Treatment'};
 
 designTable = table(subjectID, group, GroupLabel, ...
-    'VariableNames', {'Subject','GroupCode','GroupLabel'});
+    'VariableNames', {'Subject','CondCode','GroupLabel'});
 
 disp(designTable(1:10,:));
 
