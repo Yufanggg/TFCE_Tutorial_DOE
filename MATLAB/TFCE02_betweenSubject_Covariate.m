@@ -25,7 +25,7 @@ fprintf('\nStarting TFCE analysis...\n');
 load('../data/02_simulated_between_subject_covariate_EEG.mat', ...
      'EEGdata', 'designTable');
 
-group     = designTable.GroupCode;
+group     = designTable.CondCode;
 covariate = designTable.Covariate;
 
 times = -200:4:800;

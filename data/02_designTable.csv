@@ -1,4 +1,4 @@
-Subject,Group,GroupCode,Covariate
+Subject,Group,CondCode,Covariate
 1,Control,-1,0.725474892295238
 2,Control,-1,-0.643831299228746
 3,Control,-1,-1.07382785246158

@@ -298,7 +298,7 @@ Group(group == -1) = {'Control'};
 Group(group ==  1) = {'Treatment'};
 
 designTable = table(Subject, Group, group, covariate, ...
-    'VariableNames', {'Subject','Group','GroupCode','Covariate'});
+    'VariableNames', {'Subject','Group','CondCode','Covariate'});
 
 disp(designTable(1:10,:));
 
