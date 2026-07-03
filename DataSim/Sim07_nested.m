@@ -2,45 +2,41 @@
 % Simulated EEG/ERP dataset
 % Nested within-student design
 %
-% Model:
-% Y ~ Condition + (1|Class) + (1|Class:Student)
+% Saved variables:
 %
-% Noise sources:
-% 1. Class-wise noise
-% 2. Student-wise noise nested within class
-% 3. Background noise
+% EEGdata:
+%   Class, Student, Condition, ConditionCode, Channel, Time, Amplitude
 %
-% Data dimensions:
-% Subjects x Conditions x Channels x Time
+% designTable:
+%   Class, Student, Condition, ConditionCode
+%
+% Condition coding:
+%   Control   = -1
+%   Treatment =  1
 %% ==========================================================
 
 clear; clc; close all;
 rng(123);
 
-%% ==========================================================
-% Simulation settings
-%% ==========================================================
+%% Simulation settings
 
 nClass = 6;
 nStudentPerClass = 10;
 nSub = nClass * nStudentPerClass;
 
-nCond = 2;
-condNames = {'Control', 'Treatment'};
+condNames = {'Control','Treatment'};
+conditionCodes = [-1 1];
+nCond = numel(condNames);
 
 times = -200:4:800;
-nTime = length(times);
+nTime = numel(times);
 
-%% ==========================================================
-% Subject and class IDs
-%% ==========================================================
+%% Subject IDs
 
-classID = kron((1:nClass)', ones(nStudentPerClass,1));
+classID   = kron((1:nClass)', ones(nStudentPerClass,1));
 studentID = repmat((1:nStudentPerClass)', nClass, 1);
 
-%% ==========================================================
-% Load channel locations
-%% ==========================================================
+%% Load channel locations
 
 chanlocs_1020 = readlocs('standard_1005.elc');
 
@@ -65,28 +61,24 @@ end
 chanlocs_EEG = chanlocs_1020(idx);
 nChan = length(chanlocs_EEG);
 
-%% ==========================================================
-% Define P300 condition effect
-%% ==========================================================
+%% P300 signal
 
 p300Latency = 300;
 p300Width   = 70;
 
-controlAmp   = 3.0;
-treatmentAmp = 6.0;
+controlAmp   = 3;
+treatmentAmp = 6;
 
-controlP300 = controlAmp * exp(-(times - p300Latency).^2 ./ ...
-              (2 * p300Width^2));
+controlP300 = controlAmp .* ...
+    exp(-(times - p300Latency).^2 ./ (2 * p300Width^2));
 
-treatmentP300 = treatmentAmp * exp(-(times - p300Latency).^2 ./ ...
-                (2 * p300Width^2));
+treatmentP300 = treatmentAmp .* ...
+    exp(-(times - p300Latency).^2 ./ (2 * p300Width^2));
 
 controlP300   = controlP300(:);
 treatmentP300 = treatmentP300(:);
 
-%% ==========================================================
-% Define effect channels
-%% ==========================================================
+%% Effect channels
 
 effectChanLabels = {'Cz','CP1','CP2','Pz','P3','P4'};
 
@@ -98,228 +90,147 @@ end
 
 weights = [0.6 0.8 0.8 1.0 0.75 0.75];
 
-%% ==========================================================
-% Simulate nested EEG/ERP data
-%% ==========================================================
+%% Simulate EEG data as 4D array
+% Dimensions:
+% Subjects ¡Á Conditions ¡Á Channels ¡Á Time
 
-% Data dimensions:
-% Subjects x Conditions x Channels x Time
-data = zeros(nSub, nCond, nChan, nTime);
+EEGarray = zeros(nSub, nCond, nChan, nTime);
 
-% Noise settings
 classNoiseSD      = 1.2;
 studentNoiseSD    = 1.5;
 backgroundNoiseSD = 0.8;
 
-% Class-wise noise:
-% one stable pattern per class, shared by all students in that class
-classNoise = classNoiseSD * randn(nClass, nChan, nTime);
-
-% Student-wise noise:
-% one stable pattern per student, nested within class
-studentNoise = studentNoiseSD * randn(nSub, nChan, nTime);
+classNoise   = classNoiseSD   .* randn(nClass, nChan, nTime);
+studentNoise = studentNoiseSD .* randn(nSub, nChan, nTime);
 
 for s = 1:nSub
 
-    cID = classID(s);
+    c = classID(s);
 
     for cond = 1:nCond
 
-        % Background noise:
-        % unique for each subject-condition observation
-        backgroundNoise = backgroundNoiseSD * randn(nChan, nTime);
+        backgroundNoise = backgroundNoiseSD .* randn(nChan, nTime);
 
-        data(s,cond,:,:) = ...
-            squeeze(classNoise(cID,:,:)) + ...
+        EEGarray(s,cond,:,:) = ...
+            squeeze(classNoise(c,:,:)) + ...
             squeeze(studentNoise(s,:,:)) + ...
             backgroundNoise;
 
     end
+
 end
 
-%% ==========================================================
-% Inject deterministic condition-specific P300 signal
-%% ==========================================================
+%% Inject P300 signal
 
 for s = 1:nSub
 
-    for ch_idx = 1:length(effectChans)
+    for k = 1:length(effectChans)
 
-        ch = effectChans(ch_idx);
+        ch = effectChans(k);
 
-        % Control
-        tmp = squeeze(data(s,1,ch,:));
-        tmp = tmp + weights(ch_idx) * controlP300;
-        data(s,1,ch,:) = reshape(tmp, 1, 1, 1, nTime);
+        tmp = squeeze(EEGarray(s,1,ch,:));
+        tmp = tmp + weights(k) .* controlP300;
+        EEGarray(s,1,ch,:) = reshape(tmp, 1, 1, 1, nTime);
 
-        % Treatment
-        tmp = squeeze(data(s,2,ch,:));
-        tmp = tmp + weights(ch_idx) * treatmentP300;
-        data(s,2,ch,:) = reshape(tmp, 1, 1, 1, nTime);
+        tmp = squeeze(EEGarray(s,2,ch,:));
+        tmp = tmp + weights(k) .* treatmentP300;
+        EEGarray(s,2,ch,:) = reshape(tmp, 1, 1, 1, nTime);
 
+    end
+
+end
+
+%% Convert to long-format EEG table
+% Columns:
+% Class, Student, Condition, ConditionCode, Channel, Time, Amplitude
+
+nRowsEEG = nSub * nCond * nChan * nTime;
+
+Class         = zeros(nRowsEEG,1);
+Student       = zeros(nRowsEEG,1);
+Condition     = cell(nRowsEEG,1);
+ConditionCode = zeros(nRowsEEG,1);
+Channel       = cell(nRowsEEG,1);
+Time          = zeros(nRowsEEG,1);
+Amplitude     = zeros(nRowsEEG,1);
+
+row = 1;
+
+for s = 1:nSub
+    for cond = 1:nCond
+        for ch = 1:nChan
+            for t = 1:nTime
+
+                Class(row)         = classID(s);
+                Student(row)       = studentID(s);
+                Condition{row}     = condNames{cond};
+                ConditionCode(row) = conditionCodes(cond);
+                Channel{row}       = chanlocs_EEG(ch).labels;
+                Time(row)          = times(t);
+                Amplitude(row)     = EEGarray(s,cond,ch,t);
+
+                row = row + 1;
+
+            end
+        end
     end
 end
 
-%% ==========================================================
-% Design table
-%% ==========================================================
+EEGdata = table( ...
+    Class, ...
+    Student, ...
+    Condition, ...
+    ConditionCode, ...
+    Channel, ...
+    Time, ...
+    Amplitude);
 
-Subject = [];
-Class = [];
-Condition = {};
+%% Create design table
+% Columns:
+% Class, Student, Condition, ConditionCode
+
+nRowsDesign = nSub * nCond;
+
+Class         = zeros(nRowsDesign,1);
+Student       = zeros(nRowsDesign,1);
+Condition     = cell(nRowsDesign,1);
+ConditionCode = zeros(nRowsDesign,1);
+
+row = 1;
 
 for s = 1:nSub
     for cond = 1:nCond
 
-        Subject(end+1,1) = studentID(s);
-        Class(end+1,1) = classID(s);
-        Condition{end+1,1} = condNames{cond};
+        Class(row)         = classID(s);
+        Student(row)       = studentID(s);
+        Condition{row}     = condNames{cond};
+        ConditionCode(row) = conditionCodes(cond);
+
+        row = row + 1;
 
     end
 end
 
-designTable = table(Subject, Class, Condition);
+designTable = table( ...
+    Class, ...
+    Student, ...
+    Condition, ...
+    ConditionCode);
 
-disp(designTable(1:20,:));
+%% Preview
 
-%% ==========================================================
-% Compute condition difference
-%% ==========================================================
+disp(designTable(1:10,:));
+disp(EEGdata(1:10,:));
 
-% Subjects x Channels x Time
-subjectDiff = squeeze(data(:,2,:,:) - data(:,1,:,:));
+%% Save dataset
 
-% Channels x Time
-conditionDiff = squeeze(mean(subjectDiff, 1));
-
-%% ==========================================================
-% Figure 1: ERP waveform at Pz
-%% ==========================================================
-
-channelToPlot = find(strcmp({chanlocs_EEG.labels}, 'Pz'));
-
-controlERP = squeeze(mean(data(:,1,channelToPlot,:), 1));
-treatmentERP = squeeze(mean(data(:,2,channelToPlot,:), 1));
-
-figure;
-
-plot(times, controlERP, 'LineWidth', 2);
-hold on;
-
-plot(times, treatmentERP, 'r', 'LineWidth', 2);
-
-xlabel('Time (ms)');
-ylabel('Amplitude (\muV)');
-title('Nested within-student ERP waveform at Pz');
-legend(condNames);
-grid on;
-
-%% ==========================================================
-% Figure 2: Observed condition difference
-%% ==========================================================
-
-figure;
-
-imagesc(times, 1:nChan, conditionDiff);
-axis xy;
-xlim([-200 800]);
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {chanlocs_EEG.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-title('Observed Condition Difference: Treatment - Control');
-colorbar;
-
-%% ==========================================================
-% Figure 3: Ground-truth condition effect
-%% ==========================================================
-
-truthDiff = zeros(nChan, nTime);
-
-trueDifference = treatmentP300 - controlP300;
-
-for ch_idx = 1:length(effectChans)
-
-    ch = effectChans(ch_idx);
-    truthDiff(ch,:) = weights(ch_idx) * trueDifference';
-
-end
-
-figure;
-
-imagesc(times, 1:nChan, truthDiff);
-axis xy;
-xlim([-200 800]);
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {chanlocs_EEG.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-title('Ground-Truth Condition Effect');
-colorbar;
-
-%% ==========================================================
-% Figure 4: Topography at 300 ms
-%% ==========================================================
-
-chanlocs_plot = chanlocs_EEG;
-
-for k = 1:length(chanlocs_plot)
-    chanlocs_plot(k).theta = chanlocs_plot(k).theta + 90;
-end
-
-[~, peakIdx] = min(abs(times - p300Latency));
-
-if exist('topoplot', 'file')
-
-    figure;
-    topoplot(conditionDiff(:,peakIdx), chanlocs_plot, 'electrodes', 'labels');
-    colorbar;
-    title('Observed Treatment - Control Difference at 300 ms');
-
-else
-
-    warning('topoplot not found. Please add EEGLAB to your MATLAB path.');
-
-end
-
-%% ==========================================================
-% Save simulated dataset
-%% ==========================================================
-
-if ~exist('../data', 'dir')
+if ~exist('../data','dir')
     mkdir('../data');
 end
 
 save('../data/07_simulated_nested_class_student_EEG.mat', ...
-     'data', ...
-     'subjectDiff', ...
-     'conditionDiff', ...
-     'times', ...
-     'effectChans', ...
-     'effectChanLabels', ...
-     'chanlocs_EEG', ...
-     'condNames', ...
-     'studentID', ...
-     'classID', ...
-     'designTable', ...
-     'classNoise', ...
-     'studentNoise', ...
-     'classNoiseSD', ...
-     'studentNoiseSD', ...
-     'backgroundNoiseSD');
- 
+     'EEGdata', ...
+     'designTable');
+
 disp('Dataset saved: ../data/07_simulated_nested_class_student_EEG.mat');
+disp('Saved variables: EEGdata, designTable');
