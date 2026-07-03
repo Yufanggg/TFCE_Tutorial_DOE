@@ -2,22 +2,20 @@
 % Simulated EEG/ERP dataset
 % Fully crossed subject-item design
 %
-% Final saved variables:
-%   EEGdata
-%   designTable
+% Saved variables:
 %
-% Final EEGdata dimensions:
-%   Subject-item-condition rows x Channels x Time
-%   2400 x 32 x 251
+% EEGdata:
+%   Subject, Item, Condition, ConditionCode, Channel, Time, Amplitude
 %
-% designTable variables:
-%   Subject
-%   Item
-%   CondCode    % -1 = Control, 1 = Treatment
-%   CondName
+% designTable:
+%   Subject, Item, Condition, ConditionCode
+%
+% Condition coding:
+%   Control   = -1
+%   Treatment =  1
 %
 % Model idea:
-%   EEG ~ CondCode + (1|Subject) + (1|Item)
+%   EEG ~ ConditionCode + (1|Subject) + (1|Item)
 %% ==========================================================
 
 clear; clc; close all;
@@ -27,12 +25,12 @@ rng(123);
 % Simulation settings
 %% ==========================================================
 
-nSub  = 30;
-nItem = 30;
-nCond = 2;
+nSub  = 20;
+nItem = 20;
 
 condNames = {'Control','Treatment'};
-condCodes = [-1, 1];
+conditionCodes = [-1, 1];
+nCond = numel(condNames);
 
 times = -200:4:800;
 nTime = length(times);
@@ -162,45 +160,6 @@ for s = 1:nSub
 end
 
 %% ==========================================================
-% Convert to long-format EEGdata and designTable
-%
-% Final EEGdata:
-%   Subject-item-condition rows x Channels x Time
-%   2400 x 32 x 251
-%% ==========================================================
-
-EEGdata = zeros(nSub * nItem * nCond, nChan, nTime);
-
-Subject  = zeros(nSub * nItem * nCond, 1);
-Item     = zeros(nSub * nItem * nCond, 1);
-CondCode = zeros(nSub * nItem * nCond, 1);
-CondName = cell(nSub * nItem * nCond, 1);
-
-row = 0;
-
-for s = 1:nSub
-    for i = 1:nItem
-        for c = 1:nCond
-
-            row = row + 1;
-
-            EEGdata(row,:,:) = squeeze(data5D(s,i,c,:,:));
-
-            Subject(row)  = s;
-            Item(row)     = i;
-            CondCode(row) = condCodes(c);
-            CondName{row} = condNames{c};
-
-        end
-    end
-end
-
-designTable = table(Subject, Item, CondCode, CondName, ...
-    'VariableNames', {'Subject','Item','CondCode','CondName'});
-
-disp(designTable(1:20,:));
-
-%% ==========================================================
 % Condition difference
 %% ==========================================================
 
@@ -226,7 +185,7 @@ plot(times, treatmentERP, 'r', 'LineWidth', 2);
 
 xlabel('Time (ms)');
 ylabel('Amplitude (\muV)');
-title('Fully Crossed Subject ¡Á Item ERP at Pz');
+title('Fully Crossed Subject Ã— Item ERP at Pz');
 legend(condNames);
 grid on;
 
@@ -319,6 +278,109 @@ else
     fprintf('topoplot not found. Please check EEGLAB path.\n');
 
 end
+
+%% ==========================================================
+% Convert to long-format EEGdata
+%
+% Final EEGdata columns:
+%   Subject
+%   Item
+%   Condition
+%   ConditionCode
+%   Channel
+%   Time
+%   Amplitude
+%% ==========================================================
+
+nRowsEEG = nSub * nItem * nCond * nChan * nTime;
+
+Subject       = zeros(nRowsEEG, 1);
+Item          = zeros(nRowsEEG, 1);
+Condition     = cell(nRowsEEG, 1);
+ConditionCode = zeros(nRowsEEG, 1);
+Channel       = cell(nRowsEEG, 1);
+Time          = zeros(nRowsEEG, 1);
+Amplitude     = zeros(nRowsEEG, 1);
+
+row = 1;
+
+for s = 1:nSub
+    for i = 1:nItem
+        for c = 1:nCond
+            for ch = 1:nChan
+                for t = 1:nTime
+
+                    Subject(row)       = s;
+                    Item(row)          = i;
+                    Condition{row}     = condNames{c};
+                    ConditionCode(row) = conditionCodes(c);
+                    Channel{row}       = chanlocs_EEG(ch).labels;
+                    Time(row)          = times(t);
+                    Amplitude(row)     = data5D(s,i,c,ch,t);
+
+                    row = row + 1;
+
+                end
+            end
+        end
+    end
+end
+
+EEGdata = table( ...
+    Subject, ...
+    Item, ...
+    Condition, ...
+    ConditionCode, ...
+    Channel, ...
+    Time, ...
+    Amplitude);
+
+%% ==========================================================
+% Create design table
+%
+% Final designTable columns:
+%   Subject
+%   Item
+%   Condition
+%   ConditionCode
+%% ==========================================================
+
+nRowsDesign = nSub * nItem * nCond;
+
+Subject       = zeros(nRowsDesign, 1);
+Item          = zeros(nRowsDesign, 1);
+Condition     = cell(nRowsDesign, 1);
+ConditionCode = zeros(nRowsDesign, 1);
+
+row = 1;
+
+for s = 1:nSub
+    for i = 1:nItem
+        for c = 1:nCond
+
+            Subject(row)       = s;
+            Item(row)          = i;
+            Condition{row}     = condNames{c};
+            ConditionCode(row) = conditionCodes(c);
+
+            row = row + 1;
+
+        end
+    end
+end
+
+designTable = table( ...
+    Subject, ...
+    Item, ...
+    Condition, ...
+    ConditionCode);
+
+%% ==========================================================
+% Preview
+%% ==========================================================
+
+disp(designTable(1:20,:));
+disp(EEGdata(1:20,:));
 
 %% ==========================================================
 % Save dataset
