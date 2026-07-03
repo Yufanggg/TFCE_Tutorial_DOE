@@ -22,7 +22,7 @@ fprintf('\nStarting TFCE analysis...\n');
 load('../data/01_simulated_between_subject_EEG.mat', ...
      'EEGdata', 'designTable');
 
-group = designTable.GroupCode;
+group = designTable.CondCode;
 
 times = -200:4:800;
 
