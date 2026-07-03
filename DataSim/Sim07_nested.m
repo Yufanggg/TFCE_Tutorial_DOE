@@ -140,6 +140,108 @@ for s = 1:nSub
 
 end
 
+%% ==========================================================
+% Plotting section
+%% ==========================================================
+
+%% Figure 1: ERP waveform at Pz
+
+channelToPlot = find(strcmp({chanlocs_EEG.labels}, 'Pz'));
+
+controlERP = squeeze(mean(EEGarray(:,1,channelToPlot,:), 1));
+treatmentERP = squeeze(mean(EEGarray(:,2,channelToPlot,:), 1));
+
+figure;
+
+plot(times, controlERP, 'LineWidth', 2);
+hold on;
+plot(times, treatmentERP, 'r', 'LineWidth', 2);
+
+xlabel('Time (ms)');
+ylabel('Amplitude (\muV)');
+title('Nested within-student ERP waveform at Pz');
+legend(condNames);
+grid on;
+
+%% Figure 2: Observed condition difference
+
+subjectDiff = squeeze(EEGarray(:,2,:,:) - EEGarray(:,1,:,:));
+conditionDiff = squeeze(mean(subjectDiff, 1));
+
+figure;
+
+imagesc(times, 1:nChan, conditionDiff);
+axis xy;
+xlim([-200 800]);
+
+set(gca, ...
+    'YTick', 1:nChan, ...
+    'YTickLabel', {chanlocs_EEG.labels}, ...
+    'XTick', -200:200:800, ...
+    'TickLength', [0 0], ...
+    'FontSize', 15, ...
+    'FontName', 'Arial');
+
+xlabel('Time (ms)');
+ylabel('Channel');
+title('Observed Condition Difference: Treatment - Control');
+colorbar;
+
+%% Figure 3: Ground-truth condition effect
+
+truthDiff = zeros(nChan, nTime);
+
+trueDifference = treatmentP300 - controlP300;
+
+for k = 1:length(effectChans)
+
+    ch = effectChans(k);
+    truthDiff(ch,:) = weights(k) * trueDifference';
+
+end
+
+figure;
+
+imagesc(times, 1:nChan, truthDiff);
+axis xy;
+xlim([-200 800]);
+
+set(gca, ...
+    'YTick', 1:nChan, ...
+    'YTickLabel', {chanlocs_EEG.labels}, ...
+    'XTick', -200:200:800, ...
+    'TickLength', [0 0], ...
+    'FontSize', 15, ...
+    'FontName', 'Arial');
+
+xlabel('Time (ms)');
+ylabel('Channel');
+title('Ground-Truth Condition Effect');
+colorbar;
+
+%% Figure 4: Topography at 300 ms
+
+chanlocs_plot = chanlocs_EEG;
+
+for k = 1:length(chanlocs_plot)
+    chanlocs_plot(k).theta = chanlocs_plot(k).theta + 90;
+end
+
+[~, peakIdx] = min(abs(times - p300Latency));
+
+if exist('topoplot', 'file')
+
+    figure;
+    topoplot(conditionDiff(:,peakIdx), chanlocs_plot, 'electrodes', 'labels');
+    colorbar;
+    title('Observed Treatment - Control Difference at 300 ms');
+
+else
+
+    warning('topoplot not found. Please add EEGLAB to your MATLAB path.');
+
+end
+
 %% Convert to long-format EEG table
 % Columns:
 % Class, Student, Condition, ConditionCode, Channel, Time, Amplitude
