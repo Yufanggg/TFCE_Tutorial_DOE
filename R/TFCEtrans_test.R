@@ -1,4 +1,5 @@
 library(permuco)
+source("../R/tfce_transform.R")
 
 ## Test data
 ch_names <- c(
@@ -39,38 +40,12 @@ make_test_data <- function(ch_names, n_times = 20, seed = 42) {
 
 test <- make_test_data(ch_names)
 x <- test$x
-
-## Flatten map into one row
-distribution <- matrix(as.vector(x), nrow = 1)
-
-## TFCE parameters
-E <- 0.5
-H <- 2
-dh <- 0.1
-
-## Important fix:
-## do NOT use seq(0, max(abs(distribution)), by = dh)
-n_h <- floor(max(abs(distribution)) / dh)
-dhi <- seq_len(n_h)
-
-## Call internal function
-tfce_out <- permuco:::tfce_distribution(
-  distribution,
-  E,
-  H,
-  dh,
-  dhi
-)
-
-## Reshape back to time ¡Á channel
-tfce_map <- matrix(
-  tfce_out[1, ],
-  nrow = nrow(x),
-  ncol = ncol(x)
-)
+##---------------------------main code for the test start-----------------------
+tfce_map <- tfce_transform(x)
 
 colnames(tfce_map) <- ch_names
 rownames(tfce_map) <- paste0("t", seq_len(nrow(x)))
+##---------------------------main code for the test end-------------------------
 
 ## Inspect injected cluster
 tfce_map[test$cluster_times, test$cluster_ch_idx]
