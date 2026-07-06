@@ -144,7 +144,7 @@ cat("Observed TFCE map completed.\n")
   
 set.seed(123)
   
-nPerm <- 1
+nPerm <- 999
 TFCE_permMaxA <- TFCE_permMaxB <- rep(NA_real_, nPerm)
   
 cat("Step 3: Starting synchronized permutation testing...\n")
