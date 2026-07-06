@@ -1,5 +1,5 @@
 ---
-title: "TFCE03_betweenSubjec_2by2.Rmd"
+title: "TFCE04_betweenSubjec_2by2Int.Rmd"
 author: "Yufang"
 date: "2026-06-26"
 output: html_document
@@ -14,8 +14,6 @@ output: html_document
 ##   Amplitude ~ FactorA + FactorB + Interaction
 ##
 ## Tests:
-##   1. Factor A main effect
-##   2. Factor B main effect
 ##   3. A x B interaction
 ##
 ## Permutation:
@@ -37,8 +35,8 @@ cat("\nStarting TFCE 2 x 2 between-subject analysis...\n")
 ## -1. Load data
 ## ==========================================================
 
-designTable <- read_csv("../data/03_designTable.csv")
-EEGlong     <- read_csv("../data/03_EEGdata_long.csv")
+designTable <- read_csv("../data/04_designTable.csv")
+EEGlong     <- read_csv("../data/04_EEGdata_long.csv")
 
 print(names(designTable))
 print(names(EEGlong))
@@ -64,7 +62,7 @@ nChan <- length(channels)
 nTime <- length(times)
 
 ## ==========================================================
-## Function: compute t-map for one effect
+## -2. Function: compute t-map for one effect
 ## ==========================================================
 
 compute_tmap_2x2 <- function(data, effect_name) {
@@ -96,48 +94,48 @@ compute_tmap_2x2 <- function(data, effect_name) {
 }
 
 ## ==========================================================
-## Function: run TFCE analysis for one effect
+## Step 1: Observed t-map
 ## ==========================================================
 
-run_tfce_effect <- function(effect_name, reduced_formula, effect_label) {
+cat("Step 1: Computing observed t-map...\n")
+
+t_ObsInt <- compute_tmap_2x2(dat, "Interaction")
+
+cat("Observed t-map completed.\n")
+
+## ==========================================================
+## Step 2: Observed TFCE map
+## ==========================================================
+
+cat("Step 2: Computing observed TFCE map...\n")
+
+TFCE_ObsInt <- tfce_transform(
+  t_ObsInt,
+  E  = 0.66,
+  H  = 2,
+  dh = 0.1
+)
+
+cat("Observed TFCE map completed.\n")
+
+## ========================================================
+## Step 3: Freedman-Lane permutation
+## ========================================================
   
-  cat("\n==========================================================\n")
-  cat("Running TFCE for:", effect_label, "\n")
-  cat("==========================================================\n")
+set.seed(123)
   
-  ## Observed t-map
-  cat("Step 1: Computing observed t-map...\n")
+nPerm <- 1
+TFCE_permMaxInt <- rep(NA_real_, nPerm)
   
-  t_Obs <- compute_tmap_2x2(dat, effect_name)
+cat("Precomputing reduced-model fitted values and residuals...\n")
   
-  ## Observed TFCE map
-  cat("Step 2: Computing observed TFCE map...\n")
-  
-  TFCE_Obs <- tfce_transform(
-    t_Obs,
-    E  = 0.66,
-    H  = 2,
-    dh = 0.1
-  )
-  
-  ## ========================================================
-  ## Freedman-Lane permutation
-  ## ========================================================
-  
-  set.seed(123)
-  
-  nPerm <- 999
-  TFCE_permMax <- rep(NA_real_, nPerm)
-  
-  cat("Step 3: Precomputing reduced-model fitted values and residuals...\n")
-  
-  FL_parts <- dat %>%
-    group_by(Channel, Time) %>%
-    group_modify(~ {
-      
+FL_partsInt <- dat %>%
+  group_by(Channel, Time) %>%
+  group_modify(~ {
+    
       df <- .x
       
-      lm_red <- lm(reduced_formula, data = df)
+      lm_red <- lm(Amplitude ~ FactorA + FactorB, data = df)
       
       df$Y_hat_red <- fitted(lm_red)
       df$resid_red <- residuals(lm_red)
@@ -145,18 +143,20 @@ run_tfce_effect <- function(effect_name, reduced_formula, effect_label) {
       df
     }) %>%
     ungroup()
+
+
   
-  cat("Step 4: Starting Freedman-Lane permutation testing...\n")
+cat("Starting Freedman-Lane permutation testing...\n")
   
-  for (p in seq_len(nPerm)) {
+for (p in seq_len(nPerm)) {
     
-    perm_dat <- FL_parts %>%
+    perm_datInt <- FL_partsInt %>%
       group_by(Channel, Time) %>%
       group_modify(~ {
         
         df <- .x
         
-        perm_idx <- sample(seq_len(nrow(df)))
+        perm_idx <- sample(seq_len(length(unique(dat$Subject))))
         
         df$Amplitude <- df$Y_hat_red + df$resid_red[perm_idx]
         
@@ -164,97 +164,80 @@ run_tfce_effect <- function(effect_name, reduced_formula, effect_label) {
       }) %>%
       ungroup()
     
-    t_perm <- compute_tmap_2x2(perm_dat, effect_name)
+    t_perm_Int <- compute_tmap_2x2(perm_datInt, "Interaction")
     
-    TFCE_perm <- tfce_transform(
-      t_perm,
+    TFCE_permInt <- tfce_transform(
+      t_perm_Int,
       E  = 0.66,
       H  = 2,
       dh = 0.1
     )
     
-    TFCE_permMax[p] <- max(abs(TFCE_perm), na.rm = TRUE)
+    TFCE_permMaxInt[p] <- max(abs(TFCE_permInt), na.rm = TRUE)
     
     if (p %% 50 == 0) {
       cat("Permutation", p, "of", nPerm, "\n")
     }
-  }
+}
   
-  cat("Permutation testing completed.\n")
+cat("Permutation testing completed.\n")
   
-  ## ========================================================
-  ## TFCE-corrected significance
-  ## ========================================================
+## ========================================================
+## TFCE-corrected significance
+## ========================================================
   
-  cat("Step 5: Computing TFCE-corrected significance...\n")
+cat("Step 5: Computing TFCE-corrected significance...\n")
   
-  alpha <- 0.05
+alpha <- 0.05
   
-  maxTFCE <- sort(c(
-    TFCE_permMax,
-    max(abs(TFCE_Obs), na.rm = TRUE)
+maxTFCEInt <- sort(c(
+  TFCE_permMaxInt,
+  max(abs(TFCE_ObsInt), na.rm = TRUE)
   ))
   
-  maxTFCEcrit <- maxTFCE[round(nPerm * (1 - alpha))]
+maxTFCEcritInt <- maxTFCEInt[round(nPerm * (1 - alpha))]
   
-  Mask <- abs(TFCE_Obs) >= maxTFCEcrit
+MaskInt <- abs(TFCE_ObsInt) >= maxTFCEcritInt
   
-  P_Values <- matrix(
+P_ValuesInt <- matrix(
     NA,
     nrow = nChan,
     ncol = nTime,
-    dimnames = dimnames(TFCE_Obs)
+    dimnames = dimnames(TFCE_ObsInt)
   )
   
-  for (ch in seq_len(nChan)) {
+for (ch in seq_len(nChan)) {
     for (t in seq_len(nTime)) {
-      P_Values[ch, t] <-
-        (sum(TFCE_permMax >= abs(TFCE_Obs[ch, t]), na.rm = TRUE) + 1) /
+      P_ValuesInt[ch, t] <-
+        (sum(TFCE_permMaxInt >= abs(TFCE_ObsInt[ch, t]), na.rm = TRUE) + 1) /
         (nPerm + 1)
     }
   }
   
-  cat(sprintf("Critical TFCE value = %.4f\n", maxTFCEcrit))
-  
-  Results <- list(
-    Obs          = t_Obs,
-    TFCE_Obs     = TFCE_Obs,
-    TFCE_Null    = TFCE_permMax,
-    maxTFCEcrit  = maxTFCEcrit,
-    P_Values     = P_Values,
-    Mask         = Mask,
+cat("TFCE-corrected significance completed.\n")
+cat(sprintf("Critical TFCE value = %.4f\n", maxTFCEcritInt))
+
+## ==========================================================
+## Step 5: Store results
+## ==========================================================
+
+cat("Step 5: Storing results...\n")
+Results <- list(
+    Obs_Int        = t_ObsInt,
+    TFCE_Obs_Int   = TFCE_ObsInt,
+    TFCE_Null_Int    = TFCE_permMaxInt,
+    maxTFCEcritInt  = maxTFCEcritInt,
+    P_ValuesInt     = P_ValuesInt,
+    Mask_Int         = MaskInt,
     alpha        = alpha,
     nPerm        = nPerm,
     model        = "Amplitude ~ FactorA + FactorB + Interaction",
-    test         = effect_label,
+    test         = "Interaction",
     times        = times,
     channels     = channels
   )
-  
-  return(Results)
-}
 
-## ==========================================================
-## Run three effects
-## ==========================================================
-
-Results_A <- run_tfce_effect(
-  effect_name     = "FactorA",
-  reduced_formula = Amplitude ~ FactorB + Interaction,
-  effect_label    = "Factor A main effect"
-)
-
-Results_B <- run_tfce_effect(
-  effect_name     = "FactorB",
-  reduced_formula = Amplitude ~ FactorA + Interaction,
-  effect_label    = "Factor B main effect"
-)
-
-Results_Int <- run_tfce_effect(
-  effect_name     = "Interaction",
-  reduced_formula = Amplitude ~ FactorA + FactorB,
-  effect_label    = "A x B interaction"
-)
+cat("Results stored.\n")
 
 ## ==========================================================
 ## Helper plotting function
@@ -287,25 +270,17 @@ plot_eeg_map <- function(mat, title) {
 ## Plot significant corrected t-maps
 ## ==========================================================
 
-mA <- Results_A$Obs
-mA[!Results_A$Mask] <- 0
-plot_eeg_map(mA, "TFCE-corrected Factor A Effect")
-
-mB <- Results_B$Obs
-mB[!Results_B$Mask] <- 0
-plot_eeg_map(mB, "TFCE-corrected Factor B Effect")
-
-mInt <- Results_Int$Obs
-mInt[!Results_Int$Mask] <- 0
-plot_eeg_map(mInt, "TFCE-corrected A x B Interaction")
+mA <- Results$Obs_Int
+mA[!Results$Mask_Int] <- 0
+plot_eeg_map(mA, "TFCE-corrected Interaction Effect between A and B")
 
 ## ==========================================================
-## Plot observed TFCE maps
+## Plot significant corrected t-maps
 ## ==========================================================
-
-plot_eeg_map(Results_A$TFCE_Obs, "Observed TFCE Map: Factor A")
-plot_eeg_map(Results_B$TFCE_Obs, "Observed TFCE Map: Factor B")
-plot_eeg_map(Results_Int$TFCE_Obs, "Observed TFCE Map: A x B Interaction")
+plot_eeg_map(
+  Results$TFCE_Obs,
+  "Observed TFCE Map: A x B Interaction"
+)
 
 ## ==========================================================
 ## Save results
@@ -316,9 +291,7 @@ if (!dir.exists("../results")) {
 }
 
 save(
-  Results_A,
-  Results_B,
-  Results_Int,
+  Results,
   file = "../results/03_TFCE_between_subject_2x2_results.RData"
 )
 

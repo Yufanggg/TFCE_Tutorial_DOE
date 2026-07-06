@@ -5,7 +5,7 @@
 clear; clc;
 
 %% Load MAT file
-load('../data/02_simulated_between_subject_covariate_EEG.mat', ...
+load('../data/04_simulated_between_subject_2by2Int_EEG.mat', ...
      'EEGdata', ...
      'designTable');
 
@@ -41,7 +41,7 @@ if nTime ~= length(times)
 end
 
 %% Save design table
-writetable(designTable, '../data/02_designTable.csv');
+writetable(designTable, '../data/04_designTable.csv');
 
 %% Convert EEGdata to long table
 nRows = nSub * nChan * nTime;
@@ -75,8 +75,8 @@ EEGcsv = table( ...
     Subject);
 
 %% Save EEG CSV
-writetable(EEGcsv, '../data/02_EEGdata_long.csv');
+writetable(EEGcsv, '../data/04_EEGdata_long.csv');
 
 disp('Saved files:');
-disp('../data/02_designTable.csv');
-disp('../data/02_EEGdata_long.csv');
+disp('../data/04_designTable.csv');
+disp('../data/04_EEGdata_long.csv');
