@@ -2,9 +2,7 @@
 title: "TFCE05_withinSubject.Rmd"
 author: "Yufang"
 date: "2026-06-26"
-output:
-  pdf_document: default
-  html_document: default
+output: html_document
 ---
 
 ```{r, echo=TRUE}
@@ -132,7 +130,7 @@ cat("Observed TFCE map completed.\n")
 
 set.seed(123)
 
-n_perm <- 1
+n_perm <- 999
 TFCE_permMax <- rep(NaN, n_perm)
 
 subject_info <- designTable %>%
@@ -235,7 +233,7 @@ nChan     <- nrow(t_Obs)
 image(
   x = times_num,
   y = seq_len(nChan),
-  z = t(sigT),
+  z = t(t_Obs),
   xlab = "Time (ms)",
   ylab = "Channel",
   main = "TFCE-corrected Significant Effects",
