@@ -2,7 +2,9 @@
 title: "TFCE05_withinSubject.Rmd"
 author: "Yufang"
 date: "2026-06-26"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r, echo=TRUE}
@@ -144,7 +146,7 @@ for (p in seq_len(n_perm)) {
     ungroup()
   
   perm_dat <- EEGlong %>%
-    left_join(perm_info, by = "RowID") %>%
+    left_join(perm_info, by = c("Subject", "CondCode")) %>%
     mutate(
       Subject = factor(Subject),
       Channel = factor(Channel),
