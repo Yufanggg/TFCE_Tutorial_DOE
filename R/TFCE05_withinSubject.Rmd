@@ -71,12 +71,16 @@ compute_tmap <- function(data) {
   
   res <- data %>%
     group_by(Channel, Time) %>%
-    summarise(
-      t_value = coef(summary(
-        lmer(Amplitude ~ CondCode + (1 | Subject), data = cur_data())
-      ))["CondCode", "t value"],
-      .groups = "drop"
-    )
+    group_modify(~{
+      fit <- lmer(
+        Amplitude ~ CondCode + (1 | Subject),
+        data = .x
+        )
+      tibble(
+        t_value = coef(summary(fit))["CondCode","t value"]
+      )
+      }) %>%
+    ungroup()
   
   tmat <- res %>%
     mutate(
