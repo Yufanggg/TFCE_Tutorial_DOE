@@ -14,7 +14,7 @@
 *.Rproj text
 *.[Rr]md  linguist-language=R linguist-detectable=true
 
-
+*.html linguist-detectable=false
 
 
  Basic .gitattributes for a python repo.
