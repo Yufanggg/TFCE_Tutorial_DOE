@@ -153,7 +153,7 @@ parfor p = 1:nPerm
 
             EEG = double(squeeze(EEGdata(:, ch, tpoint)));
 
-            tbl = table(EEG, CondCode_perm', SubjectLME, ...
+            tbl = table(EEG, CondCode_perm, SubjectLME, ...
                 'VariableNames', {'EEG','Condition','Subject'});
 
             lme = fitlme(tbl, 'EEG ~ Condition + (1|Subject)');

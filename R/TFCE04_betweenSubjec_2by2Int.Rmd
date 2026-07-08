@@ -124,7 +124,7 @@ cat("Observed TFCE map completed.\n")
   
 set.seed(123)
   
-nPerm <- 1
+nPerm <- 999
 TFCE_permMaxInt <- rep(NA_real_, nPerm)
   
 cat("Precomputing reduced-model fitted values and residuals...\n")
