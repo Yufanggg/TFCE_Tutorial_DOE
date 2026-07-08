@@ -1,357 +1,503 @@
-%% ==========================================================
-% TFCE analysis
-% Split-plot mixed design
-%
-% Input file contains only:
-%   EEGdata
-%   designTable
-%
-% EEGdata:
-%   Subject-condition rows x Channels x Time
-%
-% designTable:
-%   Subject
-%   GroupCode   % -1 = HC, 1 = Patient
-%   GroupName
-%   CondCode    % -1 = Noun, 1 = Verb
-%   CondName
-%
-% Model:
-%   EEG ~ GroupCode * CondCode + (1|Subject)
-%
-% Tests:
-%   Group main effect
-%   Condition main effect
-%   Group x Condition interaction
-%% ==========================================================
-
-clear; clc; close all;
-fprintf('\nStarting split-plot TFCE analysis...\n');
-
-%% Load data
-
-load('../data/06_simulated_split_plot_EEG.mat', ...
-     'EEGdata', 'designTable');
-
-times = -200:4:800;
-
-%% Load channel locations
-
-chanlocs_1020 = readlocs('standard_1005.elc');
-
-chanLabels_32 = {
-'Fp1','Fp2', ...
-'F7','F3','Fz','F4','F8', ...
-'FC5','FC1','FC2','FC6', ...
-'T7','C3','Cz','C4','T8', ...
-'CP5','CP1','CP2','CP6', ...
-'P7','P3','Pz','P4','P8', ...
-'PO9','O1','Oz','O2','PO10', ...
-'TP9','TP10'
-};
-
-allLabels = {chanlocs_1020.labels};
-[tf, idx] = ismember(chanLabels_32, allLabels);
-
-if any(~tf)
-    error('Missing channels: %s', strjoin(chanLabels_32(~tf), ', '));
-end
-
-e_loc = chanlocs_1020(idx);
-
-%% Basic checks
-
-[nRows, nChan, nTime] = size(EEGdata);
-
-Subject   = designTable.Subject;
-GroupCode = designTable.GroupCode;
-CondCode  = designTable.CondCode;
-
-if height(designTable) ~= nRows
-    error('Rows in designTable must match rows in EEGdata.');
-end
-
-if length(times) ~= nTime
-    error('Length of times does not match number of time points.');
-end
-
-if length(e_loc) ~= nChan
-    error('Number of channel locations does not match number of channels.');
-end
-
-subjects = unique(Subject);
-nSubj = length(subjects);
-
-if nRows ~= nSubj * 2
-    error('Expected exactly two condition rows per subject.');
-end
-
-for s = 1:nSubj
-
-    subj = subjects(s);
-    idxSubj = Subject == subj;
-
-    if sum(idxSubj) ~= 2
-        error('Each subject must have exactly two rows.');
-    end
-
-    if ~all(sort(CondCode(idxSubj)) == [-1; 1])
-        error('Each subject must have one Noun (-1) and one Verb (1).');
-    end
-
-end
-
-%% Variables for LME
-
-SubjectLME = categorical(Subject);
-
-Group = GroupCode;
-Cond  = CondCode;
-Interaction = Group .* Cond;
-
-%% TFCE settings
-
-nPerm = 999;
-alpha = 0.05;
-
-ChN = ept_ChN2(e_loc);
-E_H = [0.66, 2];
-
-%% ==========================================================
-% Step 1: Observed LME t-maps
-%% ==========================================================
-
-fprintf('Step 1: Computing observed t-statistic maps...\n');
-
-t_Obs_Group = zeros(nChan, nTime);
-t_Obs_Cond  = zeros(nChan, nTime);
-t_Obs_Int   = zeros(nChan, nTime);
-
-for ch = 1:nChan
-    for tp = 1:nTime
-
-        EEG = double(squeeze(EEGdata(:, ch, tp)));
-
-        tbl = table(EEG, Group, Cond, Interaction, SubjectLME, ...
-            'VariableNames', {'EEG','Group','Cond','Interaction','Subject'});
-
-        lme = fitlme(tbl, 'EEG ~ Group + Cond + Interaction + (1|Subject)');
-
-        % Coefficient rows:
-        % 1 = Intercept
-        % 2 = Group
-        % 3 = Cond
-        % 4 = Interaction
-        t_Obs_Group(ch,tp) = lme.Coefficients.tStat(2);
-        t_Obs_Cond(ch,tp)  = lme.Coefficients.tStat(3);
-        t_Obs_Int(ch,tp)   = lme.Coefficients.tStat(4);
-
-    end
-end
-
-fprintf('Observed t-statistic maps completed.\n');
-
-%% Step 2: Observed TFCE maps
-
-fprintf('Step 2: Computing observed TFCE maps...\n');
-
-TFCE_Obs_Group = ept_mex_TFCE2D(t_Obs_Group, ChN, E_H);
-TFCE_Obs_Cond  = ept_mex_TFCE2D(t_Obs_Cond,  ChN, E_H);
-TFCE_Obs_Int   = ept_mex_TFCE2D(t_Obs_Int,   ChN, E_H);
-
-fprintf('Observed TFCE maps completed.\n');
-
-%% ==========================================================
-% Step 3: Permutation testing
-%
-% Group main effect:
-%   shuffle GroupCode between subjects, keeping both rows together
-%
-% Condition main effect:
-%   flip CondCode within subjects
-%
-% Interaction:
-%   flip CondCode within subjects
-%% ==========================================================
-
-TFCE_permMax_Group = nan(nPerm,1);
-TFCE_permMax_Cond  = nan(nPerm,1);
-TFCE_permMax_Int   = nan(nPerm,1);
-
-fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
-
-parfor p = 1:nPerm
-
-    perm_t_Group = nan(nChan, nTime);
-    perm_t_Cond  = nan(nChan, nTime);
-    perm_t_Int   = nan(nChan, nTime);
-
-    %% Permute Group between subjects
-
-    subjGroup = zeros(nSubj,1);
-
-    for s = 1:nSubj
-        idxSubj = Subject == subjects(s);
-        subjGroup(s) = unique(GroupCode(idxSubj));
-    end
-
-    subjGroup_perm = subjGroup(randperm(nSubj));
-
-    Group_perm = GroupCode;
-
-    for s = 1:nSubj
-        idxSubj = Subject == subjects(s);
-        Group_perm(idxSubj) = subjGroup_perm(s);
-    end
-
-    Int_perm_Group = Group_perm .* Cond;
-
-    %% Flip condition labels within subjects
-
-    Cond_perm = CondCode;
-
-    for s = 1:nSubj
-
-        idxSubj = find(Subject == subjects(s));
-
-        if rand > 0.5
-            Cond_perm(idxSubj) = flipud(Cond_perm(idxSubj));
-        end
-
-    end
-
-    Int_perm_Cond = Group .* Cond_perm;
-
-    %% Mass-univariate LME
-
-    for ch = 1:nChan
-        for tp = 1:nTime
-
-            EEG = double(squeeze(EEGdata(:, ch, tp)));
-
-            % Group effect permutation
-            tbl_G = table(EEG, Group_perm, Cond, Int_perm_Group, SubjectLME, ...
-                'VariableNames', {'EEG','Group','Cond','Interaction','Subject'});
-
-            lme_G = fitlme(tbl_G, ...
-                'EEG ~ Group + Cond + Interaction + (1|Subject)');
-
-            perm_t_Group(ch,tp) = lme_G.Coefficients.tStat(2);
-
-            % Condition effect permutation
-            tbl_C = table(EEG, Group, Cond_perm, Int_perm_Cond, SubjectLME, ...
-                'VariableNames', {'EEG','Group','Cond','Interaction','Subject'});
-
-            lme_C = fitlme(tbl_C, ...
-                'EEG ~ Group + Cond + Interaction + (1|Subject)');
-
-            perm_t_Cond(ch,tp) = lme_C.Coefficients.tStat(3);
-            perm_t_Int(ch,tp)  = lme_C.Coefficients.tStat(4);
-
-        end
-    end
-
-    fprintf('At the %dth permutation\n', p);
-
-    TFCE_perm_Group = ept_mex_TFCE2D(perm_t_Group, ChN, E_H);
-    TFCE_perm_Cond  = ept_mex_TFCE2D(perm_t_Cond,  ChN, E_H);
-    TFCE_perm_Int   = ept_mex_TFCE2D(perm_t_Int,   ChN, E_H);
-
-    TFCE_permMax_Group(p) = max(abs(TFCE_perm_Group(:)));
-    TFCE_permMax_Cond(p)  = max(abs(TFCE_perm_Cond(:)));
-    TFCE_permMax_Int(p)   = max(abs(TFCE_perm_Int(:)));
-
-end
-
-fprintf('\nPermutation testing completed.\n');
-
-%% Step 4: TFCE correction
-
-fprintf('Step 4: Computing TFCE-corrected significance...\n');
-
-nPerm = length(TFCE_permMax_Group);
-maxTFCE_Group = sort([TFCE_permMax_Group;max(abs(TFCE_Obs_Group(:)))]);
-maxTFCEcrit_Group = maxTFCE_Group(round(nPerm*(1-Alpha)));
-
-maxTFCE_Cond = sort([TFCE_permMax_Cond;max(abs(TFCE_Obs_Cond(:)))]);
-maxTFCEcrit_Cond = maxTFCE_Cond(round(nPerm*(1-Alpha)));
-
-maxTFCE_Int = sort([TFCE_permMax_Int;max(abs(TFCE_Obs_Int(:)))]);
-maxTFCEcrit_Int = maxTFCE_Int(round(nPerm*(1-Alpha)));
-
-
-Mask_Group = abs(TFCE_Obs_Group) >= maxTFCEcrit_Group;
-Mask_Cond  = abs(TFCE_Obs_Cond)  >= maxTFCEcrit_Cond;
-Mask_Int   = abs(TFCE_Obs_Int)   >= maxTFCEcrit_Int;
-
-P_Values_Group = nan(nChan, nTime);
-P_Values_Cond  = nan(nChan, nTime);
-P_Values_Int   = nan(nChan, nTime);
-
-for ch = 1:nChan
-    for tpoint = 1:nTime
-        P_Values_Group(ch, tpoint) = ...
-            (sum(TFCE_permMax_Group >= abs(TFCE_Obs_Group(ch, tpoint))) + 1) / ...
-            (nPerm + 1);
-        
-        P_Values_Cond(ch, tpoint) = ...
-            (sum(TFCE_permMax_Cond >= abs(TFCE_Obs_Cond(ch, tpoint))) + 1) / ...
-            (nPerm + 1);
-        P_Values_Int(ch, tpoint) = ...
-            (sum(TFCE_permMax_Int >= abs(TFCE_Obs_Int(ch, tpoint))) + 1) / ...
-            (nPerm + 1);
-    end
-end
-
-%% Step 5: Store results
-
-Results = struct();
-
-Results.Obs_Group       = t_Obs_Group;
-Results.TFCE_Obs_Group  = TFCE_Obs_Group;
-Results.TFCE_Null_Group = TFCE_permMax_Group;
-Results.maxTFCEcrit_Group  = maxTFCEcrit_Group;
-Results.P_Values_Group  = P_Values_Group;
-Results.Mask_Group      = Mask_Group;
-
-Results.Obs_Cond       = t_Obs_Cond;
-Results.TFCE_Obs_Cond  = TFCE_Obs_Cond;
-Results.TFCE_Null_Cond = TFCE_permMax_Cond;
-Results.maxTFCEcrit_Cond  = maxTFCEcrit_Cond;
-Results.P_Values_Cond  = P_Values_Cond;
-Results.Mask_Cond      = Mask_Cond;
-
-Results.Obs_Int       = t_Obs_Int;
-Results.TFCE_Obs_Int  = TFCE_Obs_Int;
-Results.TFCE_Null_Int = TFCE_permMax_Int;
-Results.maxTFCEcrit_Int  = maxTFCEcrit_Int;
-Results.P_Values_Int  = P_Values_Int;
-Results.Mask_Int      = Mask_Int;
-
-Results.alpha = alpha;
-Results.nPerm = nPerm;
-Results.model = 'EEG ~ Group + Cond + Interaction + (1|Subject)';
-Results.times = times;
-Results.e_loc = e_loc;
-
-%% Step 6: Plot results
-
-plot_tfce_results(t_Obs_Group, Mask_Group, times, e_loc, ...
-    'TFCE-corrected Group Effect');
-
-plot_tfce_results(t_Obs_Cond, Mask_Cond, times, e_loc, ...
-    'TFCE-corrected Condition Effect');
-
-plot_tfce_results(t_Obs_Int, Mask_Int, times, e_loc, ...
-    'TFCE-corrected Group x Condition Interaction');
-
-%% Step 7: Save results
-
-if ~exist('../results', 'dir')
-    mkdir('../results');
-end
-
-save('../results/06_TFCE_split_plot_results.mat', ...
-     'Results');
-
-disp('Split-plot TFCE analysis completed and saved.');
+---
+title: "TFCE06_splitPlot.Rmd"
+author: "Yufang"
+date: "2026-07-08"
+output: html_document
+---
+
+```{r, echo=TRUE}
+## ==========================================================
+## TFCE analysis in R for exported split-plot EEG CSV
+##
+## Input files:
+##   ../data/06_designTable.csv
+##   ../data/06_EEGdata_long.csv
+##
+## Model:
+##   Amplitude ~ GroupCode * CondCode + (1|Subject)
+##
+## Tests:
+##   1. Group main effect
+##   2. Condition main effect
+##   3. Group x Condition interaction
+##
+## Permutation:
+##   Group effect:
+##     Shuffle GroupCode between subjects, keeping both rows together
+##
+##   Condition effect:
+##     Rearrange CondCode within each subject
+##
+##   Interaction effect:
+##     Here follows the same simplified synchronized permutation as CondCode.
+##     If using Freedman--Lane for interaction, replace this part accordingly.
+##
+## EEG amplitudes are never directly permuted.
+## ==========================================================
+
+rm(list = ls())
+
+library(dplyr)
+library(tidyr)
+library(lme4)
+library(lmerTest)
+
+source("../R/tfce_transform.R")
+
+cat("\nStarting TFCE split-plot analysis...\n")
+
+## ==========================================================
+## -1. Load CSV files
+## ==========================================================
+
+designTable <- read.csv("../data/06_designTable.csv")
+EEGlong     <- read.csv("../data/06_EEGdata_long.csv")
+
+print(names(designTable))
+print(names(EEGlong))
+
+## ==========================================================
+## 0. Merge EEG data with design table
+## ==========================================================
+
+designTable <- designTable %>%
+  mutate(RowID = row_number())
+
+dat <- EEGlong %>%
+  left_join(
+    designTable,
+    by = c("Subject", "GroupCode", "CondCode")
+  ) %>%
+  mutate(
+    Subject  = factor(Subject),
+    Channel  = factor(Channel),
+    GroupCode = as.numeric(GroupCode),
+    CondCode  = as.numeric(CondCode),
+    Interaction = GroupCode * CondCode
+  )
+
+channels <- unique(dat$Channel)
+times    <- sort(unique(dat$Time))
+
+n_chan <- length(channels)
+n_time <- length(times)
+
+## ==========================================================
+## Basic checks
+## ==========================================================
+
+subjects <- unique(designTable$Subject)
+
+for (s in subjects) {
+  
+  tmp <- designTable %>%
+    filter(Subject == s)
+  
+  if (nrow(tmp) != 2) {
+    stop("Each subject must have exactly two rows.")
+  }
+  
+  if (!all(sort(tmp$CondCode) == c(-1, 1))) {
+    stop("Each subject must have one Noun (-1) and one Verb (1).")
+  }
+  
+  if (length(unique(tmp$GroupCode)) != 1) {
+    stop("GroupCode must be constant within each subject.")
+  }
+}
+
+## ==========================================================
+## -2. Function to compute LME t-maps
+## ==========================================================
+
+compute_tmaps <- function(data) {
+  
+  res <- data %>%
+    group_by(Channel, Time) %>%
+    group_modify(~{
+      
+      fit <- lmer(
+        Amplitude ~ GroupCode + CondCode + Interaction + (1 | Subject),
+        data = .x
+      )
+      
+      cf <- coef(summary(fit))
+      
+      tibble(
+        t_Group = cf["GroupCode", "t value"],
+        t_Cond  = cf["CondCode", "t value"],
+        t_Int   = cf["Interaction", "t value"]
+      )
+    }) %>%
+    ungroup()
+  
+  make_mat <- function(x) {
+    
+    tmat <- res %>%
+      mutate(
+        Channel = factor(Channel, levels = channels),
+        Time = factor(Time, levels = times)
+      ) %>%
+      arrange(Channel, Time) %>%
+      pull({{ x }})
+    
+    matrix(
+      tmat,
+      nrow = n_chan,
+      ncol = n_time,
+      byrow = TRUE,
+      dimnames = list(channels, times)
+    )
+  }
+  
+  list(
+    Group = make_mat(t_Group),
+    Cond  = make_mat(t_Cond),
+    Int   = make_mat(t_Int)
+  )
+}
+
+## ==========================================================
+## Step 1: Observed t-maps
+## ==========================================================
+
+cat("Step 1: Computing observed t-maps...\n")
+
+t_Obs <- compute_tmaps(dat)
+
+t_Obs_Group <- t_Obs$Group
+t_Obs_Cond  <- t_Obs$Cond
+
+
+cat("Observed t-maps completed.\n")
+
+## ==========================================================
+## Step 2: Observed TFCE maps
+## ==========================================================
+
+cat("Step 2: Computing observed TFCE maps...\n")
+
+TFCE_Obs_Group <- tfce_transform(t_Obs_Group, E = 0.66, H = 2, dh = 0.1)
+TFCE_Obs_Cond  <- tfce_transform(t_Obs_Cond,  E = 0.66, H = 2, dh = 0.1)
+
+
+cat("Observed TFCE maps completed.\n")
+
+## ==========================================================
+## Step 3: Permutation distribution
+## ==========================================================
+
+set.seed(123)
+
+n_perm <- 999
+
+TFCE_permMax_Group <- rep(NaN, n_perm)
+TFCE_permMax_Cond  <- rep(NaN, n_perm)
+
+subject_info <- designTable %>%
+  select(RowID, Subject, GroupCode, CondCode)
+
+subj_group <- subject_info %>%
+  group_by(Subject) %>%
+  summarise(GroupCode = unique(GroupCode), .groups = "drop")
+
+for (p in seq_len(n_perm)) {
+  
+  ## ----------------------------------------------------------
+  ## 3.1 Permute GroupCode between subjects
+  ## ----------------------------------------------------------
+  
+  subj_group_perm <- subj_group %>%
+    mutate(GroupCode_perm = sample(GroupCode))
+  
+  perm_info_group <- subject_info %>%
+    select(-GroupCode) %>%
+    left_join(
+      subj_group_perm %>% select(Subject, GroupCode_perm),
+      by = "Subject"
+    ) %>%
+    rename(GroupCode = GroupCode_perm)
+  
+  perm_dat_group <- EEGlong %>%
+    select(Subject, CondCode, Channel, Time, Amplitude) %>%
+    left_join(
+      perm_info_group,
+      by = c("Subject", "CondCode")
+    ) %>%
+    mutate(
+      Subject = factor(Subject),
+      Channel = factor(Channel),
+      GroupCode = as.numeric(GroupCode),
+      CondCode = as.numeric(CondCode),
+      Interaction = GroupCode * CondCode
+    )
+  
+  ## ----------------------------------------------------------
+  ## 3.2 Permute CondCode within subjects
+  ## ----------------------------------------------------------
+  
+  perm_info_cond <- subject_info %>%
+    group_by(Subject) %>%
+    mutate(CondCode = sample(CondCode)) %>%
+    ungroup()
+  
+  perm_dat_cond <- EEGlong %>%
+    select(Subject, GroupCode, Channel, Time, Amplitude) %>%
+    left_join(
+      perm_info_cond,
+      by = c("Subject", "GroupCode")
+    ) %>%
+    mutate(
+      Subject = factor(Subject),
+      Channel = factor(Channel),
+      GroupCode = as.numeric(GroupCode),
+      CondCode = as.numeric(CondCode),
+      Interaction = GroupCode * CondCode
+    )
+  
+  ## ----------------------------------------------------------
+  ## 3.3 Compute permutation t-maps
+  ## ----------------------------------------------------------
+  
+  t_perm_group <- compute_tmaps(perm_dat_group)
+  t_perm_cond  <- compute_tmaps(perm_dat_cond)
+  
+  TFCE_perm_Group <- tfce_transform(
+    t_perm_group$Group,
+    E = 0.66,
+    H = 2,
+    dh = 0.1
+  )
+  
+  TFCE_perm_Cond <- tfce_transform(
+    t_perm_cond$Cond,
+    E = 0.66,
+    H = 2,
+    dh = 0.1
+  )
+  
+  
+  TFCE_permMax_Group[p] <- max(abs(TFCE_perm_Group), na.rm = TRUE)
+  TFCE_permMax_Cond[p]  <- max(abs(TFCE_perm_Cond),  na.rm = TRUE)
+  
+  if (p %% 50 == 0) {
+    cat("Permutation", p, "of", n_perm, "\n")
+  }
+}
+
+cat("Permutation testing completed.\n")
+
+## ==========================================================
+## Step 4: TFCE-corrected significance
+## ==========================================================
+
+cat("Step 4: Computing TFCE-corrected significance...\n")
+
+alpha <- 0.05
+nPerm <- length(TFCE_permMax_Group)
+
+maxTFCE_Group <- sort(c(
+  TFCE_permMax_Group,
+  max(abs(TFCE_Obs_Group), na.rm = TRUE)
+))
+
+maxTFCE_Cond <- sort(c(
+  TFCE_permMax_Cond,
+  max(abs(TFCE_Obs_Cond), na.rm = TRUE)
+))
+
+
+maxTFCEcrit_Group <- maxTFCE_Group[round(nPerm * (1 - alpha))]
+maxTFCEcrit_Cond  <- maxTFCE_Cond[round(nPerm * (1 - alpha))]
+
+
+Mask_Group <- abs(TFCE_Obs_Group) >= maxTFCEcrit_Group
+Mask_Cond  <- abs(TFCE_Obs_Cond)  >= maxTFCEcrit_Cond
+
+
+compute_p_values <- function(TFCE_Obs, TFCE_permMax) {
+  
+  P <- matrix(
+    NA_real_,
+    nrow = nrow(TFCE_Obs),
+    ncol = ncol(TFCE_Obs),
+    dimnames = dimnames(TFCE_Obs)
+  )
+  
+  for (ch in seq_len(nrow(TFCE_Obs))) {
+    for (tp in seq_len(ncol(TFCE_Obs))) {
+      P[ch, tp] <-
+        (sum(TFCE_permMax >= abs(TFCE_Obs[ch, tp]), na.rm = TRUE) + 1) /
+        (length(TFCE_permMax) + 1)
+    }
+  }
+  
+  P
+}
+
+P_Values_Group <- compute_p_values(TFCE_Obs_Group, TFCE_permMax_Group)
+P_Values_Cond  <- compute_p_values(TFCE_Obs_Cond,  TFCE_permMax_Cond)
+
+cat("TFCE-corrected significance completed.\n")
+cat(sprintf("Critical TFCE Group = %.4f\n", maxTFCEcrit_Group))
+cat(sprintf("Critical TFCE Cond  = %.4f\n", maxTFCEcrit_Cond))
+
+## ==========================================================
+## Step 5: Store results
+## ==========================================================
+
+cat("Step 5: Storing results...\n")
+
+Results <- list(
+  
+  Obs_Group = t_Obs_Group,
+  TFCE_Obs_Group = TFCE_Obs_Group,
+  TFCE_Null_Group = TFCE_permMax_Group,
+  maxTFCEcrit_Group = maxTFCEcrit_Group,
+  P_Values_Group = P_Values_Group,
+  Mask_Group = Mask_Group,
+  
+  Obs_Cond = t_Obs_Cond,
+  TFCE_Obs_Cond = TFCE_Obs_Cond,
+  TFCE_Null_Cond = TFCE_permMax_Cond,
+  maxTFCEcrit_Cond = maxTFCEcrit_Cond,
+  P_Values_Cond = P_Values_Cond,
+  Mask_Cond = Mask_Cond,
+  
+  alpha = alpha,
+  nPerm = nPerm,
+  model = "Amplitude ~ GroupCode * CondCode + (1|Subject)",
+  times = times,
+  channels = channels
+)
+
+cat("Results stored.\n")
+
+## ==========================================================
+## Step 6: Plot function
+## ==========================================================
+
+plot_tmap <- function(tmap, mask, main_title) {
+  
+  sigT <- tmap
+  sigT[!mask] <- 0
+  
+  times_num <- as.numeric(colnames(tmap))
+  channels  <- rownames(tmap)
+  nChan     <- nrow(tmap)
+  
+  image(
+    x = times_num,
+    y = seq_len(nChan),
+    z = t(sigT),
+    xlab = "Time (ms)",
+    ylab = "Channel",
+    main = main_title,
+    axes = FALSE
+  )
+  
+  axis(1, at = seq(-200, 800, by = 200))
+  axis(
+    2,
+    at = seq_len(nChan),
+    labels = channels,
+    las = 2,
+    cex.axis = 0.7
+  )
+  box()
+}
+
+plot_tfce_map <- function(tfce_map, main_title) {
+  
+  times_num <- as.numeric(colnames(tfce_map))
+  channels  <- rownames(tfce_map)
+  nChan     <- nrow(tfce_map)
+  
+  image(
+    x = times_num,
+    y = seq_len(nChan),
+    z = t(tfce_map),
+    xlab = "Time (ms)",
+    ylab = "Channel",
+    main = main_title,
+    axes = FALSE
+  )
+  
+  axis(1, at = seq(-200, 800, by = 200))
+  axis(
+    2,
+    at = seq_len(nChan),
+    labels = channels,
+    las = 2,
+    cex.axis = 0.7
+  )
+  box()
+}
+
+## ==========================================================
+## Step 7: Plot TFCE-corrected significant t-values
+## ==========================================================
+
+plot_tmap(
+  t_Obs_Group,
+  Mask_Group,
+  "TFCE-corrected Group Effect"
+)
+
+plot_tmap(
+  t_Obs_Cond,
+  Mask_Cond,
+  "TFCE-corrected Condition Effect"
+)
+
+
+## ==========================================================
+## Step 8: Plot observed TFCE maps
+## ==========================================================
+
+plot_tfce_map(
+  TFCE_Obs_Group,
+  "Observed TFCE Map: Group Effect"
+)
+
+plot_tfce_map(
+  TFCE_Obs_Cond,
+  "Observed TFCE Map: Condition Effect"
+)
+
+
+## ==========================================================
+## Step 9: Save TFCE results
+## ==========================================================
+
+if (!dir.exists("../results")) {
+  dir.create("../results")
+}
+
+save(
+  Results,
+  t_Obs_Group,
+  t_Obs_Cond,
+  
+  TFCE_Obs_Group,
+  TFCE_Obs_Cond,
+
+  TFCE_permMax_Group,
+  TFCE_permMax_Cond,
+
+  maxTFCEcrit_Group,
+  maxTFCEcrit_Cond,
+
+  P_Values_Group,
+  P_Values_Cond,
+
+  Mask_Group,
+  Mask_Cond,
+
+  times,
+  channels,
+  file = "../results/06_TFCE_split_plot_results.RData"
+)
+
+cat("TFCE split-plot analysis completed and results saved.\n")
+```

@@ -22,7 +22,6 @@
 % Tests:
 %   Group main effect
 %   Condition main effect
-%   Group x Condition interaction
 %% ==========================================================
 
 clear; clc; close all;
@@ -125,7 +124,6 @@ fprintf('Step 1: Computing observed t-statistic maps...\n');
 
 t_Obs_Group = zeros(nChan, nTime);
 t_Obs_Cond  = zeros(nChan, nTime);
-t_Obs_Int   = zeros(nChan, nTime);
 
 for ch = 1:nChan
     for tp = 1:nTime
@@ -144,7 +142,6 @@ for ch = 1:nChan
         % 4 = Interaction
         t_Obs_Group(ch,tp) = lme.Coefficients.tStat(2);
         t_Obs_Cond(ch,tp)  = lme.Coefficients.tStat(3);
-        t_Obs_Int(ch,tp)   = lme.Coefficients.tStat(4);
 
     end
 end
@@ -157,7 +154,6 @@ fprintf('Step 2: Computing observed TFCE maps...\n');
 
 TFCE_Obs_Group = ept_mex_TFCE2D(t_Obs_Group, ChN, E_H);
 TFCE_Obs_Cond  = ept_mex_TFCE2D(t_Obs_Cond,  ChN, E_H);
-TFCE_Obs_Int   = ept_mex_TFCE2D(t_Obs_Int,   ChN, E_H);
 
 fprintf('Observed TFCE maps completed.\n');
 
@@ -176,7 +172,6 @@ fprintf('Observed TFCE maps completed.\n');
 
 TFCE_permMax_Group = nan(nPerm,1);
 TFCE_permMax_Cond  = nan(nPerm,1);
-TFCE_permMax_Int   = nan(nPerm,1);
 
 fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
 
@@ -184,7 +179,6 @@ parfor p = 1:nPerm
 
     perm_t_Group = nan(nChan, nTime);
     perm_t_Cond  = nan(nChan, nTime);
-    perm_t_Int   = nan(nChan, nTime);
 
     %% Permute Group between subjects
 
@@ -220,8 +214,6 @@ parfor p = 1:nPerm
 
     end
 
-    Int_perm_Cond = Group .* Cond_perm;
-
     %% Mass-univariate LME
 
     for ch = 1:nChan
@@ -230,7 +222,7 @@ parfor p = 1:nPerm
             EEG = double(squeeze(EEGdata(:, ch, tp)));
 
             % Group effect permutation
-            tbl_G = table(EEG, Group_perm, Cond, Int_perm_Group, SubjectLME, ...
+            tbl_G = table(EEG, Group_perm, Cond, Interaction, SubjectLME, ...
                 'VariableNames', {'EEG','Group','Cond','Interaction','Subject'});
 
             lme_G = fitlme(tbl_G, ...
@@ -239,14 +231,13 @@ parfor p = 1:nPerm
             perm_t_Group(ch,tp) = lme_G.Coefficients.tStat(2);
 
             % Condition effect permutation
-            tbl_C = table(EEG, Group, Cond_perm, Int_perm_Cond, SubjectLME, ...
+            tbl_C = table(EEG, Group, Cond_perm, Interaction, SubjectLME, ...
                 'VariableNames', {'EEG','Group','Cond','Interaction','Subject'});
 
             lme_C = fitlme(tbl_C, ...
                 'EEG ~ Group + Cond + Interaction + (1|Subject)');
 
             perm_t_Cond(ch,tp) = lme_C.Coefficients.tStat(3);
-            perm_t_Int(ch,tp)  = lme_C.Coefficients.tStat(4);
 
         end
     end
@@ -255,11 +246,9 @@ parfor p = 1:nPerm
 
     TFCE_perm_Group = ept_mex_TFCE2D(perm_t_Group, ChN, E_H);
     TFCE_perm_Cond  = ept_mex_TFCE2D(perm_t_Cond,  ChN, E_H);
-    TFCE_perm_Int   = ept_mex_TFCE2D(perm_t_Int,   ChN, E_H);
 
     TFCE_permMax_Group(p) = max(abs(TFCE_perm_Group(:)));
     TFCE_permMax_Cond(p)  = max(abs(TFCE_perm_Cond(:)));
-    TFCE_permMax_Int(p)   = max(abs(TFCE_perm_Int(:)));
 
 end
 
@@ -276,17 +265,13 @@ maxTFCEcrit_Group = maxTFCE_Group(round(nPerm*(1-Alpha)));
 maxTFCE_Cond = sort([TFCE_permMax_Cond;max(abs(TFCE_Obs_Cond(:)))]);
 maxTFCEcrit_Cond = maxTFCE_Cond(round(nPerm*(1-Alpha)));
 
-maxTFCE_Int = sort([TFCE_permMax_Int;max(abs(TFCE_Obs_Int(:)))]);
-maxTFCEcrit_Int = maxTFCE_Int(round(nPerm*(1-Alpha)));
-
 
 Mask_Group = abs(TFCE_Obs_Group) >= maxTFCEcrit_Group;
 Mask_Cond  = abs(TFCE_Obs_Cond)  >= maxTFCEcrit_Cond;
-Mask_Int   = abs(TFCE_Obs_Int)   >= maxTFCEcrit_Int;
 
 P_Values_Group = nan(nChan, nTime);
 P_Values_Cond  = nan(nChan, nTime);
-P_Values_Int   = nan(nChan, nTime);
+
 
 for ch = 1:nChan
     for tpoint = 1:nTime
@@ -296,9 +281,6 @@ for ch = 1:nChan
         
         P_Values_Cond(ch, tpoint) = ...
             (sum(TFCE_permMax_Cond >= abs(TFCE_Obs_Cond(ch, tpoint))) + 1) / ...
-            (nPerm + 1);
-        P_Values_Int(ch, tpoint) = ...
-            (sum(TFCE_permMax_Int >= abs(TFCE_Obs_Int(ch, tpoint))) + 1) / ...
             (nPerm + 1);
     end
 end
@@ -321,13 +303,6 @@ Results.maxTFCEcrit_Cond  = maxTFCEcrit_Cond;
 Results.P_Values_Cond  = P_Values_Cond;
 Results.Mask_Cond      = Mask_Cond;
 
-Results.Obs_Int       = t_Obs_Int;
-Results.TFCE_Obs_Int  = TFCE_Obs_Int;
-Results.TFCE_Null_Int = TFCE_permMax_Int;
-Results.maxTFCEcrit_Int  = maxTFCEcrit_Int;
-Results.P_Values_Int  = P_Values_Int;
-Results.Mask_Int      = Mask_Int;
-
 Results.alpha = alpha;
 Results.nPerm = nPerm;
 Results.model = 'EEG ~ Group + Cond + Interaction + (1|Subject)';
@@ -341,9 +316,6 @@ plot_tfce_results(t_Obs_Group, Mask_Group, times, e_loc, ...
 
 plot_tfce_results(t_Obs_Cond, Mask_Cond, times, e_loc, ...
     'TFCE-corrected Condition Effect');
-
-plot_tfce_results(t_Obs_Int, Mask_Int, times, e_loc, ...
-    'TFCE-corrected Group x Condition Interaction');
 
 %% Step 7: Save results
 
