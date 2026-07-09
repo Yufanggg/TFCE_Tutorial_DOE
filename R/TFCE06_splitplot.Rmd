@@ -8,7 +8,7 @@ output: html_document
 ```{r, echo=TRUE}
 ## ==========================================================
 ## TFCE split-plot analysis in R
-##
+##check
 ## Input:
 ##   ../data/06_EEGdata_long.csv
 ##
@@ -337,7 +337,7 @@ plot_tmap <- function(tmap, mask, main_title) {
   image(
     x = times_num,
     y = seq_len(nChan),
-    z = t(sigT),
+    z = t(tmap),
     xlab = "Time (ms)",
     ylab = "Channel",
     main = main_title,

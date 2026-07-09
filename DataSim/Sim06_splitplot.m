@@ -82,10 +82,10 @@ p300Shape = exp(-(times - p300Latency).^2 ./ ...
                 (2 * p300Width^2));
 p300Shape = p300Shape(:);
 
-amp_HC_Noun      = 3.0;
-amp_HC_Verb      = 6.0;
-amp_Patient_Noun = 2.0;
-amp_Patient_Verb = 3.5;
+amp_HC_Noun      = 2.0; 
+amp_HC_Verb      = 3.5; 
+amp_Patient_Noun = 3.5;
+amp_Patient_Verb = 6.5;
 
 cellAmps = [
     amp_HC_Noun,      amp_HC_Verb;
@@ -277,12 +277,13 @@ legend('HC Noun', 'HC Verb', ...
 grid on;
 
 %% ==========================================================
-% 11. Figure 2: HC Verb - Noun
+% 11. Figure 2: Main group difference
+% Patient - HC, averaged over Noun and Verb
 %% ==========================================================
 
 figure;
 
-imagesc(times, 1:nChan, verbNoun_HC);
+imagesc(times, 1:nChan, groupDiff);
 axis xy;
 xlim([-200 800]);
 
@@ -296,16 +297,18 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('HC Within-subject Effect: Verb - Noun');
+title('Main Group Effect: Patient - HC');
 colorbar;
 
+
 %% ==========================================================
-% 12. Figure 3: Patient Verb - Noun
+% 12. Figure 3: Main word-type difference
+% Verb - Noun, averaged over HC and Patient
 %% ==========================================================
 
 figure;
 
-imagesc(times, 1:nChan, verbNoun_Patient);
+imagesc(times, 1:nChan, wordTypeDiff);
 axis xy;
 xlim([-200 800]);
 
@@ -319,11 +322,13 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Patient Within-subject Effect: Verb - Noun');
+title('Main Word-Type Effect: Verb - Noun');
 colorbar;
+
 
 %% ==========================================================
 % 13. Figure 4: Interaction effect
+% Patient(Verb - Noun) - HC(Verb - Noun)
 %% ==========================================================
 
 figure;
@@ -345,29 +350,37 @@ ylabel('Channel');
 title('Interaction: Patient(Verb - Noun) - HC(Verb - Noun)');
 colorbar;
 
+
 %% ==========================================================
-% 14. Figure 5: Ground-truth interaction
+% 14. Figure 5: Ground-truth effects
 %% ==========================================================
 
 figure;
 
+subplot(3,1,1);
+imagesc(times, 1:nChan, truthGroupDiff);
+axis xy;
+xlim([-200 800]);
+title('Ground-Truth Main Group Effect: Patient - HC');
+ylabel('Channel');
+colorbar;
+
+subplot(3,1,2);
+imagesc(times, 1:nChan, truthWordTypeDiff);
+axis xy;
+xlim([-200 800]);
+title('Ground-Truth Main Word-Type Effect: Verb - Noun');
+ylabel('Channel');
+colorbar;
+
+subplot(3,1,3);
 imagesc(times, 1:nChan, truthInteractionDiff);
 axis xy;
 xlim([-200 800]);
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {chanlocs_EEG.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
+title('Ground-Truth Interaction Effect');
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Ground-Truth Interaction Effect');
 colorbar;
-
 %% ==========================================================
 % 15. Topography at 300 ms
 %% ==========================================================
