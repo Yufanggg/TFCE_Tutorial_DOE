@@ -2,37 +2,27 @@
 title: "TFCE06_splitPlot.Rmd"
 author: "Yufang"
 date: "2026-07-08"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r, echo=TRUE}
 ## ==========================================================
-## TFCE analysis in R for exported split-plot EEG CSV
+## TFCE split-plot analysis in R
 ##
-## Input files:
-##   ../data/06_designTable.csv
+## Input:
 ##   ../data/06_EEGdata_long.csv
 ##
 ## Model:
-##   Amplitude ~ GroupCode * CondCode + (1|Subject)
-##
-## Tests:
-##   1. Group main effect
-##   2. Condition main effect
-##   3. Group x Condition interaction
+##   Amplitude ~ GroupCode * CondCode + (1 | Subject)
 ##
 ## Permutation:
-##   Group effect:
-##     Shuffle GroupCode between subjects, keeping both rows together
+##   Group effect: permute group labels across subjects
+##   Cond effect:  permute condition labels within subjects
 ##
-##   Condition effect:
-##     Rearrange CondCode within each subject
-##
-##   Interaction effect:
-##     Here follows the same simplified synchronized permutation as CondCode.
-##     If using Freedman--Lane for interaction, replace this part accordingly.
-##
-## EEG amplitudes are never directly permuted.
+## EEG data itself is never permuted.
+## Only design labels are permuted.
 ## ==========================================================
 
 rm(list = ls())
@@ -47,19 +37,18 @@ source("../R/tfce_transform.R")
 cat("\nStarting TFCE split-plot analysis...\n")
 
 ## ==========================================================
-## -1. Load CSV files
+## -1. Load EEG long-format data
 ## ==========================================================
 
 designTable <- read.csv("../data/06_designTable.csv")
-EEGlong     <- read.csv("../data/06_EEGdata_long.csv")
+EEGlong <- read.csv("../data/06_EEGdata_long.csv")
 
 print(names(designTable))
 print(names(EEGlong))
 
 ## ==========================================================
-## 0. Merge EEG data with design table
+## 0. Prepare data
 ## ==========================================================
-
 designTable <- designTable %>%
   mutate(RowID = row_number())
 
@@ -72,8 +61,7 @@ dat <- EEGlong %>%
     Subject  = factor(Subject),
     Channel  = factor(Channel),
     GroupCode = as.numeric(GroupCode),
-    CondCode  = as.numeric(CondCode),
-    Interaction = GroupCode * CondCode
+    CondCode  = as.numeric(CondCode)
   )
 
 channels <- unique(dat$Channel)
@@ -114,8 +102,7 @@ compute_tmaps <- function(data) {
   res <- data %>%
     group_by(Channel, Time) %>%
     group_modify( ~ {
-      fit <- lmer(Amplitude ~ GroupCode + CondCode + Interaction + (1 |
-                                                                      Subject),
+      fit <- lmer(Amplitude ~ GroupCode * CondCode + (1 |Subject),
                   data = .x)
       
       cf <- coef(summary(fit))
@@ -142,7 +129,7 @@ compute_tmaps <- function(data) {
     )
   }
   
-  list(Group = make_mat("t_Group"), Cond  = make_mat("t_Cond"))
+    list(Group = make_mat("t_Group"), Cond  = make_mat("t_Cond"))
 }
 
 ## ==========================================================
@@ -158,7 +145,6 @@ t_Obs_Cond  <- t_Obs$Cond
 
 
 cat("Observed t-maps completed.\n")
-
 ## ==========================================================
 ## Step 2: Observed TFCE maps
 ## ==========================================================
@@ -167,7 +153,6 @@ cat("Step 2: Computing observed TFCE maps...\n")
 
 TFCE_Obs_Group <- tfce_transform(t_Obs_Group, E = 0.66, H = 2, dh = 0.1)
 TFCE_Obs_Cond  <- tfce_transform(t_Obs_Cond,  E = 0.66, H = 2, dh = 0.1)
-
 
 cat("Observed TFCE maps completed.\n")
 
@@ -182,66 +167,48 @@ n_perm <- 1
 TFCE_permMax_Group <- rep(NaN, n_perm)
 TFCE_permMax_Cond  <- rep(NaN, n_perm)
 
-subject_info <- designTable %>%
-  select(RowID, Subject, GroupCode, CondCode)
-
-subj_group <- subject_info %>%
-  group_by(Subject) %>%
-  summarise(GroupCode = unique(GroupCode), .groups = "drop")
-
 for (p in seq_len(n_perm)) {
   
   ## ----------------------------------------------------------
   ## 3.1 Permute GroupCode between subjects
   ## ----------------------------------------------------------
   
-  subj_group_perm <- subj_group %>%
-    mutate(GroupCode_perm = sample(GroupCode))
-  
-  perm_info_group <- subject_info %>%
-    select(-GroupCode) %>%
-    left_join(
-      subj_group_perm %>% select(Subject, GroupCode_perm),
-      by = "Subject"
-    ) %>%
+  perm_group <- designTable %>%
+    distinct(RowID, Subject, GroupCode) %>%
+    mutate(GroupCode_perm = sample(GroupCode)) %>% 
+    select(-GroupCode) %>% 
     rename(GroupCode = GroupCode_perm)
   
-  perm_dat_group <- EEGlong %>%
-    select(Subject, CondCode, Channel, Time, Amplitude) %>%
-    left_join(
-      perm_info_group,
-      by = c("Subject", "CondCode")
-    ) %>%
-    mutate(
-      Subject = factor(Subject),
-      Channel = factor(Channel),
-      GroupCode = as.numeric(GroupCode),
-      CondCode = as.numeric(CondCode),
-      Interaction = GroupCode * CondCode
-    )
+  perm_dat_group <- dat %>%
+    select(-GroupCode, -Subject) %>%
+    left_join(perm_group, by = "RowID") %>%
+    mutate(GroupCode = as.numeric(GroupCode),
+           CondCode  = as.numeric(CondCode),
+           Subject = as.factor(Subject))
+  
+  verify<- perm_dat_group %>% distinct(GroupCode, GroupName)
+  View(verify)
   
   ## ----------------------------------------------------------
   ## 3.2 Permute CondCode within subjects
   ## ----------------------------------------------------------
   
-  perm_info_cond <- subject_info %>%
-    group_by(Subject) %>%
-    mutate(CondCode = sample(CondCode)) %>%
-    ungroup()
+  perm_cond <- designTable %>%
+    distinct(RowID, Subject, CondCode) %>%
+    group_by(Subject) %>% mutate(CondCode_perm = sample(CondCode)) %>%
+    select(-CondCode) %>%
+    rename(CondCode = CondCode_perm)
   
-  perm_dat_cond <- EEGlong %>%
-    select(Subject, CondCode, Channel, Time, Amplitude) %>%
-    left_join(
-      perm_info_cond,
-      by = c("Subject", "CondCode")
-    ) %>%
+  perm_dat_cond <- dat %>%
+    select(-CondCode, -Subject) %>%
+    left_join(perm_cond, by = "RowID") %>%
     mutate(
-      Subject = factor(Subject),
-      Channel = factor(Channel),
       GroupCode = as.numeric(GroupCode),
-      CondCode = as.numeric(CondCode),
-      Interaction = GroupCode * CondCode
-    )
+      CondCode  = as.numeric(CondCode),
+      Subject = as.factor(Subject))
+  
+  verify2 <- perm_dat_cond %>% distinct(CondCode, RowID) %>% filter(RowID %% 2 == 0)
+  View(verify2)
   
   ## ----------------------------------------------------------
   ## 3.3 Compute permutation t-maps
@@ -264,7 +231,6 @@ for (p in seq_len(n_perm)) {
     dh = 0.1
   )
   
-  
   TFCE_permMax_Group[p] <- max(abs(TFCE_perm_Group), na.rm = TRUE)
   TFCE_permMax_Cond[p]  <- max(abs(TFCE_perm_Cond),  na.rm = TRUE)
   
@@ -282,7 +248,6 @@ cat("Permutation testing completed.\n")
 cat("Step 4: Computing TFCE-corrected significance...\n")
 
 alpha <- 0.05
-nPerm <- length(TFCE_permMax_Group)
 
 maxTFCE_Group <- sort(c(
   TFCE_permMax_Group,
@@ -294,14 +259,11 @@ maxTFCE_Cond <- sort(c(
   max(abs(TFCE_Obs_Cond), na.rm = TRUE)
 ))
 
-
-maxTFCEcrit_Group <- maxTFCE_Group[round(nPerm * (1 - alpha))]
-maxTFCEcrit_Cond  <- maxTFCE_Cond[round(nPerm * (1 - alpha))]
-
+maxTFCEcrit_Group <- maxTFCE_Group[round((n_perm + 1) * (1 - alpha))]
+maxTFCEcrit_Cond  <- maxTFCE_Cond[round((n_perm + 1) * (1 - alpha))]
 
 Mask_Group <- abs(TFCE_Obs_Group) >= maxTFCEcrit_Group
 Mask_Cond  <- abs(TFCE_Obs_Cond)  >= maxTFCEcrit_Cond
-
 
 compute_p_values <- function(TFCE_Obs, TFCE_permMax) {
   
@@ -353,8 +315,8 @@ Results <- list(
   Mask_Cond = Mask_Cond,
   
   alpha = alpha,
-  nPerm = nPerm,
-  model = "Amplitude ~ GroupCode * CondCode + (1|Subject)",
+  nPerm = n_perm,
+  model = "Amplitude ~ GroupCode * CondCode + (1 | Subject)",
   times = times,
   channels = channels
 )
@@ -362,7 +324,7 @@ Results <- list(
 cat("Results stored.\n")
 
 ## ==========================================================
-## Step 6: Plot function
+## Step 6: Plot functions
 ## ==========================================================
 
 plot_tmap <- function(tmap, mask, main_title) {
@@ -438,7 +400,6 @@ plot_tmap(
   "TFCE-corrected Condition Effect"
 )
 
-
 ## ==========================================================
 ## Step 8: Plot observed TFCE maps
 ## ==========================================================
@@ -452,7 +413,6 @@ plot_tfce_map(
   TFCE_Obs_Cond,
   "Observed TFCE Map: Condition Effect"
 )
-
 
 ## ==========================================================
 ## Step 9: Save TFCE results
@@ -469,19 +429,19 @@ save(
   
   TFCE_Obs_Group,
   TFCE_Obs_Cond,
-
+  
   TFCE_permMax_Group,
   TFCE_permMax_Cond,
-
+  
   maxTFCEcrit_Group,
   maxTFCEcrit_Cond,
-
+  
   P_Values_Group,
   P_Values_Cond,
-
+  
   Mask_Group,
   Mask_Cond,
-
+  
   times,
   channels,
   file = "../results/06_TFCE_split_plot_results.RData"

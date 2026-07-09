@@ -106,7 +106,6 @@ SubjectLME = categorical(Subject);
 
 Group = GroupCode;
 Cond  = CondCode;
-Interaction = Group .* Cond;
 
 %% TFCE settings
 
@@ -130,10 +129,10 @@ for ch = 1:nChan
 
         EEG = double(squeeze(EEGdata(:, ch, tp)));
 
-        tbl = table(EEG, Group, Cond, Interaction, SubjectLME, ...
-            'VariableNames', {'EEG','Group','Cond','Interaction','Subject'});
+        tbl = table(EEG, Group, Cond, SubjectLME, ...
+            'VariableNames', {'EEG','Group','Cond','Subject'});
 
-        lme = fitlme(tbl, 'EEG ~ Group + Cond + Interaction + (1|Subject)');
+        lme = fitlme(tbl, 'EEG ~ Group * Cond + (1|Subject)');
 
         % Coefficient rows:
         % 1 = Intercept
@@ -198,7 +197,6 @@ parfor p = 1:nPerm
         Group_perm(idxSubj) = subjGroup_perm(s);
     end
 
-    Int_perm_Group = Group_perm .* Cond;
 
     %% Flip condition labels within subjects
 
@@ -222,20 +220,20 @@ parfor p = 1:nPerm
             EEG = double(squeeze(EEGdata(:, ch, tp)));
 
             % Group effect permutation
-            tbl_G = table(EEG, Group_perm, Cond, Interaction, SubjectLME, ...
-                'VariableNames', {'EEG','Group','Cond','Interaction','Subject'});
+            tbl_G = table(EEG, Group_perm, Cond, SubjectLME, ...
+                'VariableNames', {'EEG','Group','Cond','Subject'});
 
             lme_G = fitlme(tbl_G, ...
-                'EEG ~ Group + Cond + Interaction + (1|Subject)');
+                'EEG ~ Group * Cond + (1|Subject)');
 
             perm_t_Group(ch,tp) = lme_G.Coefficients.tStat(2);
 
             % Condition effect permutation
-            tbl_C = table(EEG, Group, Cond_perm, Interaction, SubjectLME, ...
-                'VariableNames', {'EEG','Group','Cond','Interaction','Subject'});
+            tbl_C = table(EEG, Group, Cond_perm, SubjectLME, ...
+                'VariableNames', {'EEG','Group','Cond','Subject'});
 
             lme_C = fitlme(tbl_C, ...
-                'EEG ~ Group + Cond + Interaction + (1|Subject)');
+                'EEG ~ Group * Cond + (1|Subject)');
 
             perm_t_Cond(ch,tp) = lme_C.Coefficients.tStat(3);
 
@@ -260,10 +258,10 @@ fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
 nPerm = length(TFCE_permMax_Group);
 maxTFCE_Group = sort([TFCE_permMax_Group;max(abs(TFCE_Obs_Group(:)))]);
-maxTFCEcrit_Group = maxTFCE_Group(round(nPerm*(1-Alpha)));
+maxTFCEcrit_Group = maxTFCE_Group(round(nPerm*(1-alpha)));
 
 maxTFCE_Cond = sort([TFCE_permMax_Cond;max(abs(TFCE_Obs_Cond(:)))]);
-maxTFCEcrit_Cond = maxTFCE_Cond(round(nPerm*(1-Alpha)));
+maxTFCEcrit_Cond = maxTFCE_Cond(round(nPerm*(1-alpha)));
 
 
 Mask_Group = abs(TFCE_Obs_Group) >= maxTFCEcrit_Group;
