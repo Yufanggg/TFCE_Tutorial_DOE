@@ -2,9 +2,7 @@
 title: "TFCE06_splitPlot.Rmd"
 author: "Yufang"
 date: "2026-07-08"
-output:
-  pdf_document: default
-  html_document: default
+output: html_document
 ---
 
 ```{r, echo=TRUE}
