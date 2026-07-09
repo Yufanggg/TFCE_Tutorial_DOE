@@ -111,35 +111,27 @@ for (s in subjects) {
 ## ==========================================================
 
 compute_tmaps <- function(data) {
-  
   res <- data %>%
     group_by(Channel, Time) %>%
-    group_modify(~{
-      
-      fit <- lmer(
-        Amplitude ~ GroupCode + CondCode + Interaction + (1 | Subject),
-        data = .x
-      )
+    group_modify( ~ {
+      fit <- lmer(Amplitude ~ GroupCode + CondCode + Interaction + (1 |
+                                                                      Subject),
+                  data = .x)
       
       cf <- coef(summary(fit))
       
-      tibble(
-        t_Group = cf["GroupCode", "t value"],
-        t_Cond  = cf["CondCode", "t value"],
-        t_Int   = cf["Interaction", "t value"]
-      )
+      tibble(t_Group = cf["GroupCode", "t value"], t_Cond  = cf["CondCode", "t value"], )
     }) %>%
     ungroup()
   
   make_mat <- function(x) {
-    
     tmat <- res %>%
       mutate(
         Channel = factor(Channel, levels = channels),
         Time = factor(Time, levels = times)
       ) %>%
       arrange(Channel, Time) %>%
-      pull({{ x }})
+      pull(x)
     
     matrix(
       tmat,
@@ -150,11 +142,7 @@ compute_tmaps <- function(data) {
     )
   }
   
-  list(
-    Group = make_mat(t_Group),
-    Cond  = make_mat(t_Cond),
-    Int   = make_mat(t_Int)
-  )
+  list(Group = make_mat("t_Group"), Cond  = make_mat("t_Cond"))
 }
 
 ## ==========================================================
@@ -189,7 +177,7 @@ cat("Observed TFCE maps completed.\n")
 
 set.seed(123)
 
-n_perm <- 999
+n_perm <- 1
 
 TFCE_permMax_Group <- rep(NaN, n_perm)
 TFCE_permMax_Cond  <- rep(NaN, n_perm)
@@ -242,10 +230,10 @@ for (p in seq_len(n_perm)) {
     ungroup()
   
   perm_dat_cond <- EEGlong %>%
-    select(Subject, GroupCode, Channel, Time, Amplitude) %>%
+    select(Subject, CondCode, Channel, Time, Amplitude) %>%
     left_join(
       perm_info_cond,
-      by = c("Subject", "GroupCode")
+      by = c("Subject", "CondCode")
     ) %>%
     mutate(
       Subject = factor(Subject),
