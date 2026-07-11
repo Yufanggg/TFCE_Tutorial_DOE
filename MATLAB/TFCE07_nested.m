@@ -675,15 +675,7 @@ fprintf('\nStep 5: Storing results...\n');
 
 Results = struct();
 
-Results.Obs = t_Obs;
-
-% Estimated Condition coefficient.
-%
-% With coding {-1,1}, this is half of the mean difference.
-Results.Beta_Obs = Beta_Obs;
-
-% Full estimated Treatment - Control mean difference.
-Results.TreatmentMinusControl = Difference_Obs;
+Results.Obs = t_Obs
 
 Results.TFCE_Obs = TFCE_Obs;
 Results.TFCE_Null = TFCE_permMax;
@@ -728,81 +720,6 @@ Results.ChN = ChN;
 Results.E_H = E_H;
 
 fprintf('Results stored.\n');
-
-
-%% ==========================================================
-% Step 6: Plot significant observed t-values
-%% ==========================================================
-
-mT = t_Obs;
-mT(~Mask) = 0;
-
-figure;
-
-imagesc( ...
-    times, ...
-    1:nChan, ...
-    mT);
-
-axis xy;
-
-if min(times) <= -200 && max(times) >= 800
-    xlim([-200, 800]);
-end
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', chanLabels, ...
-    'TickLength', [0, 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-
-title( ...
-    ['TFCE-corrected nested LME effect: ', ...
-     'Treatment - Control']);
-
-colorbar;
-
-
-%% ==========================================================
-% Step 7: Plot Treatment - Control estimate
-%% ==========================================================
-
-mDifference = Difference_Obs;
-mDifference(~Mask) = 0;
-
-figure;
-
-imagesc( ...
-    times, ...
-    1:nChan, ...
-    mDifference);
-
-axis xy;
-
-if min(times) <= -200 && max(times) >= 800
-    xlim([-200, 800]);
-end
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', chanLabels, ...
-    'TickLength', [0, 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-
-title( ...
-    ['TFCE-significant estimated mean difference: ', ...
-     'Treatment - Control']);
-
-colorbar;
-
 
 %% ==========================================================
 % Step 8: Plot observed TFCE map
