@@ -58,7 +58,7 @@ rng(123);
 % Analysis settings
 %% ==========================================================
 
-nPerm = 1;
+nPerm = 999;
 alpha = 0.05;
 
 inputFile = ...
@@ -623,7 +623,7 @@ sigT(~Mask) = 0;
 
 figure;
 
-imagesc(times, 1:nChan, sigT);
+imagesc(-200:4:800, 1:nChan, sigT);
 axis xy;
 
 xlim([-200 800]);
@@ -648,7 +648,7 @@ colorbar;
 
 figure;
 
-imagesc(times, 1:nChan, TFCE_Obs);
+imagesc(-200:4:800, 1:nChan, TFCE_Obs);
 axis xy;
 
 %xlim([-200 800]);
