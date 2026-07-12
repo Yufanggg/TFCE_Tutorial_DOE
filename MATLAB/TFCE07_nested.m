@@ -58,7 +58,7 @@ rng(123);
 % Analysis settings
 %% ==========================================================
 
-nPerm = 999;
+nPerm = 1;
 alpha = 0.05;
 
 inputFile = ...
@@ -571,7 +571,7 @@ fprintf( ...
 
 maxTFCE = sort([TFCE_permMax;max(abs(TFCE_Obs(:)))]);
 
-maxTFCEcrit = maxTFCE(round(nPerm*(1-Alpha)));
+maxTFCEcrit = maxTFCE(round(nPerm*(1-alpha)));
 
 Mask = abs(TFCE_Obs) >= maxTFCEcrit;
 
@@ -581,7 +581,7 @@ for ch = 1:nChan
 
     for tp = 1:nTime
 
-        P_Values(ch,t) = ...
+        P_Values(ch,tp) = ...
             (sum(TFCE_permMax >= abs(TFCE_Obs(ch,tp))) + 1) / ...
             (nPerm + 1);
 
@@ -603,7 +603,7 @@ fprintf('\nStep 5: Storing results...\n');
 
 Results = struct();
 
-Results.tObs         = tObs;
+Results.tObs         = t_Obs;
 Results.TFCE_Obs     = TFCE_Obs;
 Results.TFCE_Null    = TFCE_permMax;
 Results.maxTFCEcrit     = maxTFCEcrit;
@@ -618,7 +618,7 @@ fprintf('Results stored.\n');
 % Step 6: Plot TFCE-corrected significant t-values
 %% ==========================================================
 
-sigT = tObs;
+sigT = t_Obs;
 sigT(~Mask) = 0;
 
 figure;
@@ -651,7 +651,7 @@ figure;
 imagesc(times, 1:nChan, TFCE_Obs);
 axis xy;
 
-xlim([-200 800]);
+%xlim([-200 800]);
 
 set(gca, ...
     'YTick', 1:nChan, ...
