@@ -419,19 +419,8 @@ for ch = 1:nChan
         lme = fitlme( ...
             tbl, ...
             modelFormula);
-        coefficientNames = ...
-            lme.Coefficients.Properties.RowNames;
-        
-        conditionRow = strcmp( ...
-                coefficientNames, ...
-                'Condition');
-        if ~any(conditionRow)
-            error( ...
-                'The Condition coefficient was not found.');
-        end
-        
         t_Obs(ch, tp) = ...
-                lme.Coefficients.tStat(conditionRow);
+                lme.Coefficients.tStat(2);
     
     end
 
@@ -445,10 +434,7 @@ fprintf('Observed t-statistic map completed.\n');
 
 fprintf('\nStep 2: Computing observed TFCE map...\n');
 
-TFCE_Obs = ept_mex_TFCE2D( ...
-    double(t_Obs), ...
-    ChN, ...
-    E_H);
+TFCE_Obs = ept_mex_TFCE2D(t_Obs, ChN, E_H);
 
 fprintf('Observed TFCE map completed.\n');
 
@@ -541,18 +527,10 @@ parfor p = 1:nPerm
             
             lmePerm = fitlme( ...
                     tbl, ...
-                    modelFormula);
-            
-            coefficientNames = ...
-                lmePerm.Coefficients.Properties.RowNames;
-            
-            conditionRow = strcmp( ...
-                coefficientNames, ...
-                'Condition');
-            
+                    modelFormula);            
             
             perm_t(ch, tp) = ...
-                    lmePerm.Coefficients.tStat(conditionRow);
+                    lmePerm.Coefficients.tStat(2);
             
         end
 
@@ -562,10 +540,7 @@ parfor p = 1:nPerm
     % TFCE transformation
     %% ------------------------------------------------------
 
-    TFCE_perm = ept_mex_TFCE2D( ...
-        double(perm_t), ...
-        ChN, ...
-        E_H);
+    TFCE_perm = ept_mex_TFCE2D(perm_t, ChN, E_H);
 
     %% ------------------------------------------------------
     % Maximum absolute TFCE statistic
@@ -588,53 +563,17 @@ fprintf( ...
 
 
 %% ==========================================================
-% Observed maximum absolute TFCE
-%% ==========================================================
-
-observedMaxTFCE = ...
-    max(abs(TFCE_Obs(:)));
-
-
-%% ==========================================================
 % Critical maximum-TFCE value
 %
 % The observed assignment is included as the identity
 % permutation.
 %% ==========================================================
 
-maxTFCEdistribution = sort( ...
-    [observedMaxTFCE; TFCE_permMax]);
+maxTFCE = sort([TFCE_permMax;max(abs(TFCE_Obs(:)))]);
 
-nReference = numel(maxTFCEdistribution);
-
-criticalIndex = ceil( ...
-    (1 - alpha) * nReference);
-
-criticalIndex = min( ...
-    max(criticalIndex, 1), ...
-    nReference);
-
-maxTFCEcrit = ...
-    maxTFCEdistribution(criticalIndex);
-
-
-%% ==========================================================
-% Corrected significance mask
-%% ==========================================================
+maxTFCEcrit = maxTFCE(round(nPerm*(1-Alpha)));
 
 Mask = abs(TFCE_Obs) >= maxTFCEcrit;
-
-
-%% ==========================================================
-% Corrected p-values
-%
-% For every channel-time point:
-%
-%                  1 + number of permutation maxima
-%                      >= observed absolute TFCE
-%   corrected p = --------------------------------------
-%                             nPerm + 1
-%% ==========================================================
 
 P_Values = zeros(nChan, nTime);
 
@@ -642,30 +581,19 @@ for ch = 1:nChan
 
     for tp = 1:nTime
 
-        observedTFCE = ...
-            abs(TFCE_Obs(ch, tp));
-
-        P_Values(ch, tp) = ...
-            (1 + sum( ...
-                TFCE_permMax >= observedTFCE)) ...
-            / (nPerm + 1);
+        P_Values(ch,t) = ...
+            (sum(TFCE_permMax >= abs(TFCE_Obs(ch,tp))) + 1) / ...
+            (nPerm + 1);
 
     end
 
 end
-
-Mask_from_P = P_Values <= alpha;
 
 fprintf('TFCE correction completed.\n');
 
 fprintf( ...
     'Critical TFCE value: %.4f\n', ...
     maxTFCEcrit);
-
-fprintf( ...
-    'Number of significant channel-time points: %d\n', ...
-    nnz(Mask));
-
 
 %% ==========================================================
 % Step 5: Store results
@@ -675,148 +603,69 @@ fprintf('\nStep 5: Storing results...\n');
 
 Results = struct();
 
-Results.Obs = t_Obs
+Results.tObs         = tObs;
+Results.TFCE_Obs     = TFCE_Obs;
+Results.TFCE_Null    = TFCE_permMax;
+Results.maxTFCEcrit     = maxTFCEcrit;
+Results.P_Values     = P_Values;
+Results.Mask         = Mask;
+Results.alpha        = alpha;
+Results.nPerm        = nPerm;
 
-Results.TFCE_Obs = TFCE_Obs;
-Results.TFCE_Null = TFCE_permMax;
-
-Results.observedMaxTFCE = observedMaxTFCE;
-Results.maxTFCEdistribution = maxTFCEdistribution;
-Results.critTFCE = maxTFCEcrit;
-
-Results.P_Values = P_Values;
-Results.Mask = Mask;
-Results.Mask_from_P = Mask_from_P;
-
-Results.alpha = alpha;
-Results.nPerm = nPerm;
-
-Results.model = modelFormula;
-
-Results.test = ...
-    'Treatment - Control fixed effect';
-
-Results.ConditionCoding = ...
-    'Control = -1; Treatment = 1';
-
-Results.CoefficientInterpretation = ...
-    ['beta_Condition equals one-half of the ', ...
-     'Treatment - Control mean difference'];
-
-Results.permutation = ...
-    ['Recursive multi-block permutation of Class, ', ...
-     'Student-within-Class, and Condition observations'];
-
-Results.permutationHierarchy = ...
-    'Class -> Student within Class -> Condition observation';
-
-Results.blockHierarchy = blockHierarchy;
-Results.Condition = Condition;
-
-Results.times = times;
-Results.chanLabels = chanLabels;
-Results.e_loc = e_loc;
-Results.ChN = ChN;
-Results.E_H = E_H;
 
 fprintf('Results stored.\n');
 
+% Step 6: Plot TFCE-corrected significant t-values
 %% ==========================================================
-% Step 8: Plot observed TFCE map
-%% ==========================================================
+
+sigT = tObs;
+sigT(~Mask) = 0;
 
 figure;
 
-imagesc( ...
-    times, ...
-    1:nChan, ...
-    TFCE_Obs);
-
+imagesc(times, 1:nChan, sigT);
 axis xy;
 
-if min(times) <= -200 && max(times) >= 800
-    xlim([-200, 800]);
-end
+xlim([-200 800]);
 
 set(gca, ...
     'YTick', 1:nChan, ...
-    'YTickLabel', chanLabels, ...
-    'TickLength', [0, 0], ...
+    'YTickLabel', {e_loc.labels}, ...
+    'XTick', -200:200:800, ...
+    'TickLength', [0 0], ...
     'FontSize', 15, ...
     'FontName', 'Arial');
 
 xlabel('Time (ms)');
 ylabel('Channel');
-
-title( ...
-    'Observed TFCE map: nested LME treatment effect');
+title('TFCE-corrected Significant Effects');
 
 colorbar;
 
-
 %% ==========================================================
-% Step 9: Plot corrected p-value map
+% Step 7: Plot TFCE values
 %% ==========================================================
 
 figure;
 
-imagesc( ...
-    times, ...
-    1:nChan, ...
-    P_Values);
-
+imagesc(times, 1:nChan, TFCE_Obs);
 axis xy;
 
-if min(times) <= -200 && max(times) >= 800
-    xlim([-200, 800]);
-end
+xlim([-200 800]);
 
 set(gca, ...
     'YTick', 1:nChan, ...
-    'YTickLabel', chanLabels, ...
-    'TickLength', [0, 0], ...
+    'YTickLabel', {e_loc.labels}, ...
+    'XTick', -200:200:800, ...
+    'TickLength', [0 0], ...
     'FontSize', 15, ...
     'FontName', 'Arial');
 
 xlabel('Time (ms)');
 ylabel('Channel');
-
-title('TFCE-corrected p-value map');
+title('Observed TFCE Map');
 
 colorbar;
-clim([0, 1]);
-
-
-%% ==========================================================
-% Step 10: Plot maximum-TFCE null distribution
-%% ==========================================================
-
-figure;
-
-histogram( ...
-    TFCE_permMax, ...
-    30);
-
-hold on;
-
-xline( ...
-    maxTFCEcrit, ...
-    '--', ...
-    'LineWidth', ...
-    2, ...
-    'Label', ...
-    sprintf( ...
-        'Critical value = %.4f', ...
-        maxTFCEcrit));
-
-xlabel('Maximum absolute TFCE');
-ylabel('Frequency');
-
-title( ...
-    'Recursive multi-block maximum-TFCE distribution');
-
-hold off;
-
 
 %% ==========================================================
 % Step 11: Save results
