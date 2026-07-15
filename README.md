@@ -1,4 +1,4 @@
-# Adapting TFCE to EEG/ERP data from different experimental designs in cognitive neuroscience
+# Applying Threshold-Free Cluster Enhancement (TFCE) to Complex EEG/ERP Experimental Designs: a Comprehensive tutorial
 [![https://www.linkedin.com/in/yufang-w-1295881b5/](https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555)](https://www.linkedin.com/in/yufang-w-1295881b5/) [![https://github.com/Yufanggg](https://img.shields.io/badge/GitHub-100000?style=for-the-badge&logo=github&logoColor=white&colorB=555)](https://github.com/Yufanggg) <img alt="GitHub" src="https://img.shields.io/github/license/bopith/UnicornCompanies?style=for-the-badge"> 
 
 ## Overview
