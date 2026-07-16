@@ -178,22 +178,14 @@ for ch = 1:nChan
 
     for tp = 1:nTime
 
-        EEG = double( ...
-            squeeze(EEGdata(:, ch, tp)));
+        EEG = double(squeeze(EEGdata(:, ch, tp)));
 
-        tbl = table( ...
-            EEG, ...
-            Condition, ...
-            ClassLME, ...
-            StudentLME, ...
-            'VariableNames', ...
+        tbl = table(EEG, Condition, ClassLME, ...
+            StudentLME, 'VariableNames', ...
             {'EEG', 'Condition', 'Class', 'Student'});
         
-        lme = fitlme( ...
-            tbl, ...
-            modelFormula);
-        t_Obs(ch, tp) = ...
-                lme.Coefficients.tStat(2);
+        lme = fitlme( tbl, 'EEG ~ Condition + (1|Class) + (1|Class:Student)');
+        t_Obs(ch, tp) = lme.Coefficients.tStat(2);
     
     end
 
@@ -214,58 +206,101 @@ fprintf('Observed TFCE map completed.\n');
 %% ==========================================================
 % Step 3: get the null maximum TFCE distribution
 %% ==========================================================
-
-% Reproducible random seed for each parfor iteration
-permutationSeeds = randi( ...
-    2^31 - 1, ...
-    nPerm, ...
-    1);
-
-%% ==========================================================
-% Construct observation rows for each nested student
-%% ==========================================================
-
-unitRows = zeros(nUnits, 2);
-
-for u = 1:nUnits
-
-    rows = find(studentBlock == u);
-
-    if numel(rows) ~= 2
-
-        error( ...
-            ['Each nested student must contain exactly ', ...
-             'two observations.']);
-
-    end
-
-    unitRows(u, :) = rows(:)';
-
-end
-
-%% ==========================================================
-% Reshape EEG responses into an observation-by-feature matrix
-%
-% Each column represents one channel-time combination.
-%% ==========================================================
-
-Y = reshape( ...
-    EEGdata, ...
-    nObs, ...
-    nChan * nTime);
-
 %% ==========================================================
 % Generate permutation instructions
 %% ==========================================================
 
-swapCondition = ...
-    rand(nUnits, nPerm) < 0.5;
+pairs = [Class, Student];
+
+[uniquePairs, ~, unitID] = unique( pairs, 'rows', 'stable');
+
+nUnits = size(uniquePairs, 1);
+
+swapCondition = rand(length(uniquePairs), nPerm) < 0.5;
 
 TFCE_permMax = nan(nPerm, 1);
 
 %% ==========================================================
 % Permutation loop
 %% ==========================================================
+%% ==========================================================
+% Identify class-student units
+%% ==========================================================
+
+pairs = [ ...
+    Class(:), ...
+    Student(:)];
+
+[uniquePairs, ~, unitID] = unique( ...
+    pairs, ...
+    'rows', ...
+    'stable');
+
+nUnits = size(uniquePairs,1);
+
+%% ==========================================================
+% Randomly decide which units are swapped
+%% ==========================================================
+
+swapCondition = ...
+    rand(nUnits,nPerm) < 0.5;
+
+%% ==========================================================
+% Generate permutation matrices
+%% ==========================================================
+
+PermutationMatrix = cell(nPerm,1);
+
+for p = 1:nPerm
+
+    P = sparse( ...
+        nObs, ...
+        nObs);
+
+    for u = 1:nUnits
+
+        rows = find(unitID == u);
+
+        if numel(rows) ~= 2
+
+            error( ...
+                'Each unit must contain exactly two observations.');
+
+        end
+
+        if swapCondition(u,p)
+
+            %----------------------------------------------
+            % Swap
+            %
+            % [0 1
+            %  1 0]
+            %----------------------------------------------
+
+            P(rows(1),rows(2)) = 1;
+            P(rows(2),rows(1)) = 1;
+
+        else
+
+            %----------------------------------------------
+            % Identity
+            %
+            % [1 0
+            %  0 1]
+            %----------------------------------------------
+
+            P(rows(1),rows(1)) = 1;
+            P(rows(2),rows(2)) = 1;
+
+        end
+
+    end
+
+    PermutationMatrix{p} = P;
+
+end
+
+
 
 parfor p = 1:nPerm
 
@@ -273,33 +308,9 @@ parfor p = 1:nPerm
     % Construct the sparse permutation matrix
     %% ------------------------------------------------------
 
-    permIndex = (1:nObs)';
-
-    for u = 1:nUnits
-
-        if swapCondition(u, p)
-
-            rows = unitRows(u, :);
-
-            permIndex(rows) = ...
-                permIndex(rows([2, 1]));
-
-        end
-
-    end
-
-    P = sparse( ...
-        1:nObs, ...
-        permIndex, ...
-        1, ...
-        nObs, ...
-        nObs);
-
     %% ------------------------------------------------------
     % Permute responses while keeping the design fixed
     %% ------------------------------------------------------
-
-    Y_perm = P * Y;
 
     perm_t = zeros(nChan, nTime);
 
@@ -311,35 +322,16 @@ parfor p = 1:nPerm
 
         for tp = 1:nTime
 
-            featureIndex = ...
-                ch + (tp - 1) * nChan;
-
-            EEG_perm = ...
-                Y_perm(:, featureIndex);
-
-            tbl = table( ...
-                EEG_perm, ...
-                Condition, ...
-                ClassLME, ...
-                StudentLME, ...
-                'VariableNames', ...
-                { ...
-                'EEG', ...
-                'Condition', ...
-                'Class', ...
-                'Student'});
-
-            lmePerm = fitlme( ...
-                tbl, ...
-                modelFormula);
-
-            coefficientRow = strcmp( ...
-                lmePerm.Coefficients.Name, ...
-                coefficientName);
-
-            perm_t(ch, tp) = ...
-                lmePerm.Coefficients.tStat( ...
-                    coefficientRow);
+            EEG = double(squeeze(EEGdata(:, ch, tp)));
+            
+            EEG_perm =  PermutationMatrix{p} * EEG;
+            
+            tbl = table(EEG_perm, Condition, ClassLME, ...
+                StudentLME, 'VariableNames', ...
+                {'EEG', 'Condition', 'Class', 'Student'});
+            
+            lme_perm = fitlme( tbl, 'EEG ~ Condition + (1|Class) + (1|Class:Student)');
+            perm_t(ch, tp) = lme_perm.Coefficients.tStat(2);
 
         end
 
