@@ -2,7 +2,7 @@
 % Convert simulated split-plot EEG data to CSV
 %
 % Input:
-%   EEGdata      : Subject-condition rows ¡Á Channels ¡Á Time
+%   EEGdata      : Subject-condition rows ?? Channels ?? Time
 %   designTable  : One row per subject-condition observation
 %
 %   Each row of EEGdata corresponds to one row of designTable.
@@ -18,10 +18,10 @@
 %   Subject   GroupCode   CondCode   Channel   Time   Amplitude
 %
 % Thus, each row of designTable is expanded into
-% Channels ¡Á Time rows in 06_EEGdata_long.csv.
+% Channels ?? Time rows in 06_EEGdata_long.csv.
 %% ==========================================================
 
-clear; clc;
+clear all; clc; close all
 
 %% Load MAT file
 

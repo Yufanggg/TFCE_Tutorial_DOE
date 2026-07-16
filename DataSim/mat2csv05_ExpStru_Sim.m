@@ -2,8 +2,8 @@
 % Convert simulated within-subject EEG data to CSV
 %
 % Input:
-%   EEGdata      : Rows ¡Á Channels ¡Á Time
-%   designTable  : Rows ¡Á design variables
+%   EEGdata      : Rows ?? Channels ?? Time
+%   designTable  : Rows ?? design variables
 %
 %   Each row of EEGdata corresponds to one row of designTable.
 %
@@ -33,11 +33,11 @@
 %      2         -1       Fp1      -200     ...
 %
 % Thus, every row in designTable is expanded into
-% (Channels ¡Á Time) rows in 05_EEGdata_long.csv.
+% (Channels ?? Time) rows in 05_EEGdata_long.csv.
 %
 %% ==========================================================
 
-clear; clc;
+clear all; clc; close all
 
 %% Load MAT file
 
