@@ -2,13 +2,17 @@
 % Simulated EEG/ERP dataset
 % Fully crossed subject-item design
 %
-% Saved variables:
+% Final saved variables:
 %
 % EEGdata:
-%   Subject, Item, Condition, ConditionCode, Channel, Time, Amplitude
+%   Subject-item-condition rows x Channels x Time
+%   800 x 32 x 251
 %
 % designTable:
-%   Subject, Item, Condition, ConditionCode
+%   Subject
+%   Item
+%   Condition
+%   ConditionCode
 %
 % Condition coding:
 %   Control   = -1
@@ -18,355 +22,324 @@
 %   EEG ~ ConditionCode + (1|Subject) + (1|Item)
 %% ==========================================================
 
-clear; clc; close all;
+clear all;
+clc;
+close all;
+
 rng(123);
 
 %% ==========================================================
-% Simulation settings
+% 1. Simulation settings
 %% ==========================================================
 
-nSub  = 20;
+nSub = 20;
 nItem = 20;
 
-condNames = {'Control','Treatment'};
+condNames = {
+    'Control'
+    'Treatment'
+    };
+
 conditionCodes = [-1, 1];
+
 nCond = numel(condNames);
 
 times = -200:4:800;
-nTime = length(times);
+nTime = numel(times);
+
+nObs = nSub * nItem * nCond;
 
 %% ==========================================================
-% Load channel locations
+% 2. Load channel locations
 %% ==========================================================
 
-chanlocs_1020 = readlocs('standard_1005.elc');
+chanlocs_1020 = readlocs( ...
+    'standard_1005.elc');
 
 chanLabels_32 = {
-'Fp1','Fp2',...
-'F7','F3','Fz','F4','F8',...
-'FC5','FC1','FC2','FC6',...
-'T7','C3','Cz','C4','T8',...
-'CP5','CP1','CP2','CP6',...
-'P7','P3','Pz','P4','P8',...
-'PO9','O1','Oz','O2','PO10',...
-'TP9','TP10'
-};
+    'Fp1','Fp2', ...
+    'F7','F3','Fz','F4','F8', ...
+    'FC5','FC1','FC2','FC6', ...
+    'T7','C3','Cz','C4','T8', ...
+    'CP5','CP1','CP2','CP6', ...
+    'P7','P3','Pz','P4','P8', ...
+    'PO9','O1','Oz','O2','PO10', ...
+    'TP9','TP10'
+    };
 
-allLabels = {chanlocs_1020.labels};
-[tf, idx] = ismember(chanLabels_32, allLabels);
+allLabels = ...
+    {chanlocs_1020.labels};
+
+[tf, idx] = ismember( ...
+    chanLabels_32, ...
+    allLabels);
 
 if any(~tf)
-    error('Missing channels: %s', strjoin(chanLabels_32(~tf), ', '));
+
+    error( ...
+        'Missing channels: %s', ...
+        strjoin(chanLabels_32(~tf), ', '));
+
 end
 
-chanlocs_EEG = chanlocs_1020(idx);
-nChan = length(chanlocs_EEG);
+chanlocs_EEG = ...
+    chanlocs_1020(idx);
+
+nChan = numel(chanlocs_EEG);
 
 %% ==========================================================
-% Define P300 effect
+% 3. Define P300 signal
 %% ==========================================================
 
 p300Latency = 300;
-p300Width   = 70;
+p300Width = 70;
 
-controlAmp   = 3.0;
-treatmentAmp = 6.0;
+controlAmp = 3;
+treatmentAmp = 6;
 
-controlP300 = controlAmp * exp(-(times - p300Latency).^2 ./ ...
-              (2 * p300Width^2));
+controlP300 = ...
+    controlAmp .* ...
+    exp( ...
+        -(times - p300Latency).^2 ./ ...
+        (2 * p300Width^2));
 
-treatmentP300 = treatmentAmp * exp(-(times - p300Latency).^2 ./ ...
-                (2 * p300Width^2));
+treatmentP300 = ...
+    treatmentAmp .* ...
+    exp( ...
+        -(times - p300Latency).^2 ./ ...
+        (2 * p300Width^2));
 
-controlP300   = controlP300(:);
-treatmentP300 = treatmentP300(:);
+controlP300 = ...
+    controlP300(:);
+
+treatmentP300 = ...
+    treatmentP300(:);
 
 %% ==========================================================
-% Define effect channels
+% 4. Define effect channels
 %% ==========================================================
 
-effectChanLabels = {'Cz','CP1','CP2','Pz','P3','P4'};
+effectChanLabels = {
+    'Cz'
+    'CP1'
+    'CP2'
+    'Pz'
+    'P3'
+    'P4'
+    };
 
-[tf, effectChans] = ismember(effectChanLabels, {chanlocs_EEG.labels});
+[tf, effectChans] = ismember( ...
+    effectChanLabels, ...
+    {chanlocs_EEG.labels});
 
 if any(~tf)
-    error('Missing effect channels: %s', strjoin(effectChanLabels(~tf), ', '));
+
+    error( ...
+        'Missing effect channels: %s', ...
+        strjoin(effectChanLabels(~tf), ', '));
+
 end
 
-weights = [0.6 0.8 0.8 1.0 0.75 0.75];
+weights = ...
+    [0.6, 0.8, 0.8, 1.0, 0.75, 0.75];
 
 %% ==========================================================
-% Simulate fully crossed EEG/ERP data
+% 5. Simulate EEG data as a 5D array
 %
-% Temporary data5D:
-%   Subjects x Items x Conditions x Channels x Time
+% Temporary data:
+%
+%   EEGarray =
+%       Subjects x Items x Conditions x Channels x Time
+%
+% Dimensions:
+%
+%   20 x 20 x 2 x 32 x 251
 %% ==========================================================
 
-data5D = zeros(nSub, nItem, nCond, nChan, nTime);
+EEGarray = zeros( ...
+    nSub, ...
+    nItem, ...
+    nCond, ...
+    nChan, ...
+    nTime);
 
 backgroundNoiseSD = 0.8;
-subjectNoiseSD    = 1.5;
-itemNoiseSD       = 1.0;
+subjectNoiseSD = 1.5;
+itemNoiseSD = 1.0;
 
-% Subject-wise noise:
-% one stable pattern per subject, shared across items and conditions
-subjectNoise = subjectNoiseSD * randn(nSub, nChan, nTime);
+%% ==========================================================
+% Subject-specific random effects
+%
+% Each subject receives one stable channel-time pattern that
+% is shared across all items and conditions.
+%% ==========================================================
 
-% Item-wise noise:
-% one stable pattern per item, shared across subjects and conditions
-itemNoise = itemNoiseSD * randn(nItem, nChan, nTime);
+subjectNoise = ...
+    subjectNoiseSD .* ...
+    randn( ...
+        nSub, ...
+        nChan, ...
+        nTime);
+
+%% ==========================================================
+% Item-specific random effects
+%
+% Each item receives one stable channel-time pattern that is
+% shared across all subjects and conditions.
+%% ==========================================================
+
+itemNoise = ...
+    itemNoiseSD .* ...
+    randn( ...
+        nItem, ...
+        nChan, ...
+        nTime);
+
+%% ==========================================================
+% Generate background EEG activity
+%% ==========================================================
 
 for s = 1:nSub
 
     for i = 1:nItem
 
-        for c = 1:nCond
+        for cond = 1:nCond
 
-            backgroundNoise = backgroundNoiseSD * randn(nChan, nTime);
+            backgroundNoise = ...
+                backgroundNoiseSD .* ...
+                randn(nChan, nTime);
 
-            data5D(s,i,c,:,:) = ...
-                squeeze(subjectNoise(s,:,:)) + ...
-                squeeze(itemNoise(i,:,:)) + ...
-                backgroundNoise;
+            EEGarray(s, i, cond, :, :) = ...
+                reshape( ...
+                    squeeze(subjectNoise(s, :, :)) + ...
+                    squeeze(itemNoise(i, :, :)) + ...
+                    backgroundNoise, ...
+                    1, ...
+                    1, ...
+                    1, ...
+                    nChan, ...
+                    nTime);
 
         end
+
     end
+
 end
 
 %% ==========================================================
-% Inject deterministic P300 condition effect
+% 6. Inject deterministic P300 condition effect
 %% ==========================================================
 
 for s = 1:nSub
 
     for i = 1:nItem
 
-        for ch_idx = 1:length(effectChans)
+        for k = 1:numel(effectChans)
 
-            ch = effectChans(ch_idx);
+            ch = effectChans(k);
 
+            %% ------------------------------------------------
             % Control condition
-            tmp = squeeze(data5D(s,i,1,ch,:));
-            tmp = tmp + weights(ch_idx) * controlP300;
-            data5D(s,i,1,ch,:) = reshape(tmp, 1, 1, 1, 1, nTime);
+            %% ------------------------------------------------
 
+            tmp = squeeze( ...
+                EEGarray(s, i, 1, ch, :));
+
+            tmp = ...
+                tmp + ...
+                weights(k) .* controlP300;
+
+            EEGarray(s, i, 1, ch, :) = ...
+                reshape( ...
+                    tmp, ...
+                    1, ...
+                    1, ...
+                    1, ...
+                    1, ...
+                    nTime);
+
+            %% ------------------------------------------------
             % Treatment condition
-            tmp = squeeze(data5D(s,i,2,ch,:));
-            tmp = tmp + weights(ch_idx) * treatmentP300;
-            data5D(s,i,2,ch,:) = reshape(tmp, 1, 1, 1, 1, nTime);
+            %% ------------------------------------------------
+
+            tmp = squeeze( ...
+                EEGarray(s, i, 2, ch, :));
+
+            tmp = ...
+                tmp + ...
+                weights(k) .* treatmentP300;
+
+            EEGarray(s, i, 2, ch, :) = ...
+                reshape( ...
+                    tmp, ...
+                    1, ...
+                    1, ...
+                    1, ...
+                    1, ...
+                    nTime);
 
         end
+
     end
-end
-
-%% ==========================================================
-% Condition difference
-%% ==========================================================
-
-subjectItemDiff = squeeze(data5D(:,:,2,:,:) - data5D(:,:,1,:,:));
-
-conditionDiff = squeeze(mean(mean(subjectItemDiff, 1), 2));
-
-%% ==========================================================
-% Figure 1: ERP waveform at Pz
-%% ==========================================================
-
-channelToPlot = find(strcmp({chanlocs_EEG.labels}, 'Pz'));
-
-controlERP = squeeze(mean(mean(data5D(:,:,1,channelToPlot,:),1),2));
-treatmentERP = squeeze(mean(mean(data5D(:,:,2,channelToPlot,:),1),2));
-
-figure;
-
-plot(times, controlERP, 'LineWidth', 2);
-hold on;
-
-plot(times, treatmentERP, 'r', 'LineWidth', 2);
-
-xlabel('Time (ms)');
-ylabel('Amplitude (\muV)');
-title('Fully Crossed Subject × Item ERP at Pz');
-legend(condNames);
-grid on;
-
-%% ==========================================================
-% Figure 2: Observed difference map
-%% ==========================================================
-
-figure;
-
-imagesc(times, 1:nChan, conditionDiff);
-axis xy;
-
-xlim([-200 800]);
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {chanlocs_EEG.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-title('Observed Difference: Treatment - Control');
-
-colorbar;
-
-%% ==========================================================
-% Figure 3: Ground-truth injected effect
-%% ==========================================================
-
-truthDiff = zeros(nChan,nTime);
-trueDifference = treatmentP300 - controlP300;
-
-for ch_idx = 1:length(effectChans)
-
-    ch = effectChans(ch_idx);
-    truthDiff(ch,:) = weights(ch_idx) * trueDifference';
-
-end
-
-figure;
-
-imagesc(times, 1:nChan, truthDiff);
-axis xy;
-
-xlim([-200 800]);
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {chanlocs_EEG.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-title('Ground-truth Fully Crossed Effect');
-
-colorbar;
-
-%% ==========================================================
-% Figure 4: Topography at 300 ms
-%% ==========================================================
-
-chanlocs_plot = chanlocs_EEG;
-
-for k = 1:length(chanlocs_plot)
-    chanlocs_plot(k).theta = chanlocs_plot(k).theta + 90;
-end
-
-if exist('topoplot','file')
-
-    [~,peakIdx] = min(abs(times - 300));
-
-    topo = conditionDiff(:,peakIdx);
-
-    figure;
-
-    topoplot(topo, chanlocs_plot, 'electrodes', 'labels');
-
-    colorbar;
-
-    title('Fully Crossed Difference at 300 ms');
-
-else
-
-    fprintf('topoplot not found. Please check EEGLAB path.\n');
 
 end
 
 %% ==========================================================
-% Convert to long-format EEGdata
+% 7. Create final EEGdata and designTable
 %
-% Final EEGdata columns:
-%   Subject
-%   Item
-%   Condition
-%   ConditionCode
-%   Channel
-%   Time
-%   Amplitude
+% Final EEGdata:
+%
+%   Subject-item-condition rows x Channels x Time
+%   800 x 32 x 251
+%
+% Each row of EEGdata corresponds to one row of designTable.
+%
+% Row ordering:
+%
+%   Subject 1, Item 1, Control
+%   Subject 1, Item 1, Treatment
+%   Subject 1, Item 2, Control
+%   Subject 1, Item 2, Treatment
+%   ...
 %% ==========================================================
 
-nRowsEEG = nSub * nItem * nCond * nChan * nTime;
+EEGdata = zeros( ...
+    nObs, ...
+    nChan, ...
+    nTime);
 
-Subject       = zeros(nRowsEEG, 1);
-Item          = zeros(nRowsEEG, 1);
-Condition     = cell(nRowsEEG, 1);
-ConditionCode = zeros(nRowsEEG, 1);
-Channel       = cell(nRowsEEG, 1);
-Time          = zeros(nRowsEEG, 1);
-Amplitude     = zeros(nRowsEEG, 1);
+Subject = zeros(nObs, 1);
+Item = zeros(nObs, 1);
+Condition = cell(nObs, 1);
+ConditionCode = zeros(nObs, 1);
 
-row = 1;
+row = 0;
 
 for s = 1:nSub
+
     for i = 1:nItem
-        for c = 1:nCond
-            for ch = 1:nChan
-                for t = 1:nTime
 
-                    Subject(row)       = s;
-                    Item(row)          = i;
-                    Condition{row}     = condNames{c};
-                    ConditionCode(row) = conditionCodes(c);
-                    Channel{row}       = chanlocs_EEG(ch).labels;
-                    Time(row)          = times(t);
-                    Amplitude(row)     = data5D(s,i,c,ch,t);
-
-                    row = row + 1;
-
-                end
-            end
-        end
-    end
-end
-
-EEGdata = table( ...
-    Subject, ...
-    Item, ...
-    Condition, ...
-    ConditionCode, ...
-    Channel, ...
-    Time, ...
-    Amplitude);
-
-%% ==========================================================
-% Create design table
-%
-% Final designTable columns:
-%   Subject
-%   Item
-%   Condition
-%   ConditionCode
-%% ==========================================================
-
-nRowsDesign = nSub * nItem * nCond;
-
-Subject       = zeros(nRowsDesign, 1);
-Item          = zeros(nRowsDesign, 1);
-Condition     = cell(nRowsDesign, 1);
-ConditionCode = zeros(nRowsDesign, 1);
-
-row = 1;
-
-for s = 1:nSub
-    for i = 1:nItem
-        for c = 1:nCond
-
-            Subject(row)       = s;
-            Item(row)          = i;
-            Condition{row}     = condNames{c};
-            ConditionCode(row) = conditionCodes(c);
+        for cond = 1:nCond
 
             row = row + 1;
 
+            EEGdata(row, :, :) = ...
+                reshape( ...
+                    squeeze( ...
+                        EEGarray(s, i, cond, :, :)), ...
+                    1, ...
+                    nChan, ...
+                    nTime);
+
+            Subject(row) = s;
+            Item(row) = i;
+            Condition{row} = condNames{cond};
+            ConditionCode(row) = conditionCodes(cond);
+
         end
+
     end
+
 end
 
 designTable = table( ...
@@ -376,28 +349,298 @@ designTable = table( ...
     ConditionCode);
 
 %% ==========================================================
-% Preview
+% 8. Check final data dimensions
 %% ==========================================================
 
-disp(designTable(1:20,:));
-disp(EEGdata(1:20,:));
+expectedEEGSize = ...
+    [nObs, nChan, nTime];
 
-%% ==========================================================
-% Save dataset
-% Only EEGdata and designTable are saved
-%% ==========================================================
+if ~isequal(size(EEGdata), expectedEEGSize)
 
-if ~exist('../data','dir')
-    mkdir('../data');
+    error( ...
+        ['Unexpected EEGdata dimensions. Expected ', ...
+         '%d x %d x %d but obtained %s.'], ...
+        expectedEEGSize(1), ...
+        expectedEEGSize(2), ...
+        expectedEEGSize(3), ...
+        mat2str(size(EEGdata)));
+
 end
 
-save('../data/08_simulated_fully_crossed_subject_item_EEG.mat', ...
-     'EEGdata', ...
-     'designTable');
+if height(designTable) ~= nObs
 
-disp('Dataset saved: ../data/08_simulated_fully_crossed_subject_item_EEG.mat');
-disp('Saved variables: EEGdata, designTable');
+    error( ...
+        ['The number of rows in designTable must equal ', ...
+         'the first dimension of EEGdata.']);
+
+end
+
+fprintf( ...
+    ['Data check passed: %d subjects, %d items, ', ...
+     '%d conditions, and %d observations.\n'], ...
+    nSub, ...
+    nItem, ...
+    nCond, ...
+    nObs);
+
+%% ==========================================================
+% 9. Compute observed condition difference
+%% ==========================================================
+
+subjectItemDiff = squeeze( ...
+    EEGarray(:, :, 2, :, :) - ...
+    EEGarray(:, :, 1, :, :));
+
+conditionDiff = squeeze( ...
+    mean( ...
+        mean(subjectItemDiff, 1), ...
+        2));
+
+%% ==========================================================
+% 10. Plot ERP waveform at Pz
+%% ==========================================================
+
+channelToPlot = find( ...
+    strcmp( ...
+        {chanlocs_EEG.labels}, ...
+        'Pz'));
+
+if isempty(channelToPlot)
+
+    error( ...
+        'The Pz channel was not found.');
+
+end
+
+controlERP = squeeze( ...
+    mean( ...
+        mean( ...
+            EEGarray(:, :, 1, channelToPlot, :), ...
+            1), ...
+        2));
+
+treatmentERP = squeeze( ...
+    mean( ...
+        mean( ...
+            EEGarray(:, :, 2, channelToPlot, :), ...
+            1), ...
+        2));
+
+figure;
+
+plot( ...
+    times, ...
+    controlERP, ...
+    'LineWidth', ...
+    2);
+
+hold on;
+
+plot( ...
+    times, ...
+    treatmentERP, ...
+    'r', ...
+    'LineWidth', ...
+    2);
+
+xlabel('Time (ms)');
+ylabel('Amplitude (\muV)');
+
+title( ...
+    'Fully Crossed Subject-Item ERP Waveform at Pz');
+
+legend( ...
+    condNames, ...
+    'Location', ...
+    'best');
+
+grid on;
+
+%% ==========================================================
+% 11. Plot observed condition difference
+%% ==========================================================
+
+figure;
+
+imagesc( ...
+    times, ...
+    1:nChan, ...
+    conditionDiff);
+
+axis xy;
+
+xlim([-200, 800]);
+
+set( ...
+    gca, ...
+    'YTick', ...
+    1:nChan, ...
+    'YTickLabel', ...
+    {chanlocs_EEG.labels}, ...
+    'XTick', ...
+    -200:200:800, ...
+    'TickLength', ...
+    [0, 0], ...
+    'FontSize', ...
+    15, ...
+    'FontName', ...
+    'Arial');
+
+xlabel('Time (ms)');
+ylabel('Channel');
+
+title( ...
+    'Observed Condition Difference: Treatment - Control');
+
+colorbar;
+
+%% ==========================================================
+% 12. Plot ground-truth condition effect
+%% ==========================================================
+
+truthDiff = zeros( ...
+    nChan, ...
+    nTime);
+
+trueDifference = ...
+    treatmentP300 - controlP300;
+
+for k = 1:numel(effectChans)
+
+    ch = effectChans(k);
+
+    truthDiff(ch, :) = ...
+        weights(k) .* ...
+        trueDifference';
+
+end
+
+figure;
+
+imagesc( ...
+    times, ...
+    1:nChan, ...
+    truthDiff);
+
+axis xy;
+
+xlim([-200, 800]);
+
+set( ...
+    gca, ...
+    'YTick', ...
+    1:nChan, ...
+    'YTickLabel', ...
+    {chanlocs_EEG.labels}, ...
+    'XTick', ...
+    -200:200:800, ...
+    'TickLength', ...
+    [0, 0], ...
+    'FontSize', ...
+    15, ...
+    'FontName', ...
+    'Arial');
+
+xlabel('Time (ms)');
+ylabel('Channel');
+
+title( ...
+    'Ground-Truth Fully Crossed Condition Effect');
+
+colorbar;
+
+%% ==========================================================
+% 13. Plot topography at 300 ms
+%% ==========================================================
+
+chanlocs_plot = chanlocs_EEG;
+
+for k = 1:numel(chanlocs_plot)
+
+    chanlocs_plot(k).theta = ...
+        chanlocs_plot(k).theta + 90;
+
+end
+
+[~, peakIdx] = min( ...
+    abs(times - p300Latency));
+
+if exist('topoplot', 'file')
+
+    topo = ...
+        conditionDiff(:, peakIdx);
+
+    figure;
+
+    topoplot( ...
+        topo, ...
+        chanlocs_plot, ...
+        'electrodes', ...
+        'labels');
+
+    colorbar;
+
+    title( ...
+        'Observed Treatment - Control Difference at 300 ms');
+
+else
+
+    warning( ...
+        ['topoplot was not found. ', ...
+         'Please add EEGLAB to the MATLAB path.']);
+
+end
+
+%% ==========================================================
+% 14. Preview dataset
+%% ==========================================================
+
+disp('First 12 rows of designTable:');
+disp(designTable(1:12, :));
+
 disp('Final EEGdata size:');
 disp(size(EEGdata));
+
 disp('Final designTable size:');
 disp(size(designTable));
+
+%% ==========================================================
+% 15. Save dataset
+%% ==========================================================
+
+outputDirectory = ...
+    '../data';
+
+outputFile = ...
+    '../data/08_simulated_fully_crossed_subject_item_EEG.mat';
+
+if ~exist(outputDirectory, 'dir')
+
+    mkdir(outputDirectory);
+
+end
+
+save( ...
+    outputFile, ...
+    'EEGdata', ...
+    'designTable', ...
+    'times', ...
+    'chanlocs_EEG', ...
+    '-v7.3');
+
+fprintf( ...
+    '\nDataset saved to:\n%s\n', ...
+    outputFile);
+
+disp( ...
+    ['Saved variables: EEGdata, designTable, ', ...
+     'times, chanlocs_EEG']);
+
+disp('Final EEGdata size:');
+disp(size(EEGdata));
+
+disp('Final designTable size:');
+disp(size(designTable));
+
+fprintf( ...
+    '\nFully crossed subject-item simulation completed.\n');

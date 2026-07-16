@@ -35,22 +35,28 @@ clear; clc; close all;
 
 fprintf('\nStarting fully crossed subject-item TFCE analysis...\n');
 
+rng(123);
+
 %% ==========================================================
 % Load data
 %% ==========================================================
 
 load('../data/08_simulated_fully_crossed_subject_item_EEG.mat', ...
      'EEGdata', 'designTable');
-
+ 
 %% ==========================================================
-% Basic variables from long-format EEG table
+% Analysis settings
 %% ==========================================================
 
-times = unique(EEGdata.Time, 'stable');
-chanLabels = unique(EEGdata.Channel, 'stable');
+nPerm = 999;
+alpha = 0.05;
 
-nTime = numel(times);
-nChan = numel(chanLabels);
+inputFile = ...
+    '../data/08_simulated_fully_crossed_subject_item_EEG.mat';
+
+outputFile = ...
+    '../results/08_TFCE_fully_crossed_subject_item_results.mat';
+
 
 %% ==========================================================
 % Reconstruct EEG array
@@ -61,93 +67,120 @@ nChan = numel(chanLabels);
 % Observation = one Subject-Item-Condition row
 %% ==========================================================
 
-obsTable = unique( ...
-    EEGdata(:, {'Subject','Item','Condition','ConditionCode'}), ...
-    'rows', ...
-    'stable');
+S = load(inputFile);
 
-nRows = height(obsTable);
+if ~isfield(S, 'EEGdata')
 
-EEGarray = nan(nRows, nChan, nTime);
-
-[~, obsIdx] = ismember( ...
-    EEGdata(:, {'Subject','Item','Condition','ConditionCode'}), ...
-    obsTable, ...
-    'rows');
-
-[~, chanIdx] = ismember(EEGdata.Channel, chanLabels);
-[~, timeIdx] = ismember(EEGdata.Time, times);
-
-for r = 1:height(EEGdata)
-
-    EEGarray(obsIdx(r), chanIdx(r), timeIdx(r)) = EEGdata.Amplitude(r);
+    error('The input file does not contain EEGdata.');
 
 end
 
-fprintf('Reconstructed EEGarray: %d rows x %d channels x %d time points.\n', ...
-    nRows, nChan, nTime);
+if ~isfield(S, 'designTable')
 
+    error('The input file does not contain designTable.');
+
+end
+
+EEGdata = S.EEGdata;
+designTable = S.designTable;
+
+[nObs, nChan, nTime] = size(EEGdata);
+
+if height(designTable) ~= nObs
+
+    error( ...
+        ['The number of designTable rows must equal the ', ...
+         'first dimension of EEGdata.']);
+
+end
+
+fprintf( ...
+    ['EEGdata dimensions: %d observations x ', ...
+     '%d channels x %d time points.\n'], ...
+    nObs, ...
+    nChan, ...
+    nTime);
+
+fprintf( ...
+    'designTable dimensions: %d rows x %d variables.\n', ...
+    height(designTable), ...
+    width(designTable));
 %% ==========================================================
-% Design variables
+% Extract design variables
 %% ==========================================================
+Subject = designTable.Subject(:);
+Item = designTable.Item(:);
+CondCode = designTable.ConditionCode(:);
 
-Subject = obsTable.Subject;
-Item = obsTable.Item;
-CondCode = obsTable.ConditionCode;
-
-Subject = Subject(:);
-Item = Item(:);
-CondCode = CondCode(:);
+% Effect coding:
+%
+%   Control   = -1
+%   Treatment =  1
+Condition = double(designTable.ConditionCode(:));
 
 SubjectLME = categorical(Subject);
 ItemLME = categorical(Item);
 
-% -1 = Control, 1 = Treatment
-Condition = double(CondCode == 1);
-
-%% ==========================================================
-% Check Subject × Item blocks
-%% ==========================================================
-
-PairID = findgroups(Subject, Item);
-pairUnits = unique(PairID);
-nPairs = numel(pairUnits);
-
-if nRows ~= nPairs * 2
-    error('Expected exactly two condition rows per Subject × Item pair.');
-end
-
-for u = 1:nPairs
-
-    idxPair = PairID == pairUnits(u);
-
-    if sum(idxPair) ~= 2
-        error('Each Subject × Item pair must have exactly two rows.');
-    end
-
-    if ~all(sort(CondCode(idxPair)) == [-1; 1])
-        error('Each Subject × Item pair must have one Control (-1) and one Treatment (1).');
-    end
-
-end
-
-fprintf('Design check passed: %d Subject × Item pairs, 2 conditions each.\n', nPairs);
+times = -200:4:800
 
 %% ==========================================================
 % Load channel locations
 %% ==========================================================
-
 chanlocs_1020 = readlocs('standard_1005.elc');
 
+chanLabels_32 = {
+'Fp1','Fp2', ...
+'F7','F3','Fz','F4','F8', ...
+'FC5','FC1','FC2','FC6', ...
+'T7','C3','Cz','C4','T8', ...
+'CP5','CP1','CP2','CP6', ...
+'P7','P3','Pz','P4','P8', ...
+'PO9','O1','Oz','O2','PO10', ...
+'TP9','TP10'
+};
+
 allLabels = {chanlocs_1020.labels};
-[tf, idx] = ismember(chanLabels, allLabels);
+[tf, idx] = ismember(chanLabels_32, allLabels);
 
 if any(~tf)
-    error('Missing channels: %s', strjoin(chanLabels(~tf), ', '));
+    error('Missing channels: %s', strjoin(chanLabels_32(~tf), ', '));
 end
 
 e_loc = chanlocs_1020(idx);
 
+%% ==========================================================
+% Channel-neighbour structure and TFCE parameters
+%% ==========================================================
+
+ChN = ept_ChN2(e_loc);
+
+% TFCE parameters:
+%
+%   E = extent exponent
+%   H = height exponent
+E_H = [0.66, 2];
+
+%% ==========================================================
+% Step 0: Get mEEG
+%% ==========================================================
+mEEG = nan(size(EEGarray));
+for ch = 1:nChan
+    for tp = 1:nTime
+        
+        EEG = double(squeeze(EEGarray(ch,tp,:)));
+        
+        tbl = table(EEG, CondCode, SubjectLME, ItemLME, ...
+            'VariableNames', {'EEG','Condition','Subject','Item'});
+        
+        lme = fitlme(tbl, ...
+            'EEG ~ Condition + (1|Subject) + (1|Item)');
+
+        mEEG(ch,tpoint,:) = fitted(lme,'Conditional',0) + residuals(m);        
+    end
+end
+disp('the marginalization stage is done!!!!!!!!!!');
+
+clear EEG
 %% ==========================================================
 % Step 1: Observed LME t-map
 %% ==========================================================
@@ -159,16 +192,15 @@ t_Obs = zeros(nChan, nTime);
 for ch = 1:nChan
     for tp = 1:nTime
 
-        EEG = double(squeeze(EEGarray(:, ch, tp)));
+        EEG = double(squeeze(mEEG(:, ch, tp)));
 
-        tbl = table(EEG, Condition, SubjectLME, ItemLME, ...
+        tbl = table(EEG, CondCode, SubjectLME, ItemLME, ...
             'VariableNames', {'EEG','Condition','Subject','Item'});
 
-        lme = fitlme(tbl, ...
-            'EEG ~ Condition + (1|Subject) + (1|Item)');
+        lme = fitlm(tbl, 'EEG ~ Condition');
 
         % Row 2 = Treatment - Control fixed effect
-        t_Obs(ch,tp) = lme.Coefficients.tStat(2);
+        t_Obs(ch,tp) = lm_local.Coefficients.tStat(2);
 
     end
 end
@@ -190,58 +222,34 @@ fprintf('Observed TFCE map completed.\n');
 
 %% ==========================================================
 % Step 3: Permutation
-%
-% Flip condition labels within each Subject × Item pair
 %% ==========================================================
-
-nPerm = 999;
 TFCE_permMax = nan(nPerm,1);
 
 fprintf('Step 3: Starting permutation test: %d permutations...\n', nPerm);
 
-parfor p = 1:nPerm
-
-    perm_t = nan(nChan, nTime);
-
-    CondCode_perm = CondCode;
-
-    for u = 1:nPairs
-
-        idxPair = find(PairID == pairUnits(u));
-
-        if rand > 0.5
-            CondCode_perm(idxPair) = flipud(CondCode_perm(idxPair));
-        end
-
-    end
-
-    Condition_perm = double(CondCode_perm == 1);
-
-    Subject_perm = categorical(Subject);
-    Item_perm = categorical(Item);
-
+for p =1:nPerm
+    permT = nan(nChan, nTime);
+    
+    permCondCode = CondCode(randperm(nRows),:);
+    
     for ch = 1:nChan
-        for tp = 1:nTime
-
-            EEG = double(squeeze(EEGarray(:, ch, tp)));
-
-            tbl = table(EEG, Condition_perm, Subject_perm, Item_perm, ...
-                'VariableNames', {'EEG','Condition','Subject','Item'});
-
-            lme = fitlme(tbl, ...
-                'EEG ~ Condition + (1|Subject) + (1|Item)');
-
-            perm_t(ch,tp) = lme.Coefficients.tStat(2);
+        
+        parfor tp = 1:nTime
+            
+            EEG = squeeze(mEEG(ch,tpoint,:));
+            lm_local = fitlm(permCondCode, EEG);
+            
+            % Coefficient 2 = permuted Group effect
+            permT(ch, tp) = lm_perm.Coefficients.tStat(2);
 
         end
     end
+    
+    fprintf('At the %dth permutation\n', p);
 
-    TFCE_perm = ept_mex_TFCE2D(perm_t, ChN, E_H);
+    TFCE_perm = ept_mex_TFCE2D(permT, ChN, E_H);
 
     TFCE_permMax(p) = max(abs(TFCE_perm(:)));
-
-    fprintf('Finished permutation %d / %d\n', p, nPerm);
-
 end
 
 fprintf('Permutation testing completed.\n');
@@ -251,8 +259,6 @@ fprintf('Permutation testing completed.\n');
 %% ==========================================================
 
 fprintf('Step 4: Computing TFCE-corrected significance...\n');
-
-alpha = 0.05;
 
 maxTFCE = sort([TFCE_permMax;max(abs(TFCE_Obs(:)))]);
 
@@ -356,7 +362,6 @@ if ~exist('../results', 'dir')
     mkdir('../results');
 end
 
-save('../results/08_TFCE_fully_crossed_subject_item_results.mat', ...
-     'Results');
+save(outputFile, 'Results');
 
 disp('Fully crossed subject-item TFCE analysis completed and saved.');
