@@ -1,5 +1,7 @@
 tfce_transform <- function(x, E = 0.5, H = 2, dh = 0.1) {
   
+  x = abs(x)
+  
   if (!requireNamespace("permuco", quietly = TRUE)) {
     stop("Package 'permuco' is required.")
   }
