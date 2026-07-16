@@ -17,7 +17,7 @@ output: html_document
 ##
 ## Important:
 ##   This uses permuco:::tfce_distribution()
-##   on a flattened Channel ¡Á Time map.
+##   on a flattened Channel ?? Time map.
 ## ==========================================================
 
 rm(list = ls())
@@ -27,7 +27,7 @@ library(tidyr)
 library(permuco)
 
 source("../R/tfce_transform.R")
-source((".../R/plot_eeg_map.R"))
+source(("../R/plot_eeg_map.R"))
 
 cat("\nStarting TFCE simple between-subject analysis...\n")
 

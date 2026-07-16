@@ -2,7 +2,7 @@
 % Convert simulated nested class-student EEG data to CSV
 %
 % Input:
-%   EEGdata      : Class-student-condition rows ¡Á Channels ¡Á Time
+%   EEGdata      : Class-student-condition rows ?? Channels ?? Time
 %   designTable  : One row per class-student-condition observation
 %
 %   Each row of EEGdata corresponds to one row of designTable.
@@ -18,10 +18,10 @@
 %   Class   Student   ConditionCode   Channel   Time   Amplitude
 %
 % Thus, each row of designTable is expanded into
-% Channels ¡Á Time rows in 07_EEGdata_long.csv.
+% Channels ?? Time rows in 07_EEGdata_long.csv.
 %% ==========================================================
 
-clear all; clc;
+clear all; clc;close all
 
 %% Load MAT file
 
