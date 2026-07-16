@@ -29,7 +29,7 @@ library(tidyr)
 library(fields)
 
 source("../R/tfce_transform.R")
-source(".../R/plot_eeg_map.R")
+source("../R/plot_eeg_map.R")
 
 cat("\nStarting TFCE 2 x 2 between-subject analysis...\n")
 

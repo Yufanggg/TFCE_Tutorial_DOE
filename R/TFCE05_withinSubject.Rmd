@@ -29,7 +29,7 @@ library(lme4)
 library(lmerTest)
 
 source("../R/tfce_transform.R")
-source(".../R/plot_eeg_map.R")
+source("../R/plot_eeg_map.R")
 
 cat("\nStarting TFCE within-subject analysis...\n")
 

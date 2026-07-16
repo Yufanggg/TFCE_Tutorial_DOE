@@ -31,7 +31,7 @@ library(lme4)
 library(lmerTest)
 
 source("../R/tfce_transform.R")
-source(".../R/plot_eeg_map.R")
+source("../R/plot_eeg_map.R")
 
 cat("\nStarting TFCE split-plot analysis...\n")
 
@@ -331,9 +331,9 @@ plot_eeg_map(mT_Cond, "TFCE-corrected Condition Effect", times, nChan)
 ## Step 7: Plot observed TFCE maps
 ## ==========================================================
 
-plot_eeg_map(TFCE_Obs_Group, "Observed TFCE Map: Group Effect")
+plot_eeg_map(TFCE_Obs_Group, "Observed TFCE Map: Group Effect", times, nChan)
 
-plot_eeg_map(TFCE_Obs_Cond, "Observed TFCE Map: Condition Effect")
+plot_eeg_map(TFCE_Obs_Cond, "Observed TFCE Map: Condition Effect", times, nChan)
 
 ## ==========================================================
 ## Step 9: Save TFCE results
