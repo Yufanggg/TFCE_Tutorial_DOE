@@ -27,6 +27,7 @@ library(tidyr)
 library(fields)
 
 source("../R/tfce_transform.R")
+source(".../R/plot_eeg_map.R")
 
 cat("\nStarting TFCE covariate-adjusted analysis...\n")
 
@@ -68,15 +69,11 @@ nTime <- length(times)
 ## ==========================================================
 
 compute_tmap_covariate <- function(data) {
-  
   res <- data %>%
     group_by(Channel, Time) %>%
-    summarise(
-      t_value = coef(summary(
-        lm(Amplitude ~ Covariate + CondCode)
-      ))["CondCode", "t value"],
-      .groups = "drop"
-    )
+    summarise(t_value = coef(summary(lm(
+      Amplitude ~ Covariate + CondCode
+    )))["CondCode", "t value"], .groups = "drop")
   
   tvec <- res %>%
     mutate(
@@ -111,12 +108,7 @@ cat("Observed t-map completed.\n")
 
 cat("Step 2: Computing observed TFCE map...\n")
 
-TFCE_Obs <- tfce_transform(
-  t_Obs,
-  E  = 0.66,
-  H  = 2,
-  dh = 0.1
-)
+TFCE_Obs <- tfce_transform(t_Obs, E  = 0.66, H  = 2, dh = 0.1)
 
 cat("Observed TFCE map completed.\n")
 
@@ -138,8 +130,7 @@ cat("Step 3: Starting Freedman-Lane permutation testing...\n")
 
 FL_parts <- dat %>%
   group_by(Channel, Time) %>%
-  group_modify(~ {
-    
+  group_modify( ~ {
     df <- .x
     
     lm_red <- lm(Amplitude ~ Covariate, data = df)
@@ -154,11 +145,10 @@ FL_parts <- dat %>%
 for (p in seq_len(nPerm)) {
   perm_dat <- FL_parts %>%
     group_by(Channel, Time) %>%
-    group_modify(~ {
-      
+    group_modify( ~ {
       df <- .x
       perm_idx <- sample(seq_len(length(unique(dat$Subject))))
-       ## Freedman-Lane permuted response
+      ## Freedman-Lane permuted response
       df$Amplitude <- df$Y_hat_red + df$resid_red[perm_idx]
       
       df
@@ -167,12 +157,7 @@ for (p in seq_len(nPerm)) {
   
   t_perm <- compute_tmap_covariate(perm_dat)
   
-  TFCE_perm <- tfce_transform(
-    t_perm,
-    E  = 0.66,
-    H  = 2,
-    dh = 0.1
-  )
+  TFCE_perm <- tfce_transform(t_perm, E  = 0.66, H  = 2, dh = 0.1)
   
   TFCE_permMax[p] <- max(abs(TFCE_perm), na.rm = TRUE)
   
@@ -191,25 +176,19 @@ cat("Step 4: Computing TFCE-corrected significance...\n")
 
 alpha <- 0.05
 
-maxTFCE <- sort(c(
-  TFCE_permMax,
-  max(abs(TFCE_Obs), na.rm = TRUE)
-))
+maxTFCE <- sort(c(TFCE_permMax, max(abs(TFCE_Obs), na.rm = TRUE)))
 
 maxTFCEcrit <- maxTFCE[round(nPerm * (1 - alpha))]
 
 Mask <- abs(TFCE_Obs) >= maxTFCEcrit
 
-P_Values <- matrix(
-  NA,
-  nrow = nChan,
-  ncol = nTime,
-  dimnames = dimnames(TFCE_Obs)
-)
+P_Values <- matrix(NA,
+                   nrow = nChan,
+                   ncol = nTime,
+                   dimnames = dimnames(TFCE_Obs))
 
 for (ch in seq_len(nChan)) {
   for (t in seq_len(nTime)) {
-    
     P_Values[ch, t] <-
       (sum(TFCE_permMax >= abs(TFCE_Obs[ch, t]), na.rm = TRUE) + 1) /
       (nPerm + 1)
@@ -243,52 +222,19 @@ Results <- list(
 cat("Results stored.\n")
 
 ## ==========================================================
-## Helper plotting function
-## ==========================================================
-
-plot_eeg_map <- function(mat, title) {
-  
-  fields::image.plot(
-    x = times,
-    y = seq_len(nChan),
-    z = t(mat),
-    xlab = "Time (ms)",
-    ylab = "Channel",
-    main = title,
-    axes = FALSE
-  )
-  
-  axis(1, at = seq(-200, 800, by = 200))
-  axis(
-    2,
-    at = seq_len(nChan),
-    labels = channels,
-    las = 2,
-    cex.axis = 0.6
-  )
-  box()
-}
-
-## ==========================================================
 ## Step 6: Plot significant effects
 ## ==========================================================
 
 mT <- t_Obs
 mT[!Mask] <- 0
 
-plot_eeg_map(
-  mT,
-  "TFCE-corrected Group Effect Adjusted for Covariate"
-)
+plot_eeg_map(mT, "TFCE-corrected Group Effect Adjusted for Covariate", times, nChan)
 
 ## ==========================================================
 ## Step 7: Plot observed TFCE values
 ## ==========================================================
 
-plot_eeg_map(
-  TFCE_Obs,
-  "Observed TFCE Map: Group Effect Adjusted for Covariate"
-)
+plot_eeg_map(TFCE_Obs, "Observed TFCE Map: Group Effect Adjusted for Covariate", times, nChan)
 
 ## ==========================================================
 ## Step 8: Save results
@@ -298,10 +244,7 @@ if (!dir.exists("../results")) {
   dir.create("../results")
 }
 
-save(
-  Results,
-  file = "../results/02_TFCE_between_subject_covariate_results.RData"
-)
+save(Results, file = "../results/02_TFCE_between_subject_covariate_results.RData")
 
 cat("TFCE covariate-adjusted between-subject analysis completed.\n")
 cat("Saved results: ../results/02_TFCE_between_subject_covariate_results.RData\n")

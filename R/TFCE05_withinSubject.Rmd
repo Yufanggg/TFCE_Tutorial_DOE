@@ -29,6 +29,7 @@ library(lme4)
 library(lmerTest)
 
 source("../R/tfce_transform.R")
+source(".../R/plot_eeg_map.R")
 
 cat("\nStarting TFCE within-subject analysis...\n")
 
@@ -60,26 +61,20 @@ dat <- EEGlong %>%
 channels <- unique(dat$Channel)
 times    <- sort(unique(dat$Time))
 
-n_chan <- length(channels)
-n_time <- length(times)
+nChan <- length(channels)
+nTime <- length(times)
 
 ## ==========================================================
 ## -2. Function to compute LME t-map
 ## ==========================================================
 
 compute_tmap <- function(data) {
-  
   res <- data %>%
     group_by(Channel, Time) %>%
-    group_modify(~{
-      fit <- lmer(
-        Amplitude ~ CondCode + (1 | Subject),
-        data = .x
-        )
-      tibble(
-        t_value = coef(summary(fit))["CondCode","t value"]
-      )
-      }) %>%
+    group_modify(~ {
+      fit <- lmer(Amplitude ~ CondCode + (1 | Subject), data = .x)
+      tibble(t_value = coef(summary(fit))["CondCode", "t value"])
+    }) %>%
     ungroup()
   
   tmat <- res %>%
@@ -92,8 +87,8 @@ compute_tmap <- function(data) {
   
   matrix(
     tmat,
-    nrow = n_chan,
-    ncol = n_time,
+    nrow = nChan,
+    ncol = nTime,
     byrow = TRUE,
     dimnames = list(channels, times)
   )
@@ -115,12 +110,7 @@ cat("Observed t-map completed.\n")
 
 cat("Step 2: Computing observed TFCE map...\n")
 
-TFCE_Obs <- tfce_transform(
-  t_Obs,
-  E  = 0.66,
-  H  = 2,
-  dh = 0.1
-)
+TFCE_Obs <- tfce_transform(t_Obs, E  = 0.66, H  = 2, dh = 0.1)
 
 cat("Observed TFCE map completed.\n")
 
@@ -137,7 +127,6 @@ subject_info <- designTable %>%
   select(RowID, Subject, CondCode)
 
 for (p in seq_len(n_perm)) {
-  
   perm_info <- subject_info %>%
     group_by(Subject) %>%
     mutate(CondCode = sample(CondCode)) %>%
@@ -153,12 +142,7 @@ for (p in seq_len(n_perm)) {
   
   t_perm <- compute_tmap(perm_dat)
   
-  TFCE_perm <- tfce_transform(
-    t_perm,
-    E  = 0.66,
-    H  = 2,
-    dh = 0.1
-  )
+  TFCE_perm <- tfce_transform(t_perm, E  = 0.66, H  = 2, dh = 0.1)
   
   TFCE_permMax[p] <- max(abs(TFCE_perm), na.rm = TRUE)
   
@@ -188,9 +172,8 @@ P_Values <- matrix(
   dimnames = dimnames(TFCE_Obs)
 )
 
-for (ch in seq_len(n_chan)) {
-  for (t in seq_len(n_time)) {
-    
+for (ch in seq_len(nChan)) {
+  for (t in seq_len(nTime)) {
     P_Values[ch, t] <-
       (sum(TFCE_permMax >= abs(TFCE_Obs[ch, t]), na.rm = TRUE) + 1) /
       (nPerm + 1)
@@ -223,57 +206,15 @@ cat("Results stored.\n")
 ## Step 6: Plot TFCE-corrected significant t-values
 ## ==========================================================
 
-sigT <- t_Obs
-sigT[!Mask] <- 0
+mT <- t_Obs
+mT[!Mask] <- 0
 
-times_num <- as.numeric(colnames(t_Obs))
-channels  <- rownames(t_Obs)
-nChan     <- nrow(t_Obs)
+plot_eeg_map(mT, "TFCE-corrected Group Effect Adjusted for Covariate", times, nChan)
 
-image(
-  x = times_num,
-  y = seq_len(nChan),
-  z = t(t_Obs),
-  xlab = "Time (ms)",
-  ylab = "Channel",
-  main = "TFCE-corrected Significant Effects",
-  axes = FALSE
-)
-
-axis(1, at = seq(-200, 800, by = 200))
-axis(
-  2,
-  at = seq_len(nChan),
-  labels = channels,
-  las = 2,
-  cex.axis = 0.7
-)
-box()
-
-## ==========================================================
-## Step 7: Plot observed TFCE map
-## ==========================================================
-
-image(
-  x = times_num,
-  y = seq_len(nChan),
-  z = t(TFCE_Obs),
-  xlab = "Time (ms)",
-  ylab = "Channel",
-  main = "Observed TFCE Map",
-  axes = FALSE
-)
-
-axis(1, at = seq(-200, 800, by = 200))
-axis(
-  2,
-  at = seq_len(nChan),
-  labels = channels,
-  las = 2,
-  cex.axis = 0.7
-)
-box()
-
+plot_eeg_map(TFCE_Obs,
+             "Observed TFCE Map: Group Effect Adjusted for Covariate",
+             times,
+             nChan)
 ## ==========================================================
 ## Step 8: Save TFCE results
 ## ==========================================================
@@ -295,4 +236,7 @@ save(
   file = "../results/05_TFCE_within_subject_results.RData"
 )
 
+
 cat("TFCE within-subject analysis completed and results saved.\n")
+
+```

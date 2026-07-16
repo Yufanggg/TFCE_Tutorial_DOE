@@ -34,6 +34,7 @@ library(lme4)
 library(lmerTest)
 
 source("../R/tfce_transform.R")
+source(".../R/plot_eeg_map.R")
 
 cat("\nStarting TFCE nested class-student analysis...\n")
 
@@ -350,46 +351,19 @@ cat("Results stored.\n")
 
 
 ## ==========================================================
-## Helper plotting function
-## ==========================================================
-
-plot_eeg_map <- function(mat, title) {
-  
-  fields::image.plot(
-    x = times,
-    y = seq_len(nChan),
-    z = t(mat),
-    xlab = "Time (ms)",
-    ylab = "Channel",
-    main = title,
-    axes = FALSE
-  )
-  
-  axis(1, at = seq(-200, 800, by = 200))
-  axis(
-    2,
-    at = seq_len(nChan),
-    labels = channels,
-    las = 2,
-    cex.axis = 0.6
-  )
-  box()
-}
-
-## ==========================================================
 ## Step 6: Plot functions
 ## ==========================================================
 
 mT <- t_Obs
 mT[!Mask] <- 0
 
-plot_eeg_map(mT, "TFCE-corrected Group Effect")
+plot_eeg_map(mT, "TFCE-corrected Group Effect", times, nChan)
 
 ## ==========================================================
 ## Step 7: Plot observed TFCE values
 ## ==========================================================
 
-plot_eeg_map(TFCE_Obs, "Observed TFCE Map")
+plot_eeg_map(TFCE_Obs, "Observed TFCE Map", times, nChan)
 
 ## ==========================================================
 ## Step 8: Save TFCE results

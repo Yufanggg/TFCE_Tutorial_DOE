@@ -10,7 +10,7 @@ output: html_document
 ## TFCE for between-subject 2 x 2 factorial design without interaction in R
 ##
 ## Model:
-##   Amplitude ~ FactorA + FactorB 
+##   Amplitude ~ FactorA + FactorB
 ##
 ## Tests:
 ##   1. Factor A main effect
@@ -29,6 +29,7 @@ library(dplyr)
 library(fields)
 
 source("../R/tfce_transform.R")
+source(".../R/plot_eeg_map.R")
 
 cat("\nStarting TFCE 2 x 2 between-subject analysis...\n")
 
@@ -66,15 +67,11 @@ nTime <- length(times)
 ## ==========================================================
 
 compute_tmap_2x2 <- function(data, effect_name) {
-  
   res <- data %>%
     group_by(Channel, Time) %>%
-    summarise(
-      t_value = coef(summary(
-        lm(Amplitude ~ FactorA + FactorB)
-      ))[effect_name, "t value"],
-      .groups = "drop"
-    )
+    summarise(t_value = coef(summary(lm(
+      Amplitude ~ FactorA + FactorB
+    )))[effect_name, "t value"], .groups = "drop")
   
   tvec <- res %>%
     mutate(
@@ -110,22 +107,12 @@ cat("Observed t-map completed.\n")
 
 cat("Step 2: Computing observed TFCE map...\n")
 
-TFCE_ObsA <- tfce_transform(
-  t_ObsA,
-  E  = 0.66,
-  H  = 2,
-  dh = 0.1
-)
+TFCE_ObsA <- tfce_transform(t_ObsA, E  = 0.66, H  = 2, dh = 0.1)
 
-TFCE_ObsB <- tfce_transform(
-  t_ObsB,
-  E  = 0.66,
-  H  = 2,
-  dh = 0.1
-)
+TFCE_ObsB <- tfce_transform(t_ObsB, E  = 0.66, H  = 2, dh = 0.1)
 
 cat("Observed TFCE map completed.\n")
-  
+
 ## ========================================================
 ## Step 3: Synchronized permutation test
 ##
@@ -141,43 +128,39 @@ cat("Observed TFCE map completed.\n")
 ## The same subject-level permutation is reused for all
 ## Channel x Time points.
 ## ========================================================
-  
+
 set.seed(123)
-  
+
 nPerm <- 999
 TFCE_permMaxA <- TFCE_permMaxB <- rep(NA_real_, nPerm)
-  
+
 cat("Step 3: Starting synchronized permutation testing...\n")
-  
+
 for (p in seq_len(nPerm)) {
   #-----------------------------------------------
   # for factor A
   #-----------------------------------------------
   perm_designA <- designTable %>%
     group_by(FactorB) %>%
-    mutate(
-      FactorA = sample(FactorA)) %>%
+    mutate(FactorA = sample(FactorA)) %>%
     ungroup()
   
   perm_datA <- EEGlong %>%
     left_join(perm_designA %>%
-                select(Subject, FactorA, FactorB),
-              by = "Subject") %>%
+                select(Subject, FactorA, FactorB), by = "Subject") %>%
     mutate(
       Subject     = factor(Subject),
       Channel     = factor(Channel),
       FactorA     = as.numeric(FactorA),
       FactorB     = as.numeric(FactorB)
-      )
+    )
   
   t_perm_A <- compute_tmap_2x2(perm_datA, "FactorA")
   
-  TFCE_perm_A <- tfce_transform(
-    t_perm_A,
-    E  = 0.66,
-    H  = 2,
-    dh = 0.1
-  )
+  TFCE_perm_A <- tfce_transform(t_perm_A,
+                                E  = 0.66,
+                                H  = 2,
+                                dh = 0.1)
   TFCE_permMaxA[p] <- max(abs(TFCE_perm_A), na.rm = TRUE)
   
   #-----------------------------------------------
@@ -190,59 +173,50 @@ for (p in seq_len(nPerm)) {
   
   perm_datB <- EEGlong %>%
     left_join(perm_designB %>%
-                select(Subject, FactorA, FactorB),
-              by = "Subject") %>%
+                select(Subject, FactorA, FactorB), by = "Subject") %>%
     mutate(
       Subject     = factor(Subject),
       Channel     = factor(Channel),
       FactorA     = as.numeric(FactorA),
       FactorB     = as.numeric(FactorB)
-      )
+    )
   
   t_perm_B <- compute_tmap_2x2(perm_datB, "FactorB")
-  TFCE_perm_B <- tfce_transform(
-    t_perm_B,
-    E  = 0.66,
-    H  = 2,
-    dh = 0.1
-  )
+  TFCE_perm_B <- tfce_transform(t_perm_B,
+                                E  = 0.66,
+                                H  = 2,
+                                dh = 0.1)
   
   TFCE_permMaxB[p] <- max(abs(TFCE_perm_B), na.rm = TRUE)
-    
-    if (p %% 50 == 0) {
-      cat("Permutation", p, "of", nPerm, "\n")
-    }
+  
+  if (p %% 50 == 0) {
+    cat("Permutation", p, "of", nPerm, "\n")
+  }
 }
-  
+
 cat("Permutation testing completed.\n")
-  
+
 ## ========================================================
 ## Step 4: TFCE-corrected significance
 ## ========================================================
-  
+
 cat("Step 4: Computing TFCE-corrected significance...\n")
-  
+
 alpha <- 0.05
-  
-maxTFCEA <- sort(c(
-  TFCE_permMaxA,
-  max(abs(TFCE_ObsA), na.rm = TRUE)
-))
+
+maxTFCEA <- sort(c(TFCE_permMaxA, max(abs(TFCE_ObsA), na.rm = TRUE)))
 
 maxTFCEcritA <- maxTFCEA[round(nPerm * (1 - alpha))]
 
 MaskA <- abs(TFCE_ObsA) >= maxTFCEcritA
 
-P_ValuesA <- matrix(
-  NA,
-  nrow = nChan,
-  ncol = nTime,
-  dimnames = dimnames(TFCE_ObsA)
-)
+P_ValuesA <- matrix(NA,
+                    nrow = nChan,
+                    ncol = nTime,
+                    dimnames = dimnames(TFCE_ObsA))
 
 for (ch in seq_len(nChan)) {
   for (t in seq_len(nTime)) {
-    
     P_ValuesA[ch, t] <-
       (sum(maxTFCEA >= abs(TFCE_ObsA[ch, t]), na.rm = TRUE) + 1) /
       (nPerm + 1)
@@ -250,88 +224,60 @@ for (ch in seq_len(nChan)) {
 }
 
 
-maxTFCEB <- sort(c(
-  TFCE_permMaxB,
-  max(abs(TFCE_ObsB), na.rm = TRUE)
-))
+maxTFCEB <- sort(c(TFCE_permMaxB, max(abs(TFCE_ObsB), na.rm = TRUE)))
 
 maxTFCEcritB <- maxTFCEB[round(nPerm * (1 - alpha))]
 
 MaskB <- abs(TFCE_ObsB) >= maxTFCEcritB
 
-P_ValuesB <- matrix(
-  NA,
-  nrow = nChan,
-  ncol = nTime,
-  dimnames = dimnames(TFCE_ObsB)
-)
+P_ValuesB <- matrix(NA,
+                    nrow = nChan,
+                    ncol = nTime,
+                    dimnames = dimnames(TFCE_ObsB))
 
 for (ch in seq_len(nChan)) {
   for (t in seq_len(nTime)) {
-    
     P_ValuesB[ch, t] <-
       (sum(maxTFCEB >= abs(TFCE_ObsB[ch, t]), na.rm = TRUE) + 1) /
       (nPerm + 1)
   }
 }
-  
+
 
 cat("TFCE-corrected significance completed.\n")
-cat(sprintf("Critical TFCE value for B  = %.4f\n; Critical TFCE value for B  = %.4f\n", maxTFCEcritB, maxTFCEcritB))
+cat(
+  sprintf(
+    "Critical TFCE value for B  = %.4f\n; Critical TFCE value for B  = %.4f\n",
+    maxTFCEcritB,
+    maxTFCEcritB
+  )
+)
 
 Results <- list(
-    ObsA          = t_ObsA,
-    TFCE_ObsA     = TFCE_ObsA,
-    TFCE_NullA    = TFCE_permMaxA,
-    maxTFCEcritA  = maxTFCEcritA,
-    P_ValuesA     = P_ValuesA,
-    MaskA         = MaskA,
-    
-    ObsB          = t_ObsB,
-    TFCE_ObsB     = TFCE_ObsB,
-    TFCE_NullB    = TFCE_permMaxB,
-    maxTFCEcritB  = maxTFCEcritB,
-    P_ValuesB     = P_ValuesB,
-    MaskB         = MaskB,
-    
-    alpha        = alpha,
-    nPerm        = nPerm,
-    model        = "Amplitude ~ FactorA + FactorB",
-    test         = "A and B",
-    permutation  = "Synchronized permutation of subject-level 2 x 2 design labels",
-    times        = times,
-    channels     = channels
-  )
+  ObsA          = t_ObsA,
+  TFCE_ObsA     = TFCE_ObsA,
+  TFCE_NullA    = TFCE_permMaxA,
+  maxTFCEcritA  = maxTFCEcritA,
+  P_ValuesA     = P_ValuesA,
+  MaskA         = MaskA,
   
+  ObsB          = t_ObsB,
+  TFCE_ObsB     = TFCE_ObsB,
+  TFCE_NullB    = TFCE_permMaxB,
+  maxTFCEcritB  = maxTFCEcritB,
+  P_ValuesB     = P_ValuesB,
+  MaskB         = MaskB,
+  
+  alpha        = alpha,
+  nPerm        = nPerm,
+  model        = "Amplitude ~ FactorA + FactorB",
+  test         = "A and B",
+  permutation  = "Synchronized permutation of subject-level 2 x 2 design labels",
+  times        = times,
+  channels     = channels
+)
+
 return(Results)
-
-
-## ==========================================================
-## Helper plotting function
-## ==========================================================
-
-plot_eeg_map <- function(mat, title) {
-  
-  fields::image.plot(
-    x = times,
-    y = seq_len(nChan),
-    z = t(mat),
-    xlab = "Time (ms)",
-    ylab = "Channel",
-    main = title,
-    axes = FALSE
-  )
-  
-  axis(1, at = seq(-200, 800, by = 200))
-  axis(
-    2,
-    at = seq_len(nChan),
-    labels = channels,
-    las = 2,
-    cex.axis = 0.6
-  )
-  box()
-}
 
 ## ==========================================================
 ## Plot significant corrected t-maps
@@ -339,25 +285,19 @@ plot_eeg_map <- function(mat, title) {
 
 mA <- Results$ObsA
 mA[!Results$MaskA] <- 0
-plot_eeg_map(mA, "TFCE-corrected Factor A Effect")
+plot_eeg_map(mA, "TFCE-corrected Factor A Effect", times, nChan)
 
 mB <- Results$ObsB
 mB[!Results$MaskB] <- 0
-plot_eeg_map(mB, "TFCE-corrected Factor B Effect")
+plot_eeg_map(mB, "TFCE-corrected Factor B Effect", times, nChan)
 
 ## ==========================================================
 ## Plot observed TFCE maps
 ## ==========================================================
 
-plot_eeg_map(
-  Results$TFCE_ObsA,
-  "Observed TFCE Map: Factor A"
-)
+plot_eeg_map(Results$TFCE_ObsA, "Observed TFCE Map: Factor A", times, nChan)
 
-plot_eeg_map(
-  Results$TFCE_ObsB,
-  "Observed TFCE Map: Factor B"
-)
+plot_eeg_map(Results$TFCE_ObsB, "Observed TFCE Map: Factor B", times, nChan)
 
 ## ==========================================================
 ## Save results
@@ -367,10 +307,7 @@ if (!dir.exists("../results")) {
   dir.create("../results")
 }
 
-save(
-  Results,
-  file = "../results/03_TFCE_between_subject_2x2_results.RData"
-)
+save(Results, file = "../results/03_TFCE_between_subject_2x2_results.RData")
 
 cat("\nTFCE 2 x 2 between-subject analysis completed.\n")
 cat("Saved results: ../results/03_TFCE_between_subject_2x2_results.RData\n")
