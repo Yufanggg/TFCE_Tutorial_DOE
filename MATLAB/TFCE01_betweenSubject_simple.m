@@ -212,7 +212,9 @@ disp('TFCE analysis completed and results saved.');
 %% ==========================================================
 % Step 7: Plot TFCE-corrected significant t-values
 %% ==========================================================
+clear all; close all; clc
 
+load('../results/01_TFCE_between_subject_results.mat')
 sigT = Results.tObs;
 sigT(~Results.Mask) = 0;
 
