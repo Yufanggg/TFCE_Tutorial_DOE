@@ -2,7 +2,7 @@
 ## Helper plotting function
 ## ==========================================================
 
-plot_eeg_map <- function(mat, title, times, nChan) {
+plot_eeg_map <- function(mat, title, times, nChan, channels) {
   
   fields::image.plot(
     x = times,

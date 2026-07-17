@@ -204,30 +204,8 @@ Results <- list(
 
 cat("Results stored.\n")
 
-
 ## ==========================================================
-## Step 6: Plot TFCE-corrected significant t-values
-## ==========================================================
-mT <- t_Obs
-mT[!Mask] <- 0
-
-plot_eeg_map(
-  mT,
-  "TFCE-corrected Group Effect",
-  times,
-  nChan
-)
-
-plot_eeg_map(
-  TFCE_Obs,
-  "TFCE-corrected Significant Effects",
-  times,
-  nChan
-)
-
-
-## ==========================================================
-## Step 7: Save TFCE results
+## Step 6: Save TFCE results
 ## ==========================================================
 
 if (!dir.exists("../results")) {
@@ -236,16 +214,26 @@ if (!dir.exists("../results")) {
 
 save(
   Results,
-  t_Obs,
-  TFCE_Obs,
-  TFCE_permMax,
-  maxTFCEcrit,
-  P_Values,
-  Mask,
   times,
+  nChan,
   channels,
   file = "../results/01_TFCE_between_subject_results.RData"
 )
 
 cat("TFCE analysis completed and results saved.\n")
+```
+
+```{r, echo=TRUE}
+## ==========================================================
+## Step 7: Plot TFCE-corrected significant t-values
+## ==========================================================
+mT <- Results$t_Obs
+mT[!Results$Mask] <- 0
+
+plot_eeg_map(mT, "TFCE-corrected Group Effect", times, nChan, channels)
+
+plot_eeg_map(Results$TFCE_Obs,
+             "TFCE-corrected Significant Effects",
+             times,
+             channels)
 ```

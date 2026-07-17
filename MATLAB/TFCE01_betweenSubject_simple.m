@@ -193,12 +193,28 @@ Results.alpha        = alpha;
 Results.nPerm        = nPerm;
 
 fprintf('Results stored.\n');
+
 %% ==========================================================
-% Step 6: Plot TFCE-corrected significant t-values
+% Step 6: Save TFCE results
 %% ==========================================================
 
-sigT = tObs;
-sigT(~Mask) = 0;
+if ~exist('../results', 'dir')
+    mkdir('../results');
+end
+
+save('../results/01_TFCE_between_subject_results.mat', ...
+     'Results', ...
+     'nChan', ...
+     'times', ...
+     'e_loc');
+
+disp('TFCE analysis completed and results saved.');
+%% ==========================================================
+% Step 7: Plot TFCE-corrected significant t-values
+%% ==========================================================
+
+sigT = Results.tObs;
+sigT(~Results.Mask) = 0;
 
 figure;
 
@@ -222,12 +238,12 @@ title('TFCE-corrected Significant Effects');
 colorbar;
 
 %% ==========================================================
-% Step 7: Plot TFCE values
+% Step 8: Plot TFCE values
 %% ==========================================================
 
 figure;
 
-imagesc(times, 1:nChan, TFCE_Obs);
+imagesc(times, 1:nChan, Results.TFCE_Obs);
 axis xy;
 
 xlim([-200 800]);
@@ -246,18 +262,3 @@ title('Observed TFCE Map');
 
 colorbar;
 
-%% ==========================================================
-% Step 8: Save TFCE results
-%% ==========================================================
-
-if ~exist('../results', 'dir')
-    mkdir('../results');
-end
-
-save('../results/01_TFCE_between_subject_results.mat', ...
-     'Results', ...
-     'nChan', ...
-     'times', ...
-     'e_loc');
-
-disp('TFCE analysis completed and results saved.');
