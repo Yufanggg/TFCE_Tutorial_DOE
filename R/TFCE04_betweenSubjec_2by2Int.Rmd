@@ -216,24 +216,10 @@ Results <- list(
   nPerm        = nPerm,
   model        = "Amplitude ~ FactorA + FactorB + Interaction",
   test         = "Interaction",
-  times        = times,
-  channels     = channels
 )
 
 cat("Results stored.\n")
 
-## ==========================================================
-## Plot significant corrected t-maps
-## ==========================================================
-
-mA <- Results$Obs_Int
-mA[!Results$Mask_Int] <- 0
-plot_eeg_map(mA, "TFCE-corrected Interaction Effect between A and B", times, nChan)
-
-## ==========================================================
-## Plot significant corrected t-maps
-## ==========================================================
-plot_eeg_map(Results$TFCE_Obs, "Observed TFCE Map: A x B Interaction", times, nChan)
 
 ## ==========================================================
 ## Save results
@@ -243,8 +229,27 @@ if (!dir.exists("../results")) {
   dir.create("../results")
 }
 
-save(Results, file = "../results/03_TFCE_between_subject_2x2_results.RData", times, nChan)
+save(Results, times, nChan, channels, file = "../results/03_TFCE_between_subject_2x2_results.RData", times, nChan, channels)
 
 cat("\nTFCE 2 x 2 between-subject analysis completed.\n")
-cat("Saved results: ../results/03_TFCE_between_subject_2x2_results.RData\n", times, nChan)
+cat("Saved results: ../results/03_TFCE_between_subject_2x2_results.RData\n", times, nChan, channels)
+```
+
+```{r, echo=TRUE}
+## ==========================================================
+## Plot significant corrected t-maps
+## ==========================================================
+rm(list =ls())
+
+load("../results/03_TFCE_between_subject_2x2_results.RData")
+
+mA <- Results$Obs_Int
+mA[!Results$Mask_Int] <- 0
+plot_eeg_map(mA, "TFCE-corrected Interaction Effect between A and B", times, nChan, channels)
+
+## ==========================================================
+## Plot significant corrected t-maps
+## ==========================================================
+plot_eeg_map(Results$TFCE_Obs, "Observed TFCE Map: A x B Interaction", times, nChan, channels)
+
 ```

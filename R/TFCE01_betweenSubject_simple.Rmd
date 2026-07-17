@@ -199,7 +199,10 @@ Results <- list(
   P_Values     = P_Values,
   Mask         = Mask,
   alpha        = alpha,
-  nPerm        = nPerm
+  nPerm        = nPerm,
+  model        = "Amplitude ~ GroupCode",
+  test         = "Group effect",
+  permutation  = "Unrestricted permutation",
 )
 
 cat("Results stored.\n")

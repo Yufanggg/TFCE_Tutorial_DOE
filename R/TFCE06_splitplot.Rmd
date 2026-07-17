@@ -307,66 +307,59 @@ Results <- list(
   alpha = alpha,
   nPerm = n_perm,
   model = "Amplitude ~ GroupCode * CondCode + (1 | Subject)",
-  times = times,
-  channels = channels
+  permutation = "SPTs"
+  
 )
 
 cat("Results stored.\n")
 
 ## ==========================================================
-## Step 6: Plot TFCE-corrected significant t-values
-## ==========================================================
-mT_Group <- t_Obs_Group
-mT_Group[!Mask_Group] <- 0
-
-plot_eeg_map(mT_Group, "TFCE-corrected Group Effect", times, nChan)
-
-
-mT_Cond <- t_Obs_Cond
-mT_Cond[!Mask_Cond] <- 0
-
-plot_eeg_map(mT_Cond, "TFCE-corrected Condition Effect", times, nChan)
-
-## ==========================================================
-## Step 7: Plot observed TFCE maps
-## ==========================================================
-
-plot_eeg_map(TFCE_Obs_Group, "Observed TFCE Map: Group Effect", times, nChan)
-
-plot_eeg_map(TFCE_Obs_Cond, "Observed TFCE Map: Condition Effect", times, nChan)
-
-## ==========================================================
-## Step 9: Save TFCE results
+## Step 6: Save TFCE results
 ## ==========================================================
 
 if (!dir.exists("../results")) {
   dir.create("../results")
 }
 
-save(
-  Results,
-  t_Obs_Group,
-  t_Obs_Cond,
-  
-  TFCE_Obs_Group,
-  TFCE_Obs_Cond,
-  
-  TFCE_permMax_Group,
-  TFCE_permMax_Cond,
-  
-  maxTFCEcrit_Group,
-  maxTFCEcrit_Cond,
-  
-  P_Values_Group,
-  P_Values_Cond,
-  
-  Mask_Group,
-  Mask_Cond,
-  
-  times,
-  channels,
-  file = "../results/06_TFCE_split_plot_results.RData"
-)
+save(Results, times, nChan, channels, file = "../results/06_TFCE_split_plot_results.RData")
 
 cat("TFCE split-plot analysis completed and results saved.\n")
+```
+
+```{r, echo=TRUE}
+rm(list = ls())
+load("../results/06_TFCE_split_plot_results.RData")
+## ==========================================================
+## Step 7: Plot TFCE-corrected significant t-values
+## ==========================================================
+mT_Group <- Results$Obs_Group
+mT_Group[!Results$Mask_Group] <- 0
+
+plot_eeg_map(mT_Group, "TFCE-corrected Group Effect", times, nChan, channels)
+
+
+mT_Cond <- Results$Obs_Cond
+mT_Cond[!Results$Mask_Cond] <- 0
+
+plot_eeg_map(mT_Cond,
+             "TFCE-corrected Condition Effect",
+             times,
+             nChan,
+             channels)
+
+## ==========================================================
+## Step 7: Plot observed TFCE maps
+## ==========================================================
+
+plot_eeg_map(Results$TFCE_Obs_Group,
+             "Observed TFCE Map: Group Effect",
+             times,
+             nChan,
+             channels)
+
+plot_eeg_map(Results$TFCE_Obs_Cond,
+             "Observed TFCE Map: Condition Effect",
+             times,
+             nChan,
+             channels)
 ```

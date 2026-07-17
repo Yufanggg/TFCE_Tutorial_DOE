@@ -197,46 +197,52 @@ Results <- list(
   P_Values     = P_Values,
   Mask         = Mask,
   alpha        = alpha,
-  nPerm        = nPerm
+  nPerm        = nPerm,
+  model        = "Amplitude ~ GroupCode + (1|Subject)",
+  permutation  = "Within-subject permutation",
 )
 
 cat("Results stored.\n")
 
-## ==========================================================
-## Step 6: Plot TFCE-corrected significant t-values
-## ==========================================================
 
-mT <- t_Obs
-mT[!Mask] <- 0
-
-plot_eeg_map(mT, "TFCE-corrected Group Effect Adjusted for Covariate", times, nChan)
-
-plot_eeg_map(TFCE_Obs,
-             "Observed TFCE Map: Group Effect Adjusted for Covariate",
-             times,
-             nChan)
 ## ==========================================================
-## Step 8: Save TFCE results
+## Step 6: Save TFCE results
 ## ==========================================================
 
 if (!dir.exists("../results")) {
   dir.create("../results")
 }
 
-save(
-  Results,
-  t_Obs,
-  TFCE_Obs,
-  TFCE_permMax,
-  maxTFCEcrit,
-  P_Values,
-  Mask,
-  times_num,
-  channels,
-  file = "../results/05_TFCE_within_subject_results.RData"
-)
+save(Results, times, nChan, channels, file = "../results/05_TFCE_within_subject_results.RData")
 
 
 cat("TFCE within-subject analysis completed and results saved.\n")
+
+```
+
+```{r, echo=TRUE}
+rm(list =ls())
+
+load("../results/05_TFCE_within_subject_results.RData")
+## ==========================================================
+## Step 7: Plot TFCE-corrected significant t-values
+## ==========================================================
+
+mT <- Results$t_Obs
+mT[!Results$Mask] <- 0
+
+plot_eeg_map(mT,
+             "TFCE-corrected Group Effect Adjusted for Covariate",
+             times,
+             nChan,
+             channels)
+
+plot_eeg_map(
+  Results$TFCE_Obs,
+  "Observed TFCE Map: Group Effect Adjusted for Covariate",
+  times,
+  nChan,
+  channels
+)
 
 ```

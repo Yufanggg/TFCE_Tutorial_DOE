@@ -340,33 +340,13 @@ Results <- list(
   permutation = paste0(
     "Condition labels permuted within each ",
     "student nested within class"
-  ),
-  
-  times = times,
-  
-  channels = channels
+  )
 )
 
 cat("Results stored.\n")
 
-
 ## ==========================================================
-## Step 6: Plot functions
-## ==========================================================
-
-mT <- t_Obs
-mT[!Mask] <- 0
-
-plot_eeg_map(mT, "TFCE-corrected Group Effect", times, nChan)
-
-## ==========================================================
-## Step 7: Plot observed TFCE values
-## ==========================================================
-
-plot_eeg_map(TFCE_Obs, "Observed TFCE Map", times, nChan)
-
-## ==========================================================
-## Step 8: Save TFCE results
+## Step 6: Save TFCE results
 ## ==========================================================
 
 if (!dir.exists("../results")) {
@@ -375,21 +355,8 @@ if (!dir.exists("../results")) {
 
 save(
   Results,
-  
-  t_Obs,
-  
-  TFCE_Obs,
-  
-  TFCE_permMax,
-  
-  maxTFCEcrit,
-  
-  P_Values,
-  
-  Mask,
-  
   times,
-  
+  nChan,
   channels,
   
   file = paste0("../results/", "07_TFCE_nested_class_student_results.RData")
@@ -400,4 +367,24 @@ cat(paste0(
   "and results saved.\n"
 ))
 
+```
+
+```{r, echo=TRUE}
+rm(list = ls())
+load("07_TFCE_nested_class_student_results.RData")
+
+## ==========================================================
+## Step 7: Plot functions
+## ==========================================================
+
+mT <- Results$t_Obs
+mT[!Results$Mask] <- 0
+
+plot_eeg_map(mT, "TFCE-corrected Group Effect", times, nChan, channels)
+
+## ==========================================================
+## Step 8: Plot observed TFCE values
+## ==========================================================
+
+plot_eeg_map(Results$TFCE_Obs, "Observed TFCE Map", times, nChan, channels)
 ```

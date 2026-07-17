@@ -254,6 +254,21 @@ cat(
 )
 
 Results <- list(
+  Obs          = t_Obs,
+  TFCE_Obs     = TFCE_Obs,
+  TFCE_Null    = TFCE_permMax,
+  maxTFCEcrit  = maxTFCEcrit,
+  P_Values     = P_Values,
+  Mask         = Mask,
+  alpha        = alpha,
+  nPerm        = nPerm,
+  model        = "Amplitude ~ Covariate + GroupCode",
+  test         = "Group effect adjusted for covariate",
+  
+)
+
+
+Results <- list(
   ObsA          = t_ObsA,
   TFCE_ObsA     = TFCE_ObsA,
   TFCE_NullA    = TFCE_permMaxA,
@@ -273,31 +288,9 @@ Results <- list(
   model        = "Amplitude ~ FactorA + FactorB",
   test         = "A and B",
   permutation  = "Synchronized permutation of subject-level 2 x 2 design labels",
-  times        = times,
-  channels     = channels
 )
 
 return(Results)
-
-## ==========================================================
-## Plot significant corrected t-maps
-## ==========================================================
-
-mA <- Results$ObsA
-mA[!Results$MaskA] <- 0
-plot_eeg_map(mA, "TFCE-corrected Factor A Effect", times, nChan)
-
-mB <- Results$ObsB
-mB[!Results$MaskB] <- 0
-plot_eeg_map(mB, "TFCE-corrected Factor B Effect", times, nChan)
-
-## ==========================================================
-## Plot observed TFCE maps
-## ==========================================================
-
-plot_eeg_map(Results$TFCE_ObsA, "Observed TFCE Map: Factor A", times, nChan)
-
-plot_eeg_map(Results$TFCE_ObsB, "Observed TFCE Map: Factor B", times, nChan)
 
 ## ==========================================================
 ## Save results
@@ -307,9 +300,34 @@ if (!dir.exists("../results")) {
   dir.create("../results")
 }
 
-save(Results, file = "../results/03_TFCE_between_subject_2x2_results.RData")
+save(Results, times, nChan, channels, file = "../results/03_TFCE_between_subject_2x2_results.RData")
 
 cat("\nTFCE 2 x 2 between-subject analysis completed.\n")
 cat("Saved results: ../results/03_TFCE_between_subject_2x2_results.RData\n")
-```  
+```
+
+```{r, echo=TRUE}
+## ==========================================================
+## Plot significant corrected t-maps
+## ==========================================================
+rm(list =ls())
+load("../results/03_TFCE_between_subject_2x2_results.RData")
+
+
+mA <- Results$ObsA
+mA[!Results$MaskA] <- 0
+plot_eeg_map(mA, "TFCE-corrected Factor A Effect", times, nChan, channels)
+
+mB <- Results$ObsB
+mB[!Results$MaskB] <- 0
+plot_eeg_map(mB, "TFCE-corrected Factor B Effect", times, nChan, channels)
+
+## ==========================================================
+## Plot observed TFCE maps
+## ==========================================================
+
+plot_eeg_map(Results$TFCE_ObsA, "Observed TFCE Map: Factor A", times, nChan, channels)
+
+plot_eeg_map(Results$TFCE_ObsB, "Observed TFCE Map: Factor B", times, nChan, channels)
+```
   

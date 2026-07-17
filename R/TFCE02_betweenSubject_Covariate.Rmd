@@ -215,37 +215,57 @@ Results <- list(
   nPerm        = nPerm,
   model        = "Amplitude ~ Covariate + GroupCode",
   test         = "Group effect adjusted for covariate",
-  times        = times,
-  channels     = channels
+  permutation  = "Freedman-Lane procedure",
 )
 
 cat("Results stored.\n")
 
 ## ==========================================================
-## Step 6: Plot significant effects
-## ==========================================================
-
-mT <- t_Obs
-mT[!Mask] <- 0
-
-plot_eeg_map(mT, "TFCE-corrected Group Effect Adjusted for Covariate", times, nChan)
-
-## ==========================================================
-## Step 7: Plot observed TFCE values
-## ==========================================================
-
-plot_eeg_map(TFCE_Obs, "Observed TFCE Map: Group Effect Adjusted for Covariate", times, nChan)
-
-## ==========================================================
-## Step 8: Save results
+## Step 6: Save results
 ## ==========================================================
 
 if (!dir.exists("../results")) {
   dir.create("../results")
 }
 
-save(Results, file = "../results/02_TFCE_between_subject_covariate_results.RData")
+save(Results, times, nChan, channels, file = "../results/02_TFCE_between_subject_covariate_results.RData")
 
 cat("TFCE covariate-adjusted between-subject analysis completed.\n")
 cat("Saved results: ../results/02_TFCE_between_subject_covariate_results.RData\n")
+```
+
+```{r, echo=TRUE}
+## ==========================================================
+## Step 7: Plot TFCE-corrected significant t-values
+## ==========================================================
+rm(list =ls())
+load("../results/02_TFCE_between_subject_covariate_results.RData")
+
+## ==========================================================
+## Step 7: Plot significant effects
+## ==========================================================
+
+
+mT <- Results$t_Obs
+mT[!Results$Mask] <- 0
+
+plot_eeg_map(mT,
+             "TFCE-corrected Group Effect Adjusted for Covariate",
+             times,
+             nChan,
+             channels)
+
+## ==========================================================
+## Step 8: Plot observed TFCE values
+## ==========================================================
+
+plot_eeg_map(
+  Results$TFCE_Obs,
+  "Observed TFCE Map: Group Effect Adjusted for Covariate",
+  times,
+  nChan,
+  channels
+)
+
+
 ```
