@@ -233,7 +233,7 @@ rm(list =ls())
 source(("../R/plot_eeg_map.R"))
 load("../results/01_TFCE_between_subject_results.RData")
 
-mT <- Results$t_Obs
+mT <- Results$tObs
 mT[!Results$Mask] <- 0
 
 plot_eeg_map(mT, "TFCE-corrected Group Effect", times, nChan, channels)
@@ -241,5 +241,6 @@ plot_eeg_map(mT, "TFCE-corrected Group Effect", times, nChan, channels)
 plot_eeg_map(Results$TFCE_Obs,
              "TFCE-corrected Significant Effects",
              times,
+             nChan,
              channels)
 ```

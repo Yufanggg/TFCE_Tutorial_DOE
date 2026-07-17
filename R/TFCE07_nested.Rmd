@@ -34,7 +34,6 @@ library(lme4)
 library(lmerTest)
 
 source("../R/tfce_transform.R")
-source(".../R/plot_eeg_map.R")
 
 cat("\nStarting TFCE nested class-student analysis...\n")
 
@@ -319,24 +318,15 @@ cat(sprintf("Critical TFCE value = %.4f\n", maxTFCEcrit))
 cat("Step 5: Storing results...\n")
 
 Results <- list(
-  t_Obs = t_Obs,
-  
-  TFCE_Obs = TFCE_Obs,
-  
-  TFCE_Null = TFCE_permMax,
-  
-  maxTFCEcrit = maxTFCEcrit,
-  
-  P_Values = P_Values,
-  
-  Mask = Mask,
-  
-  alpha = alpha,
-  
-  nPerm = n_perm,
-  
+  tObs         = t_Obs,
+  TFCE_Obs     = TFCE_Obs,
+  TFCE_Null    = TFCE_permMax,
+  maxTFCEcrit  = maxTFCEcrit,
+  P_Values     = P_Values,
+  Mask         = Mask,
+  alpha        = alpha,
+  nPerm        = nPerm,
   model = paste0("Amplitude ~ ConditionCode + ", "(1 | Class) + ", "(1 | Class:Student)"),
-  
   permutation = paste0(
     "Condition labels permuted within each ",
     "student nested within class"
@@ -358,7 +348,6 @@ save(
   times,
   nChan,
   channels,
-  
   file = paste0("../results/", "07_TFCE_nested_class_student_results.RData")
 )
 
@@ -371,13 +360,14 @@ cat(paste0(
 
 ```{r, echo=TRUE}
 rm(list = ls())
+source(".../R/plot_eeg_map.R")
 load("07_TFCE_nested_class_student_results.RData")
 
 ## ==========================================================
 ## Step 7: Plot functions
 ## ==========================================================
 
-mT <- Results$t_Obs
+mT <- Results$tObs
 mT[!Results$Mask] <- 0
 
 plot_eeg_map(mT, "TFCE-corrected Group Effect", times, nChan, channels)

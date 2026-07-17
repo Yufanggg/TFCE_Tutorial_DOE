@@ -290,14 +290,14 @@ cat(sprintf("Critical TFCE Cond  = %.4f\n", maxTFCEcrit_Cond))
 cat("Step 5: Storing results...\n")
 
 Results <- list(
-  Obs_Group = t_Obs_Group,
+  tObs_Group = t_Obs_Group,
   TFCE_Obs_Group = TFCE_Obs_Group,
   TFCE_Null_Group = TFCE_permMax_Group,
   maxTFCEcrit_Group = maxTFCEcrit_Group,
   P_Values_Group = P_Values_Group,
   Mask_Group = Mask_Group,
   
-  Obs_Cond = t_Obs_Cond,
+  tObs_Cond = t_Obs_Cond,
   TFCE_Obs_Cond = TFCE_Obs_Cond,
   TFCE_Null_Cond = TFCE_permMax_Cond,
   maxTFCEcrit_Cond = maxTFCEcrit_Cond,
@@ -332,13 +332,13 @@ load("../results/06_TFCE_split_plot_results.RData")
 ## ==========================================================
 ## Step 7: Plot TFCE-corrected significant t-values
 ## ==========================================================
-mT_Group <- Results$Obs_Group
+mT_Group <- Results$tObs_Group
 mT_Group[!Results$Mask_Group] <- 0
 
 plot_eeg_map(mT_Group, "TFCE-corrected Group Effect", times, nChan, channels)
 
 
-mT_Cond <- Results$Obs_Cond
+mT_Cond <- Results$tObs_Cond
 mT_Cond[!Results$Mask_Cond] <- 0
 
 plot_eeg_map(mT_Cond,
