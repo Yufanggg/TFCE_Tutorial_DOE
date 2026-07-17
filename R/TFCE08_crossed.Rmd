@@ -248,18 +248,18 @@ cat("Observed TFCE map completed.\n")
 
 set.seed(123)
 
-n_perm <- 1
+nPerm <- 1
 
-TFCE_permMax <- rep(NaN, n_perm)
+TFCE_permMax <- rep(NaN, nPerm)
 
 cat("Step 3: Starting permutation test:",
-    n_perm,
+    nPerm,
     "permutations...\n")
 
 design_info <- designTable %>%
   select(RowID, ConditionCode)
 
-for (p in seq_len(n_perm)) {
+for (p in seq_len(nPerm)) {
   perm_info <- design_info %>%
     mutate(ConditionCode = sample(ConditionCode))
   
@@ -287,7 +287,7 @@ for (p in seq_len(n_perm)) {
   TFCE_permMax[p] <- max(abs(TFCE_perm), na.rm = TRUE)
   
   if (p %% 50 == 0) {
-    cat("Permutation", p, "of", n_perm, "\n")
+    cat("Permutation", p, "of", nPerm, "\n")
   }
 }
 
@@ -308,7 +308,7 @@ alpha <- 0.05
 
 maxTFCE <- sort(c(TFCE_permMax, max(abs(TFCE_Obs), na.rm = TRUE)))
 
-critical_index <- round((n_perm + 1) * (1 - alpha))
+critical_index <- round((nPerm + 1) * (1 - alpha))
 
 maxTFCEcrit <- maxTFCE[critical_index]
 
@@ -327,7 +327,7 @@ for (ch in seq_len(nChan)) {
   for (t in seq_len(nTime)) {
     P_Values[ch, t] <-
       (sum(TFCE_permMax >= abs(TFCE_Obs[ch, t]), na.rm = TRUE) + 1) /
-      (n_perm + 1)
+      (nPerm + 1)
   }
 }
 
@@ -342,22 +342,14 @@ cat(sprintf("Critical TFCE value = %.4f\n", maxTFCEcrit))
 cat("Step 5: Storing results...\n")
 
 Results <- list(
-  Obs = t_Obs,
-  
-  TFCE_Obs = TFCE_Obs,
-  
-  TFCE_Null = TFCE_permMax,
-  
-  maxTFCEcrit = maxTFCEcrit,
-  
-  P_Values = P_Values,
-  
-  Mask = Mask,
-  
-  alpha = alpha,
-  
-  n_perm = n_perm,
-  
+  tObs         = t_Obs,
+  TFCE_Obs     = TFCE_Obs,
+  TFCE_Null    = TFCE_permMax,
+  maxTFCEcrit  = maxTFCEcrit,
+  P_Values     = P_Values,
+  Mask         = Mask,
+  alpha        = alpha,
+  nPerm        = nPerm,
   mixed_model = paste0("Amplitude ~ ConditionCode + ", "(1 | Subject) + ", "(1 | Item)"),
   
   local_model = paste0("MarginalAmplitude ~ ConditionCode"),
@@ -401,12 +393,13 @@ cat(paste0(
 
 ```{r, echo=TRUE}
 rm(list = ls())
+source(".../R/plot_eeg_map.R")
 load("08_TFCE_fully_crossed_subject_item_results.RData")
 ## ==========================================================
 ## Step 7: Plot significant effects
 ## ==========================================================
 
-mT <- Results$Obs
+mT <- Results$tObs
 mT[!Results$Mask] <- 0
 
 plot_eeg_map(mT, "TFCE-corrected Group Effect", times, nChan, channels)

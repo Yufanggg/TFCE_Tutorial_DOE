@@ -27,7 +27,7 @@ library(tidyr)
 library(fields)
 
 source("../R/tfce_transform.R")
-source("../R/plot_eeg_map.R")
+
 
 cat("\nStarting TFCE covariate-adjusted analysis...\n")
 
@@ -205,7 +205,7 @@ cat(sprintf("Critical TFCE value = %.4f\n", maxTFCEcrit))
 cat("Step 5: Storing results...\n")
 
 Results <- list(
-  Obs          = t_Obs,
+  tObs         = t_Obs,
   TFCE_Obs     = TFCE_Obs,
   TFCE_Null    = TFCE_permMax,
   maxTFCEcrit  = maxTFCEcrit,
@@ -239,6 +239,7 @@ cat("Saved results: ../results/02_TFCE_between_subject_covariate_results.RData\n
 ## Step 7: Plot TFCE-corrected significant t-values
 ## ==========================================================
 rm(list =ls())
+source("../R/plot_eeg_map.R")
 load("../results/02_TFCE_between_subject_covariate_results.RData")
 
 ## ==========================================================
@@ -246,7 +247,7 @@ load("../results/02_TFCE_between_subject_covariate_results.RData")
 ## ==========================================================
 
 
-mT <- Results$t_Obs
+mT <- Results$tObs
 mT[!Results$Mask] <- 0
 
 plot_eeg_map(mT,

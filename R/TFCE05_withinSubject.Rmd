@@ -29,7 +29,6 @@ library(lme4)
 library(lmerTest)
 
 source("../R/tfce_transform.R")
-source("../R/plot_eeg_map.R")
 
 cat("\nStarting TFCE within-subject analysis...\n")
 
@@ -222,13 +221,13 @@ cat("TFCE within-subject analysis completed and results saved.\n")
 
 ```{r, echo=TRUE}
 rm(list =ls())
-
+source("../R/plot_eeg_map.R")
 load("../results/05_TFCE_within_subject_results.RData")
 ## ==========================================================
 ## Step 7: Plot TFCE-corrected significant t-values
 ## ==========================================================
 
-mT <- Results$t_Obs
+mT <- Results$tObs
 mT[!Results$Mask] <- 0
 
 plot_eeg_map(mT,
