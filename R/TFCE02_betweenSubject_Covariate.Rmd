@@ -215,7 +215,7 @@ Results <- list(
   nPerm        = nPerm,
   model        = "Amplitude ~ Covariate + GroupCode",
   test         = "Group effect adjusted for covariate",
-  permutation  = "Freedman-Lane procedure",
+  permutation  = "Freedman-Lane procedure"
 )
 
 cat("Results stored.\n")

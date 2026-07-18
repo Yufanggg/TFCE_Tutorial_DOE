@@ -273,7 +273,7 @@ Results <- list(
   nPerm        = nPerm,
   model        = "Amplitude ~ FactorA + FactorB",
   test         = "A and B",
-  permutation  = "Synchronized permutation of subject-level 2 x 2 design labels",
+  permutation  = "Synchronized permutation of subject-level 2 x 2 design labels"
 )
 
 return(Results)
