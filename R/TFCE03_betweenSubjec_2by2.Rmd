@@ -276,7 +276,7 @@ Results <- list(
   permutation  = "Synchronized permutation of subject-level 2 x 2 design labels"
 )
 
-return(Results)
+cat("Results stored.\n")
 
 ## ==========================================================
 ## Save results

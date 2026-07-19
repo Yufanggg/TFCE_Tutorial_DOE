@@ -214,7 +214,7 @@ Results <- list(
   alpha        = alpha,
   nPerm        = nPerm,
   model        = "Amplitude ~ FactorA + FactorB + Interaction",
-  test         = "Interaction",
+  test         = "Interaction"
 )
 
 cat("Results stored.\n")
