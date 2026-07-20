@@ -189,7 +189,7 @@ fprintf('Step 4: Computing TFCE-corrected significance...\n');
 alpha = 0.05;
 nPerm = length(TFCE_permMax);
 maxTFCE = sort([TFCE_permMax;max(abs(TFCE_Obs(:)))]);
-maxTFCEcrit = maxTFCE(round(nPerm*(1-Alpha)));
+maxTFCEcrit = maxTFCE(round(nPerm*(1-alpha)));
 
 Mask = abs(TFCE_Obs) >= maxTFCEcrit;
 
@@ -215,8 +215,6 @@ fprintf('Critical TFCE value = %.4f\n', maxTFCEcrit);
 fprintf('Step 5: Storing results...\n');
 
 Results = struct();
-
-
 
 Results.tObs       = t_Obs;
 Results.TFCE_Obs  = TFCE_Obs;
