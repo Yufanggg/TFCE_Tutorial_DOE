@@ -256,13 +256,26 @@ Results.Mask_var2      = Mask_var2;
 Results.alpha = alpha;
 Results.nPerm = nPerms;
 Results.model = 'EEG ~ FactorA + FactorB';
-Results.times = times;
-Results.e_loc = e_loc;
 
 fprintf('Results stored.\n');
 
-%% Step 6: Plot significant observed effects
+%% Step 6: Save results
 
+if ~exist('../results', 'dir')
+    mkdir('../results');
+end
+
+save('../results/03_TFCE_between_subject_2by2_no_interaction_results.mat', ...
+     'Results', ...
+     'nChan', ...
+     'times', ...
+     'e_loc');
+
+disp('TFCE analysis completed and saved.');
+
+%% Step 7: Plot significant observed effects
+clear all; close all; clc
+load('../results/03_TFCE_between_subject_2by2_no_interaction_results.mat')
 plot_tfce_results(Results.Obs_var1, Results.Mask_var1, ...
                   times, e_loc, ...
                   'TFCE-corrected Main Effect: FactorA');
@@ -271,13 +284,3 @@ plot_tfce_results(Results.Obs_var2, Results.Mask_var2, ...
                   times, e_loc, ...
                   'TFCE-corrected Main Effect: FactorB');
 
-%% Step 7: Save results
-
-if ~exist('../results', 'dir')
-    mkdir('../results');
-end
-
-save('../results/03_TFCE_between_subject_2by2_no_interaction_results.mat', ...
-     'Results');
-
-disp('TFCE analysis completed and saved.');

@@ -287,14 +287,14 @@ end
 
 Results = struct();
 
-Results.Obs_Group       = t_Obs_Group;
+Results.tObs_Group       = t_Obs_Group;
 Results.TFCE_Obs_Group  = TFCE_Obs_Group;
 Results.TFCE_Null_Group = TFCE_permMax_Group;
 Results.maxTFCEcrit_Group  = maxTFCEcrit_Group;
 Results.P_Values_Group  = P_Values_Group;
 Results.Mask_Group      = Mask_Group;
 
-Results.Obs_Cond       = t_Obs_Cond;
+Results.tObs_Cond       = t_Obs_Cond;
 Results.TFCE_Obs_Cond  = TFCE_Obs_Cond;
 Results.TFCE_Null_Cond = TFCE_permMax_Cond;
 Results.maxTFCEcrit_Cond  = maxTFCEcrit_Cond;
@@ -304,24 +304,28 @@ Results.Mask_Cond      = Mask_Cond;
 Results.alpha = alpha;
 Results.nPerm = nPerm;
 Results.model = 'EEG ~ Group + Cond + Interaction + (1|Subject)';
-Results.times = times;
-Results.e_loc = e_loc;
 
-%% Step 6: Plot results
-
-plot_tfce_results(t_Obs_Group, Mask_Group, times, e_loc, ...
-    'TFCE-corrected Group Effect');
-
-plot_tfce_results(t_Obs_Cond, Mask_Cond, times, e_loc, ...
-    'TFCE-corrected Condition Effect');
-
-%% Step 7: Save results
+%% Step 6: Save results
 
 if ~exist('../results', 'dir')
     mkdir('../results');
 end
-
+ 
 save('../results/06_TFCE_split_plot_results.mat', ...
-     'Results');
+     'Results', ...
+     'nChan', ...
+     'times', ...
+     'e_loc');
 
 disp('Split-plot TFCE analysis completed and saved.');
+
+%% Step 7: Plot results
+clear all; clc; close all
+
+load('../results/06_TFCE_split_plot_results.mat')
+
+plot_tfce_results(Results.tObs_Group, Results.Mask_Group, times, e_loc, ...
+    'TFCE-corrected Group Effect');
+
+plot_tfce_results(Results.tObs_Cond, Results.Mask_Cond, times, e_loc, ...
+    'TFCE-corrected Condition Effect');

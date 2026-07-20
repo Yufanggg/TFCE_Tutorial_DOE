@@ -236,28 +236,44 @@ fprintf('Step 5: Storing results...\n');
 
 Results = struct();
 
-Results.Obs_Int       = t_Obs_Int;
-Results.TFCE_Obs_Int  = TFCE_Obs_Int;
-Results.TFCE_Null_Int = TFCE_permMax_Int;
-Results.maxTFCEcrit_Int  = maxTFCEcrit_Int;
-Results.P_Values_Int  = P_Values_Int;
-Results.Mask_Int      = Mask_Int;
-
+Results.tObs       = t_Obs_Int;
+Results.TFCE_Obs  = TFCE_Obs;
+Results.TFCE_Null = TFCE_permMax;
+Results.maxTFCEcrit  = maxTFCEcrit;
+Results.P_Values  = P_Values;
+Results.Mask      = Mask;
 Results.alpha = alpha;
 Results.nPerm = nPerm;
 Results.model = 'EEG ~ FactorA + FactorB + FactorA:FactorB';
 Results.test  = 'Interaction effect adjusted for FactorA and FactorB';
-Results.times = times;
-Results.e_loc = e_loc;
+
 
 fprintf('Results stored.\n');
 
 %% ==========================================================
-% Step 6: Plot significant interaction effects
+% Step 6: Save results
 %% ==========================================================
 
-mT = t_Obs_Int;
-mT(~Mask_Int) = 0;
+if ~exist('../results', 'dir')
+    mkdir('../results');
+end
+ 
+save('../results/04_TFCE_between_subject_2by2_interaction_results.mat', ...
+     'Results', ...
+     'nChan', ...
+     'times', ...
+     'e_loc');
+
+disp('TFCE interaction analysis completed and saved.');
+
+%% ==========================================================
+% Step 6: Plot significant interaction effects
+%% ==========================================================
+clear all; close all; clc
+load('../results/04_TFCE_between_subject_2by2_interaction_results.mat')
+
+mT = Results.tObs ;
+mT(~Results.Mask) = 0;
 
 figure;
 
@@ -286,7 +302,7 @@ colorbar;
 
 figure;
 
-imagesc(times, 1:nChan, TFCE_Obs_Int);
+imagesc(times, 1:nChan, Results.TFCE_Obs);
 axis xy;
 
 xlim([-200 800]);
@@ -305,15 +321,3 @@ title('Observed TFCE Map: Interaction Effect');
 
 colorbar;
 
-%% ==========================================================
-% Step 8: Save results
-%% ==========================================================
-
-if ~exist('../results', 'dir')
-    mkdir('../results');
-end
-
-save('../results/04_TFCE_between_subject_2by2_interaction_results.mat', ...
-     'Results');
-
-disp('TFCE interaction analysis completed and saved.');

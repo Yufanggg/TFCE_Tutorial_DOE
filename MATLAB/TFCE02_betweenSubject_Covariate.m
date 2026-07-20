@@ -226,7 +226,6 @@ Results.alpha     = alpha;
 Results.nPerm     = nPerm;
 Results.model     = 'EEG ~ Covariate + Group';
 Results.test      = 'Group effect adjusted for covariate';
-Results.times     = times;
 
 fprintf('Results stored.\n');
 

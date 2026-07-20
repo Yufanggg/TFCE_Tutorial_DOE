@@ -203,7 +203,7 @@ fprintf('Critical TFCE value = %.4f\n', maxTFCEcrit);
 
 Results = struct();
 
-Results.Obs          = t_Obs;
+Results.tObs          = t_Obs;
 Results.TFCE_Obs     = TFCE_Obs;
 Results.TFCE_Null    = TFCE_permMax;
 Results.maxTFCEcrit  = maxTFCEcrit;
@@ -214,13 +214,27 @@ Results.nPerm        = nPerm;
 Results.model        = 'EEG ~ Condition + (1|Subject)';
 Results.test         = 'Treatment - Control fixed effect';
 Results.permutation  = 'Within-subject condition-label permutation';
-Results.times        = times;
-Results.e_loc        = e_loc;
+
+%% Step 8: Save results
+
+if ~exist('../results', 'dir')
+    mkdir('../results');
+end
+
+save('../results/05_TFCE_within_subject_LME_results.mat', ...
+     'Results', ...
+     'nChan', ...
+     'times', ...
+     'e_loc');
+
+disp('Within-subject LME TFCE analysis completed and saved.');
 
 %% Step 6: Plot significant observed t-values
+clear all; clc; close all
+load('../results/05_TFCE_within_subject_LME_results.mat');
 
-mT = t_Obs;
-mT(~Mask) = 0;
+mT = Results.tObs;
+mT(~Results.Mask) = 0;
 
 figure;
 imagesc(times, 1:nChan, mT);
@@ -243,7 +257,7 @@ colorbar;
 %% Step 7: Plot observed TFCE map
 
 figure;
-imagesc(times, 1:nChan, TFCE_Obs);
+imagesc(times, 1:nChan, Results.TFCE_Obs);
 axis xy;
 xlim([-200 800]);
 
@@ -260,21 +274,3 @@ ylabel('Channel');
 title('Observed TFCE Map: LME Treatment Effect');
 colorbar;
 
-%% Step 8: Save results
-
-if ~exist('../results', 'dir')
-    mkdir('../results');
-end
-
-save('../results/05_TFCE_within_subject_LME_results.mat', ...
-     'Results', ...
-     't_Obs', ...
-     'TFCE_Obs', ...
-     'TFCE_permMax', ...
-     'maxTFCEcrit', ...
-     'P_Values', ...
-     'Mask', ...
-     'times', ...
-     'e_loc');
-
-disp('Within-subject LME TFCE analysis completed and saved.');
