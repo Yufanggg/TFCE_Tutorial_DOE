@@ -216,7 +216,9 @@ fprintf('Step 5: Storing results...\n');
 
 Results = struct();
 
-Results.Obs       = t_Obs;
+
+
+Results.tObs       = t_Obs;
 Results.TFCE_Obs  = TFCE_Obs;
 Results.TFCE_Null = TFCE_permMax;
 Results.maxTFCEcrit  = maxTFCEcrit;
@@ -227,65 +229,11 @@ Results.nPerm     = nPerm;
 Results.model     = 'EEG ~ Covariate + Group';
 Results.test      = 'Group effect adjusted for covariate';
 Results.times     = times;
-Results.e_loc     = e_loc;
 
 fprintf('Results stored.\n');
 
 %% ==========================================================
-% Step 6: Plot significant effects
-%% ==========================================================
-
-mT = t_Obs;
-mT(~Mask) = 0;
-
-figure;
-
-imagesc(times, 1:nChan, mT);
-axis xy;
-
-xlim([-200 800]);
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {e_loc.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-title('TFCE-corrected Group Effect Adjusted for Covariate');
-
-colorbar;
-
-%% ==========================================================
-% Step 7: Plot observed TFCE values
-%% ==========================================================
-
-figure;
-
-imagesc(times, 1:nChan, TFCE_Obs);
-axis xy;
-
-xlim([-200 800]);
-
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {e_loc.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
-
-xlabel('Time (ms)');
-ylabel('Channel');
-title('Observed TFCE Map: Group Effect Adjusted for Covariate');
-
-colorbar;
-
-%% ==========================================================
-% Step 8: Save results
+% Step 6: Save TFCE results
 %% ==========================================================
 
 if ~exist('../results', 'dir')
@@ -293,7 +241,66 @@ if ~exist('../results', 'dir')
 end
 
 save('../results/02_TFCE_between_subject_covariate_results.mat', ...
-     'Results');
+     'Results', ...
+     'nChan', ...
+     'times', ...
+     'e_loc');
 
 disp('TFCE covariate-adjusted between-subject analysis completed.');
 disp('Saved results: ../results/02_TFCE_between_subject_covariate_results.mat');
+
+%% ==========================================================
+% Step 7: Plot significant effects
+%% ==========================================================
+
+clear all; close all; clc
+
+load('../results/02_TFCE_between_subject_covariate_results.mat')
+sigT = Results.tObs;
+sigT(~Results.Mask) = 0;
+
+figure;
+
+imagesc(times, 1:nChan, sigT);
+axis xy;
+
+xlim([-200 800]);
+
+set(gca, ...
+    'YTick', 1:nChan, ...
+    'YTickLabel', {e_loc.labels}, ...
+    'XTick', -200:200:800, ...
+    'TickLength', [0 0], ...
+    'FontSize', 15, ...
+    'FontName', 'Arial');
+
+xlabel('Time (ms)');
+ylabel('Channel');
+title('TFCE-corrected Significant Effects');
+
+colorbar;
+
+%% ==========================================================
+% Step 8: Plot TFCE values
+%% ==========================================================
+
+figure;
+
+imagesc(times, 1:nChan, Results.TFCE_Obs);
+axis xy;
+
+xlim([-200 800]);
+
+set(gca, ...
+    'YTick', 1:nChan, ...
+    'YTickLabel', {e_loc.labels}, ...
+    'XTick', -200:200:800, ...
+    'TickLength', [0 0], ...
+    'FontSize', 15, ...
+    'FontName', 'Arial');
+
+xlabel('Time (ms)');
+ylabel('Channel');
+title('Observed TFCE Map');
+
+colorbar;
