@@ -216,8 +216,6 @@ fprintf('Step 5: Storing results...\n');
 
 Results = struct();
 
-
-
 Results.tObs       = t_Obs;
 Results.TFCE_Obs  = TFCE_Obs;
 Results.TFCE_Null = TFCE_permMax;
@@ -228,7 +226,6 @@ Results.alpha     = alpha;
 Results.nPerm     = nPerm;
 Results.model     = 'EEG ~ Covariate + Group';
 Results.test      = 'Group effect adjusted for covariate';
-Results.times     = times;
 
 fprintf('Results stored.\n');
 
