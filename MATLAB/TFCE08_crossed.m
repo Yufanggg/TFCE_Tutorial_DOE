@@ -288,7 +288,7 @@ fprintf('Step 5: Storing results...\n');
 
 Results = struct();
 
-Results.Obs = t_Obs;
+Results.tObs = t_Obs;
 Results.TFCE_Obs = TFCE_Obs;
 Results.TFCE_Null = TFCE_permMax;
 Results.maxTFCEcrit = maxTFCEcrit;
@@ -299,18 +299,31 @@ Results.nPerm = nPerm;
 Results.model = 'EEG ~ Condition + (1|Subject) + (1|Item)';
 Results.test = 'Treatment - Control fixed effect';
 Results.permutation = 'Condition-label flipping within Subject:Item';
-Results.times = times;
-Results.e_loc = e_loc;
-Results.chanLabels = chanLabels;
 
 fprintf('Results stored.\n');
+
+%% ==========================================================
+% Step 8: Save results
+%% ==========================================================
+
+if ~exist('../results', 'dir')
+    mkdir('../results');
+end
+
+save(outputFile, ...
+     'Results', ...
+     'nChan', ...
+     'times', ...
+     'e_loc');
+
+disp('Fully crossed subject-item TFCE analysis completed and saved.');
 
 %% ==========================================================
 % Step 6: Plot significant observed t-values
 %% ==========================================================
 
-mT = t_Obs;
-mT(~Mask) = 0;
+mT = Results.tObs;
+mT(~Results.Mask) = 0;
 
 figure;
 
@@ -320,7 +333,7 @@ xlim([-200 800]);
 
 set(gca, ...
     'YTick', 1:nChan, ...
-    'YTickLabel', chanLabels, ...
+    'YTickLabel', e_loc.chanLabels, ...
     'XTick', -200:200:800, ...
     'TickLength', [0 0], ...
     'FontSize', 15, ...
@@ -337,13 +350,13 @@ colorbar;
 
 figure;
 
-imagesc(times, 1:nChan, TFCE_Obs);
+imagesc(times, 1:nChan, Results.TFCE_Obs);
 axis xy;
 xlim([-200 800]);
 
 set(gca, ...
     'YTick', 1:nChan, ...
-    'YTickLabel', chanLabels, ...
+    'YTickLabel', e_loc.chanLabels, ...
     'XTick', -200:200:800, ...
     'TickLength', [0 0], ...
     'FontSize', 15, ...
@@ -354,14 +367,4 @@ ylabel('Channel');
 title('Observed TFCE Map: Fully Crossed LME Treatment Effect');
 colorbar;
 
-%% ==========================================================
-% Step 8: Save results
-%% ==========================================================
 
-if ~exist('../results', 'dir')
-    mkdir('../results');
-end
-
-save(outputFile, 'Results');
-
-disp('Fully crossed subject-item TFCE analysis completed and saved.');

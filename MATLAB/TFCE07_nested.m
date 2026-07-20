@@ -414,11 +414,29 @@ Results.nPerm        = nPerm;
 
 fprintf('Results stored.\n');
 
+%% ==========================================================
+% Step 11: Save results
+%% ==========================================================
+
+if ~exist('../results', 'dir')
+    mkdir('../results');
+end
+
+save(outputFile, ...
+     'Results', ...
+     'nChan', ...
+     'times', ...
+     'e_loc');
+
+
+fprintf('\nNested class-student TFCE analysis completed.\n');
+
+
 % Step 6: Plot TFCE-corrected significant t-values
 %% ==========================================================
 
-sigT = t_Obs;
-sigT(~Mask) = 0;
+sigT = Results.tObs;
+sigT(~Results.Mask) = 0;
 
 figure;
 
@@ -447,7 +465,7 @@ colorbar;
 
 figure;
 
-imagesc(-200:4:800, 1:nChan, TFCE_Obs);
+imagesc(-200:4:800, 1:nChan, Results.TFCE_Obs);
 axis xy;
 
 %xlim([-200 800]);
@@ -466,21 +484,4 @@ title('Observed TFCE Map');
 
 colorbar;
 
-%% ==========================================================
-% Step 11: Save results
-%% ==========================================================
-
-outputDirectory = fileparts(outputFile);
-
-if ~exist(outputDirectory, 'dir')
-
-    mkdir(outputDirectory);
-
-end
-
-save(outputFile, 'Results');
-
-fprintf('\nResults saved to:\n%s\n', outputFile);
-
-fprintf('\nNested class-student TFCE analysis completed.\n');
 
