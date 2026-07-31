@@ -329,6 +329,7 @@ cat("TFCE split-plot analysis completed and results saved.\n")
 ```{r, echo=TRUE}
 rm(list = ls())
 load("../results/06_TFCE_split_plot_results.RData")
+source("../R/plot_eeg_map.R")
 ## ==========================================================
 ## Step 7: Plot TFCE-corrected significant t-values
 ## ==========================================================
