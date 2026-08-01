@@ -206,10 +206,10 @@ alpha = 0.05;
 nPerm = length(TFCE_permMax_var1);
 
 maxTFCE_var1 = sort([TFCE_permMax_var1;max(abs(TFCE_Obs_var1(:)))]);
-maxTFCEcrit_var1 = TFCE_permMax_var1(round(nPerm*(1-Alpha)));
+maxTFCEcrit_var1 = TFCE_permMax_var1(round(nPerm*(1-alpha)));
 
 maxTFCE_var2 = sort([TFCE_permMax_var2;max(abs(TFCE_Obs_var2(:)))]);
-maxTFCEcrit_var2 = TFCE_permMax_var2(round(nPerm*(1-Alpha)));
+maxTFCEcrit_var2 = TFCE_permMax_var2(round(nPerm*(1-alpha)));
 
 Mask_var1 = abs(TFCE_Obs_var1) >= maxTFCEcrit_var1;
 Mask_var2 = abs(TFCE_Obs_var2) >= maxTFCEcrit_var2;
