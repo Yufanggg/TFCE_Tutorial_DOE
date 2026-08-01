@@ -14,7 +14,7 @@
 %   main effects of FactorA and FactorB
 %
 % Permutation:
-%   Freedman-Lane
+%   Freedman-Lane Procedure
 %% ==========================================================
 
 clear; clc; close all;
