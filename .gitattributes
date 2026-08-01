@@ -1,5 +1,4 @@
 # Basic .gitattributes for a R repo.
-
 # Source files
 # ============
 *.Rdata binary
@@ -13,12 +12,8 @@
 *.R  	  text
 *.Rproj text
 *.[Rr]md  linguist-language=R linguist-detectable=true
-
 *.html linguist-detectable=false
-
-
  Basic .gitattributes for a python repo.
-
 # Source files
 # ============
 *.pxd    text diff=python
@@ -28,7 +23,6 @@
 *.pyx    text diff=python
 *.pyz    text diff=python
 *.pyi    text diff=python
-
 # Binary files
 # ============
 *.db     binary
@@ -38,16 +32,14 @@
 *.pyc    binary export-ignore
 *.pyo    binary export-ignore
 *.pyd    binary
-
 # Jupyter notebook
 *.ipynb  text eol=lf
-
 # Note: .db, .p, and .pkl files are associated
 # with the python modules ``pickle``, ``dbm.*``,
 # ``shelve``, ``marshal``, ``anydbm``, & ``bsddb``
 # (among others).
-
 #===SQL===
 *.sql linguist-detectable=true
 *.sql linguist-language=sql
 *.sql text
+Data/08_EEGdata_long.csv filter=lfs diff=lfs merge=lfs -text
