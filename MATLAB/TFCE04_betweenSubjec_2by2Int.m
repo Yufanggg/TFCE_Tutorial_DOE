@@ -207,9 +207,9 @@ fprintf('\nPermutation testing completed.\n');
 fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
 alpha = 0.05;
-nPerm = length(TFCE_permMax);
+nPerm = length(TFCE_permMax_Int);
 maxTFCE_Int = sort([TFCE_permMax_Int;max(abs(TFCE_Obs_Int(:)))]);
-maxTFCEcrit_Int = maxTFCE_Int(round(nPerm*(1-Alpha)));
+maxTFCEcrit_Int = maxTFCE_Int(round(nPerm*(1-alpha)));
 
 Mask_Int = abs(TFCE_Obs_Int) >= maxTFCEcrit_Int;
 
@@ -237,11 +237,11 @@ fprintf('Step 5: Storing results...\n');
 Results = struct();
 
 Results.tObs       = t_Obs_Int;
-Results.TFCE_Obs  = TFCE_Obs;
-Results.TFCE_Null = TFCE_permMax;
-Results.maxTFCEcrit  = maxTFCEcrit;
-Results.P_Values  = P_Values;
-Results.Mask      = Mask;
+Results.TFCE_Obs  = TFCE_Obs_Int;
+Results.TFCE_Null = TFCE_permMax_Int;
+Results.maxTFCEcrit  = maxTFCEcrit_Int;
+Results.P_Values  = P_Values_Int;
+Results.Mask      = Mask_Int;
 Results.alpha = alpha;
 Results.nPerm = nPerm;
 Results.model = 'EEG ~ FactorA + FactorB + FactorA:FactorB';
