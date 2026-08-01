@@ -360,8 +360,8 @@ cat(paste0(
 
 ```{r, echo=TRUE}
 rm(list = ls())
-source(".../R/plot_eeg_map.R")
-load("07_TFCE_nested_class_student_results.RData")
+load("../results/07_TFCE_nested_class_student_results.RData")
+source("../R/plot_eeg_map.R")
 
 ## ==========================================================
 ## Step 7: Plot functions
