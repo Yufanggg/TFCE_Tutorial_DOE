@@ -32,8 +32,7 @@ output: html_document
 ##   Treatment =  1
 ##
 ## Permutation:
-##   Condition labels are flipped within each
-##   Subject-Item combination.
+##   Condition labels are shuffled unrestricted after marginalization
 ##
 ## EEG amplitudes are never permuted.
 ## Only condition labels are permuted.
@@ -47,7 +46,6 @@ library(lme4)
 library(lmerTest)
 
 source("../R/tfce_transform.R")
-source("../R/plot_eeg_map.R")
 
 cat("\nStarting fully crossed subject-item TFCE analysis...\n")
 
@@ -57,7 +55,7 @@ cat("\nStarting fully crossed subject-item TFCE analysis...\n")
 
 designTable <- read.csv("../data/08_designTable.csv")
 
-EEGlong <- read.csv("../data/08_EEGdata_long.csv") %>% select(-Condition)
+EEGlong <- read.csv("../data/08_EEGdata_long.csv")
 
 print(names(designTable))
 print(names(EEGlong))
@@ -248,7 +246,7 @@ cat("Observed TFCE map completed.\n")
 
 set.seed(123)
 
-nPerm <- 1
+nPerm <- 999
 
 TFCE_permMax <- rep(NaN, nPerm)
 
@@ -358,7 +356,7 @@ Results <- list(
   
   marginalization = paste0("Subject- and item-specific random effects removed"),
   
-  permutation = paste0("Condition-label flipping within each Subject-Item pair"),
+  permutation = paste0("Condition-label flipping within each Subject-Item pair")
   
 )
 
@@ -393,8 +391,8 @@ cat(paste0(
 
 ```{r, echo=TRUE}
 rm(list = ls())
-source(".../R/plot_eeg_map.R")
-load("08_TFCE_fully_crossed_subject_item_results.RData")
+load("../results/08_TFCE_fully_crossed_subject_item_results.RData")
+source("../R/plot_eeg_map.R")
 ## ==========================================================
 ## Step 7: Plot significant effects
 ## ==========================================================
