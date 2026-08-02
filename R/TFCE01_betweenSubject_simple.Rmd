@@ -210,8 +210,8 @@ cat("Results stored.\n")
 ## Step 6: Save TFCE results
 ## ==========================================================
 
-if (!dir.exists("../results")) {
-  dir.create("../results")
+if (!dir.exists("../Results")) {
+  dir.create("../Results")
 }
 
 save(
@@ -219,7 +219,7 @@ save(
   times,
   nChan,
   channels,
-  file = "../results/01_TFCE_between_subject_results.RData"
+  file = "../Results/01_TFCE_between_subject_results.RData"
 )
 
 cat("TFCE analysis completed and results saved.\n")
@@ -231,7 +231,7 @@ cat("TFCE analysis completed and results saved.\n")
 ## ==========================================================
 rm(list =ls())
 source(("../R/plot_eeg_map.R"))
-load("../results/01_TFCE_between_subject_results.RData")
+load("../Results/01_TFCE_between_subject_results.RData")
 
 mT <- Results$tObs
 mT[!Results$Mask] <- 0

@@ -224,14 +224,14 @@ cat("Results stored.\n")
 ## Save results
 ## ==========================================================
 
-if (!dir.exists("../results")) {
-  dir.create("../results")
+if (!dir.exists("../Results")) {
+  dir.create("../Results")
 }
 
-save(Results, times, nChan, channels, file = "../results/04_TFCE_between_subject_2x2_Intresults.RData", times, nChan, channels)
+save(Results, times, nChan, channels, file = "../Results/04_TFCE_between_subject_2x2_Intresults.RData", times, nChan, channels)
 
 cat("\nTFCE 2 x 2 between-subject analysis completed.\n")
-cat("Saved results: ../results/03_TFCE_between_subject_2x2_results.RData\n", times, nChan, channels)
+cat("Saved results: ../Results/03_TFCE_between_subject_2x2_results.RData\n", times, nChan, channels)
 ```
 
 ```{r, echo=TRUE}
@@ -241,7 +241,7 @@ cat("Saved results: ../results/03_TFCE_between_subject_2x2_results.RData\n", tim
 rm(list =ls())
 source("../R/plot_eeg_map.R")
 
-load("../results/04_TFCE_between_subject_2x2_Intresults.RData")
+load("../Results/04_TFCE_between_subject_2x2_Intresults.RData")
 
 mA <- Results$tObs_Int
 mA[!Results$Mask_Int] <- 0
