@@ -433,7 +433,7 @@ save(
   times,
   nChan,
   channels,
-  file = paste0("../results/", "07_TFCE_nested_class_student_results.RData")
+  file = paste0("../Results/", "07_TFCE_nested_class_student_results.RData")
 )
 
 cat(paste0(
@@ -445,7 +445,7 @@ cat(paste0(
 
 ```{r, echo=TRUE}
 rm(list = ls())
-load("../results/07_TFCE_nested_class_student_results.RData")
+load("../Results/07_TFCE_nested_class_student_results.RData")
 source("../R/plot_eeg_map.R")
 
 ## ==========================================================
