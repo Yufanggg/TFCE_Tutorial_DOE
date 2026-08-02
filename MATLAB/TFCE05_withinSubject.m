@@ -217,11 +217,11 @@ Results.permutation  = 'Within-subject condition-label permutation';
 
 %% Step 8: Save results
 
-if ~exist('../results', 'dir')
-    mkdir('../results');
+if ~exist('../Results', 'dir')
+    mkdir('../Results');
 end
 
-save('../results/05_TFCE_within_subject_LME_results.mat', ...
+save('../Results/05_TFCE_within_subject_LME_results.mat', ...
      'Results', ...
      'nChan', ...
      'times', ...
@@ -231,7 +231,7 @@ disp('Within-subject LME TFCE analysis completed and saved.');
 
 %% Step 6: Plot significant observed t-values
 clear all; clc; close all
-load('../results/05_TFCE_within_subject_LME_results.mat');
+load('../Results/05_TFCE_within_subject_LME_results.mat');
 
 mT = Results.tObs;
 mT(~Results.Mask) = 0;

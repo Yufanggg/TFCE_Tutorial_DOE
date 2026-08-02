@@ -24,6 +24,8 @@ output: html_document
 rm(list = ls())
 
 library(dplyr)
+library(future)
+library(future.apply)
 library(tidyr)
 library(lme4)
 library(lmerTest)
@@ -125,30 +127,68 @@ TFCE_permMax <- rep(NaN, n_perm)
 subject_info <- designTable %>%
   select(RowID, Subject, CondCode)
 
-for (p in seq_len(n_perm)) {
-  perm_info <- subject_info %>%
-    group_by(Subject) %>%
-    mutate(CondCode = sample(CondCode)) %>%
-    ungroup()
-  
-  perm_dat <- EEGlong %>%
-    left_join(perm_info, by = c("Subject", "CondCode")) %>%
-    mutate(
-      Subject = factor(Subject),
-      Channel = factor(Channel),
-      CondCode = as.numeric(CondCode)
-    )
-  
-  t_perm <- compute_tmap(perm_dat)
-  
-  TFCE_perm <- tfce_transform(t_perm, E  = 0.66, H  = 2, dh = 0.1)
-  
-  TFCE_permMax[p] <- max(abs(TFCE_perm), na.rm = TRUE)
-  
-  if (p %% 50 == 0) {
-    cat("Permutation", p, "of", n_perm, "\n")
-  }
-}
+n_cores <- max(1, parallel::detectCores() - 1)
+plan(multisession, workers = n_cores)
+
+TFCE_permMax <- future_sapply(seq_len(n_perm),
+                              function(p) {
+                                perm_info <- subject_info %>%
+                                  group_by(Subject) %>%
+                                  mutate(PermCondCode = sample(CondCode)) %>%
+                                  ungroup()
+                                
+                                perm_dat <- EEGlong %>%
+                                  select(-CondCode) %>%
+                                  left_join(
+                                    perm_info %>%
+                                      select(Subject, Condition, PermCondCode),
+                                    by = c("Subject", "Condition")
+                                  ) %>%
+                                  rename(CondCode = PermCondCode) %>%
+                                  mutate(
+                                    Subject = factor(Subject),
+                                    Channel = factor(Channel),
+                                    CondCode = as.numeric(CondCode)
+                                  )
+                                
+                                t_perm <- compute_tmap(perm_dat)
+                                
+                                TFCE_perm <- tfce_transform(t_perm,
+                                                            E = 0.66,
+                                                            H = 2,
+                                                            dh = 0.1)
+                                
+                                max(abs(TFCE_perm), na.rm = TRUE)
+                              },
+                              future.seed = TRUE,
+                              future.packages = "dplyr")
+
+plan(sequential)
+
+# for (p in seq_len(n_perm)) {
+#   perm_info <- subject_info %>%
+#     group_by(Subject) %>%
+#     mutate(CondCode = sample(CondCode)) %>%
+#     ungroup()
+#   
+#   perm_dat <- EEGlong %>%
+#     left_join(perm_info, by = c("Subject", "CondCode")) %>%
+#     mutate(
+#       Subject = factor(Subject),
+#       Channel = factor(Channel),
+#       CondCode = as.numeric(CondCode)
+#     )
+#   
+#   t_perm <- compute_tmap(perm_dat)
+#   
+#   TFCE_perm <- tfce_transform(t_perm, E  = 0.66, H  = 2, dh = 0.1)
+#   
+#   TFCE_permMax[p] <- max(abs(TFCE_perm), na.rm = TRUE)
+#   
+#   if (p %% 50 == 0) {
+#     cat("Permutation", p, "of", n_perm, "\n")
+#   }
+# }
 
 ## ==========================================================
 ## Step 4: TFCE-corrected significance

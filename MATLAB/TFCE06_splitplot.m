@@ -307,8 +307,8 @@ Results.model = 'EEG ~ Group + Cond + Interaction + (1|Subject)';
 
 %% Step 6: Save results
 
-if ~exist('../results', 'dir')
-    mkdir('../results');
+if ~exist('../Results', 'dir')
+    mkdir('../Results');
 end
  
 save('../results/06_TFCE_split_plot_results.mat', ...
@@ -322,7 +322,7 @@ disp('Split-plot TFCE analysis completed and saved.');
 %% Step 7: Plot results
 clear all; clc; close all
 
-load('../results/06_TFCE_split_plot_results.mat')
+load('../Results/06_TFCE_split_plot_results.mat')
 
 plot_tfce_results(Results.tObs_Group, Results.Mask_Group, times, e_loc, ...
     'TFCE-corrected Group Effect');
