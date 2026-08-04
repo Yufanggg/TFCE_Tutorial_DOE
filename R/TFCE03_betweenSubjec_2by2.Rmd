@@ -38,6 +38,9 @@ rm(list = ls())
 
 library(readr)
 library(dplyr)
+library(future)
+library(future.apply)
+library(progressr)
 library(fields)
 
 source("../R/tfce_transform.R")
@@ -188,83 +191,129 @@ cat("Observed TFCE map completed.\n")
 set.seed(123)
 
 nPerm <- 999
-TFCE_permMaxA <- TFCE_permMaxB <- rep(NA_real_, nPerm)
+TFCE_permMaxA <- TFCE_permMaxB <- TFCE_permMaxInt <- rep(NA_real_, nPerm)
+
+## ==========================================================
+## Step 3: Synchronized permutation test
+## ==========================================================
 
 cat("Step 3: Starting synchronized permutation testing...\n")
 
-for (p in seq_len(nPerm)) {
-  ## --------------------------------------------------------
-  ## 3.1 Factor A permutation
-  ##
-  ## Permute FactorA within levels of FactorB.
-  ## --------------------------------------------------------
-  perm_designA <- designTable %>%
-    group_by(FactorB) %>%
-    mutate(FactorA = sample(FactorA)) %>%
-    ungroup()
-  
-  perm_datA <- EEGlong %>%
-    left_join(perm_designA %>%
-                select(Subject, FactorA, FactorB), by = "Subject") %>%
-    mutate(
-      Subject     = factor(Subject),
-      Channel     = factor(Channel),
-      FactorA     = as.numeric(FactorA),
-      FactorB     = as.numeric(FactorB)
-    )
-  
-  t_perm_A <- compute_tmap_2x2(perm_datA)
-  
-  TFCE_perm_A <- tfce_transform(t_permA$A,
-                                E  = 0.66,
-                                H  = 2,
-                                dh = 0.1)
-  TFCE_permMaxA[p] <- max(abs(TFCE_perm_A), na.rm = TRUE)
-  
-  ## --------------------------------------------------------
-  ## 3.2 Factor B and interaction permutation
-  ##
-  ## Permute FactorB within levels of FactorA.
-  ##
-  ## Extract both:
-  ##   - FactorB coefficient
-  ##   - FactorA:FactorB coefficient
-  ##
-  ## from the same permuted full model.
-  ## --------------------------------------------------------
-  perm_designB <- designTable %>%
-    group_by(FactorA) %>%
-    mutate(FactorB = sample(FactorB)) %>%
-    ungroup()
-  
-  perm_datB <- EEGlong %>%
-    left_join(perm_designB %>%
-                select(Subject, FactorA, FactorB), by = "Subject") %>%
-    mutate(
-      Subject     = factor(Subject),
-      Channel     = factor(Channel),
-      FactorA     = as.numeric(FactorA),
-      FactorB     = as.numeric(FactorB)
-    )
-  
-  t_perm_B <- compute_tmap_2x2(perm_datB)
-  TFCE_perm_B <- tfce_transform(t_permB$B,
-                                E  = 0.66,
-                                H  = 2,
-                                dh = 0.1)
-  
-  TFCE_permInt <- tfce_transform(t_permB$Int,
-                                 E = 0.66,
-                                 H = 2,
-                                 dh = 0.1)
-  
-  TFCE_permMaxB[p] <- max(abs(TFCE_perm_B), na.rm = TRUE)
-  TFCE_permMaxInt[p] <- max(abs(TFCE_permInt), na.rm = TRUE)
-  
-  if (p %% 50 == 0) {
-    cat("Permutation", p, "of", nPerm, "\n")
-  }
-}
+## ----------------------------------------------------------
+## Set up parallel processing
+## ----------------------------------------------------------
+
+n_workers <- max(1, parallel::detectCores() - 1)
+
+plan(multisession, workers = n_workers)
+
+handlers("txtprogressbar")
+
+cat("Step 3: Starting synchronized permutation testing...\n")
+
+with_progress({
+
+  progress_update <- progressor(along = seq_len(nPerm))
+
+  perm_results <- future_lapply(
+
+    seq_len(nPerm),
+
+    function(p){
+
+      ## ----------------------------------------------------
+      ## Factor A permutation
+      ## ----------------------------------------------------
+
+      perm_designA <- designTable %>%
+        group_by(FactorB) %>%
+        mutate(FactorA = sample(FactorA)) %>%
+        ungroup()
+
+      perm_datA <- EEGlong %>%
+        left_join(perm_designA %>%
+                    select(Subject, FactorA, FactorB), by = "Subject") %>%
+        mutate(
+          Subject = factor(Subject),
+          Channel = factor(Channel, levels = channels),
+          FactorA = as.numeric(FactorA),
+          FactorB = as.numeric(FactorB)
+        )
+
+      t_permA <- compute_tmap_2x2(perm_datA)
+
+      TFCE_permA <- tfce_transform(t_permA$A,
+                                   E = 0.66,
+                                   H = 2,
+                                   dh = 0.1)
+
+      permMaxA <- max(abs(TFCE_permA), na.rm = TRUE)
+
+      ## ----------------------------------------------------
+      ## Factor B permutation
+      ##
+      ## Interaction is extracted from the same model
+      ## ----------------------------------------------------
+
+      perm_designB <- designTable %>%
+        group_by(FactorA) %>%
+        mutate(FactorB = sample(FactorB)) %>%
+        ungroup()
+
+      perm_datB <- EEGlong %>%
+        left_join(perm_designB %>%
+                    select(Subject, FactorA, FactorB), by = "Subject") %>%
+        mutate(
+          Subject = factor(Subject),
+          Channel = factor(Channel, levels = channels),
+          FactorA = as.numeric(FactorA),
+          FactorB = as.numeric(FactorB)
+        )
+      
+      t_permB <- compute_tmap_2x2(perm_datB)
+
+      TFCE_permB <- tfce_transform(t_permB$B,
+                                   E = 0.66,
+                                   H = 2,
+                                   dh = 0.1)
+
+      TFCE_permInt <- tfce_transform(t_permB$Int,
+                                     E = 0.66,
+                                     H = 2,
+                                     dh = 0.1)
+
+      permMaxB <- max(abs(TFCE_permB), na.rm = TRUE)
+
+      permMaxInt <- max(abs(TFCE_permInt), na.rm = TRUE)
+
+      progress_update()
+
+      c(A = permMaxA, B = permMaxB, Int = permMaxInt)
+
+    },
+
+    future.seed = TRUE,
+
+    future.packages = c("dplyr", "readr")
+
+  )
+
+})
+
+## ----------------------------------------------------------
+## Combine permutation distributions
+## ----------------------------------------------------------
+
+perm_results <- do.call(
+  rbind,
+  perm_results
+)
+
+TFCE_permMaxA <- perm_results[, "A"]
+TFCE_permMaxB <- perm_results[, "B"]
+TFCE_permMaxInt <- perm_results[, "Int"]
+
+plan(sequential)
 
 cat("Permutation testing completed.\n")
 
