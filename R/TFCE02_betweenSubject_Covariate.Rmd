@@ -224,14 +224,14 @@ cat("Results stored.\n")
 ## Step 6: Save results
 ## ==========================================================
 
-if (!dir.exists("../results")) {
-  dir.create("../results")
+if (!dir.exists("../Results")) {
+  dir.create("../Results")
 }
 
-save(Results, times, nChan, channels, file = "../results/02_TFCE_between_subject_covariate_results.RData")
+save(Results, times, nChan, channels, file = "../Results/02_TFCE_between_subject_covariate_results.RData")
 
 cat("TFCE covariate-adjusted between-subject analysis completed.\n")
-cat("Saved results: ../results/02_TFCE_between_subject_covariate_results.RData\n")
+cat("Saved results: ../Results/02_TFCE_between_subject_covariate_results.RData\n")
 ```
 
 ```{r, echo=TRUE}
@@ -240,7 +240,7 @@ cat("Saved results: ../results/02_TFCE_between_subject_covariate_results.RData\n
 ## ==========================================================
 rm(list =ls())
 source("../R/plot_eeg_map.R")
-load("../results/02_TFCE_between_subject_covariate_results.RData")
+load("../Results/02_TFCE_between_subject_covariate_results.RData")
 
 ## ==========================================================
 ## Step 7: Plot significant effects
