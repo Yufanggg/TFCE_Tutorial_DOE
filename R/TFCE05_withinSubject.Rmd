@@ -122,73 +122,58 @@ cat("Observed TFCE map completed.\n")
 set.seed(123)
 
 n_perm <- 999
+
 TFCE_permMax <- rep(NaN, n_perm)
 
+## ------------------------------------------------------------
+## 3.1. Prepare the observed long-format dataset once
+## ------------------------------------------------------------
 subject_info <- designTable %>%
   select(RowID, Subject, CondCode)
 
-n_cores <- max(1, parallel::detectCores() - 1)
-plan(multisession, workers = n_cores)
+## ------------------------------------------------------------
+## 3.2. Set up parallel processing
+## ------------------------------------------------------------
 
-TFCE_permMax <- future_sapply(seq_len(n_perm),
-                              function(p) {
-                                perm_info <- subject_info %>%
-                                  group_by(Subject) %>%
-                                  mutate(PermCondCode = sample(CondCode)) %>%
-                                  ungroup()
-                                
-                                perm_dat <- EEGlong %>%
-                                  select(-CondCode) %>%
-                                  left_join(
-                                    perm_info %>%
-                                      select(Subject, Condition, PermCondCode),
-                                    by = c("Subject", "Condition")
-                                  ) %>%
-                                  rename(CondCode = PermCondCode) %>%
-                                  mutate(
-                                    Subject = factor(Subject),
-                                    Channel = factor(Channel),
-                                    CondCode = as.numeric(CondCode)
-                                  )
-                                
-                                t_perm <- compute_tmap(perm_dat)
-                                
-                                TFCE_perm <- tfce_transform(t_perm,
-                                                            E = 0.66,
-                                                            H = 2,
-                                                            dh = 0.1)
-                                
-                                max(abs(TFCE_perm), na.rm = TRUE)
-                              },
-                              future.seed = TRUE,
-                              future.packages = "dplyr")
+n_workers <- max(1, parallel::detectCores() - 1)
+
+plan(multisession, workers = n_workers)
+
+handlers("txtprogressbar")
+
+## ------------------------------------------------------------
+## 3.3 Parallel permutation test
+## ------------------------------------------------------------
+
+with_progress({
+  progress_update <- progressor(along = seq_len(n_perm))
+  
+  TFCE_permMax <- future_sapply(seq_len(n_perm), function(p) {
+    perm_info <- subject_info %>%
+      group_by(Subject) %>%
+      mutate(PermCondCode = sample(CondCode)) %>%
+      ungroup()
+    
+    perm_dat <- EEGlong %>%
+      left_join(perm_info, by = c("Subject", "CondCode")) %>%
+      mutate(
+        Subject = factor(Subject),
+        Channel = factor(Channel),
+        CondCode = as.numeric(CondCode)
+      )
+    t_perm <- compute_tmap(perm_dat)
+    
+    TFCE_perm <- tfce_transform(t_perm, E = 0.66, H = 2, dh = 0.1)
+    
+    perm_max <- max(abs(TFCE_perm), na.rm = TRUE)
+    
+    progress_update()
+    perm_max
+    
+  }, future.seed = TRUE, future.packages = "dplyr")
+})
 
 plan(sequential)
-
-# for (p in seq_len(n_perm)) {
-#   perm_info <- subject_info %>%
-#     group_by(Subject) %>%
-#     mutate(CondCode = sample(CondCode)) %>%
-#     ungroup()
-#   
-#   perm_dat <- EEGlong %>%
-#     left_join(perm_info, by = c("Subject", "CondCode")) %>%
-#     mutate(
-#       Subject = factor(Subject),
-#       Channel = factor(Channel),
-#       CondCode = as.numeric(CondCode)
-#     )
-#   
-#   t_perm <- compute_tmap(perm_dat)
-#   
-#   TFCE_perm <- tfce_transform(t_perm, E  = 0.66, H  = 2, dh = 0.1)
-#   
-#   TFCE_permMax[p] <- max(abs(TFCE_perm), na.rm = TRUE)
-#   
-#   if (p %% 50 == 0) {
-#     cat("Permutation", p, "of", n_perm, "\n")
-#   }
-# }
 
 ## ==========================================================
 ## Step 4: TFCE-corrected significance
@@ -197,10 +182,9 @@ plan(sequential)
 cat("Step 4: Computing TFCE-corrected significance...\n")
 
 alpha <- 0.05
-nPerm <- length(TFCE_permMax)
 
 maxTFCE <- sort(c(TFCE_permMax, max(abs(TFCE_Obs), na.rm = TRUE)))
-maxTFCEcrit <- maxTFCE[round(nPerm * (1 - alpha))]
+maxTFCEcrit <- maxTFCE[round(n_perm * (1 - alpha))]
 
 Mask <- abs(TFCE_Obs) >= maxTFCEcrit
 
@@ -215,7 +199,7 @@ for (ch in seq_len(nChan)) {
   for (t in seq_len(nTime)) {
     P_Values[ch, t] <-
       (sum(TFCE_permMax >= abs(TFCE_Obs[ch, t]), na.rm = TRUE) + 1) /
-      (nPerm + 1)
+      (n_perm + 1)
   }
 }
 
@@ -236,7 +220,7 @@ Results <- list(
   P_Values     = P_Values,
   Mask         = Mask,
   alpha        = alpha,
-  nPerm        = nPerm,
+  n_perm        = n_perm,
   model        = "Amplitude ~ GroupCode + (1|Subject)",
   permutation  = "Within-subject permutation"
 )
@@ -248,11 +232,11 @@ cat("Results stored.\n")
 ## Step 6: Save TFCE results
 ## ==========================================================
 
-if (!dir.exists("../results")) {
-  dir.create("../results")
+if (!dir.exists("../Results")) {
+  dir.create("../Results")
 }
 
-save(Results, times, nChan, channels, file = "../results/05_TFCE_within_subject_results.RData")
+save(Results, times, nChan, channels, file = "../Results/05_TFCE_within_subject_results.RData")
 
 
 cat("TFCE within-subject analysis completed and results saved.\n")
@@ -262,7 +246,7 @@ cat("TFCE within-subject analysis completed and results saved.\n")
 ```{r, echo=TRUE}
 rm(list =ls())
 source("../R/plot_eeg_map.R")
-load("../results/05_TFCE_within_subject_results.RData")
+load("../Results/05_TFCE_within_subject_results.RData")
 ## ==========================================================
 ## Step 7: Plot TFCE-corrected significant t-values
 ## ==========================================================

@@ -366,8 +366,8 @@ cat("Results stored.\n")
 ## Step 6: Save TFCE results
 ## ==========================================================
 
-if (!dir.exists("../results")) {
-  dir.create("../results")
+if (!dir.exists("../Results")) {
+  dir.create("../Results")
 }
 
 
@@ -377,10 +377,8 @@ save(
   nChan,
   channels,
   
-  file = paste0(
-    "../results/",
-    "08_TFCE_fully_crossed_subject_item_results.RData"
-  )
+  file = paste0("../Results/",
+                "08_TFCE_fully_crossed_subject_item_results.RData")
 )
 
 cat(paste0(
@@ -391,7 +389,7 @@ cat(paste0(
 
 ```{r, echo=TRUE}
 rm(list = ls())
-load("../results/08_TFCE_fully_crossed_subject_item_results.RData")
+load("../Results/08_TFCE_fully_crossed_subject_item_results.RData")
 source("../R/plot_eeg_map.R")
 ## ==========================================================
 ## Step 7: Plot significant effects

@@ -277,73 +277,6 @@ with_progress({
 # Return to normal single-session execution
 plan(sequential)
 
-# for (p in seq_len(n_perm)) {
-#   ## ----------------------------------------------------------
-#   ## 3.1 Permute ConditionCode within each student nested in class
-#   ## ----------------------------------------------------------
-#   
-#   perm_cond <- designTable %>%
-#     distinct(RowID, Class, Student, ConditionCode) %>%
-#     group_by(Class, Student) %>%
-#     mutate(ConditionCode_perm = sample(ConditionCode)) %>%
-#     ungroup() %>%
-#     select(RowID, ConditionCode = ConditionCode_perm)
-#   
-#   ## ----------------------------------------------------------
-#   ## 3.2 Replace observed condition labels with permuted labels
-#   ##
-#   ## EEG amplitudes are not permuted.
-#   ## Class and student labels are not permuted.
-#   ## ----------------------------------------------------------
-#   
-#   
-#   dat <- EEGlong %>%
-#   left_join(designTable, by = c("Class", "Student", "ConditionCode")) %>%
-#   mutate(
-#     Class = factor(Class),
-#     Student = factor(Student),
-#     Channel = factor(Channel),
-#     ConditionCode = as.numeric(ConditionCode),
-#     Time = as.numeric(Time),
-#     Amplitude = as.numeric(Amplitude)
-#   )
-#   
-#   
-#   perm_dat <- dat %>%
-#     select(-ConditionCode) %>%
-#     left_join(perm_cond, by = "RowID") %>%
-#     mutate(
-#       Class = factor(Class),
-#       Student = factor(Student),
-#       Channel = factor(Channel, levels = channels),
-#       ConditionCode = as.numeric(ConditionCode),
-#       Time = as.numeric(Time),
-#       Amplitude = as.numeric(Amplitude)
-#     )
-#   
-#   ## ----------------------------------------------------------
-#   ## 3.3 Compute permutation t-map
-#   ## ----------------------------------------------------------
-#   
-#   t_perm <- compute_tmap(perm_dat)
-#   
-#   ## ----------------------------------------------------------
-#   ## 3.4 Compute permutation TFCE map
-#   ## ----------------------------------------------------------
-#   
-#   TFCE_perm <- tfce_transform(t_perm, E = 0.66, H = 2, dh = 0.1)
-#   
-#   ## ----------------------------------------------------------
-#   ## 3.5 Store maximum absolute TFCE statistic
-#   ## ----------------------------------------------------------
-#   
-#   TFCE_permMax[p] <- max(abs(TFCE_perm), na.rm = TRUE)
-#   
-#   if (p %% 50 == 0) {
-#     cat("Permutation", p, "of", n_perm, "\n")
-#   }
-# }
-
 cat("Permutation testing completed.\n")
 
 ## ==========================================================
@@ -409,7 +342,7 @@ Results <- list(
   P_Values     = P_Values,
   Mask         = Mask,
   alpha        = alpha,
-  nPerm        = 999,
+  nPerm        = n_perm,
   model = paste0("Amplitude ~ ConditionCode + ", "(1 | Class) + ", "(1 | Class:Student)"),
   permutation = paste0(
     "Condition labels permuted within each ",

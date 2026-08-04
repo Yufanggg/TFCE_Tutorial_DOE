@@ -26,9 +26,12 @@ output: html_document
 rm(list = ls())
 
 library(dplyr)
+library(future)
+library(future.apply)
 library(tidyr)
 library(lme4)
 library(lmerTest)
+
 
 source("../R/tfce_transform.R")
 source("../R/plot_eeg_map.R")
@@ -168,95 +171,178 @@ cat("Observed TFCE maps completed.\n")
 ## Step 3: Permutation distribution
 ## ==========================================================
 
+## ==========================================================
+## Step 3: Permutation distribution
+## ==========================================================
+
+library(future)
+library(future.apply)
+library(progressr)
+
 set.seed(123)
 
 n_perm <- 999
 
 TFCE_permMax_Group <- rep(NaN, n_perm)
 TFCE_permMax_Cond  <- rep(NaN, n_perm)
-TFCE_permMax_Int  <- rep(NaN, n_perm)
+TFCE_permMax_Int   <- rep(NaN, n_perm)
 
-for (p in seq_len(n_perm)) {
-  ## ----------------------------------------------------------
-  ## 3.1 Permute GroupCode between subjects
-  ## ----------------------------------------------------------
+## ------------------------------------------------------------
+## 3.1 Prepare the observed long-format dataset once
+## ------------------------------------------------------------
+
+dat <- EEGlong %>%
+  left_join(
+    designTable,
+    by = c("Subject", "GroupCode", "CondCode")
+  ) %>%
+  mutate(
+    Subject   = factor(Subject),
+    Channel   = factor(Channel),
+    GroupCode = as.numeric(GroupCode),
+    CondCode  = as.numeric(CondCode),
+    Time      = as.numeric(Time),
+    Amplitude = as.numeric(Amplitude)
+  )
+
+## ------------------------------------------------------------
+## 3.2 Set up parallel processing
+## ------------------------------------------------------------
+
+n_workers <- max(1, parallel::detectCores() - 1)
+
+plan(multisession, workers = n_workers)
+
+handlers("txtprogressbar")
+
+## ------------------------------------------------------------
+## 3.3 Parallel permutation test
+## ------------------------------------------------------------
+
+with_progress({
+
+  progress_update <- progressor(along = seq_len(n_perm))
+
+  perm_results <- future_lapply(
+    seq_len(n_perm),
+    function(p) {
+
+      ## ------------------------------------------------------
+      ## Permute GroupCode between subjects
+      ##
+      ## GroupCode is a between-subject variable. Therefore,
+      ## one permuted group label must be assigned to each
+      ## subject and retained across both condition rows.
+      ## ------------------------------------------------------
+      
+      ## ----------------------------------------------------------
+      ## 3.3.1 Permute GroupCode between subjects
+      ## ----------------------------------------------------------
+      
+      perm_group <- designTable %>%
+        distinct(RowID, Subject, GroupCode) %>%
+        mutate(GroupCode_perm = sample(GroupCode)) %>%
+        select(-GroupCode) %>%
+        rename(GroupCode = GroupCode_perm)
+      
+      perm_dat_group <- dat %>%
+        select(-GroupCode, -Subject) %>%
+        left_join(perm_group, by = "RowID") %>%
+        mutate(
+          GroupCode = as.numeric(GroupCode),
+          CondCode  = as.numeric(CondCode),
+          Subject = as.factor(Subject)
+        )
+      
+      verify <- perm_dat_group %>% distinct(GroupCode, GroupName)
+      View(verify)
+      
+      ## ----------------------------------------------------------
+      ## 3.2 Permute CondCode within subjects
+      ## ----------------------------------------------------------
+      perm_cond <- designTable %>%
+        distinct(RowID, Subject, CondCode) %>%
+        group_by(Subject) %>% mutate(CondCode_perm = sample(CondCode)) %>%
+        select(-CondCode) %>%
+        rename(CondCode = CondCode_perm)
+      
+      perm_dat_cond <- dat %>%
+        select(-CondCode, -Subject) %>%
+        left_join(perm_cond, by = "RowID") %>%
+        mutate(
+          GroupCode = as.numeric(GroupCode),
+          CondCode  = as.numeric(CondCode),
+          Subject = as.factor(Subject)
+        )
+      
+      verify2 <- perm_dat_cond %>% distinct(CondCode, RowID) %>% filter(RowID %% 2 == 0)
+      View(verify2)
   
-  perm_group <- designTable %>%
-    distinct(RowID, Subject, GroupCode) %>%
-    mutate(GroupCode_perm = sample(GroupCode)) %>%
-    select(-GroupCode) %>%
-    rename(GroupCode = GroupCode_perm)
-  
-  perm_dat_group <- dat %>%
-    select(-GroupCode, -Subject) %>%
-    left_join(perm_group, by = "RowID") %>%
-    mutate(
-      GroupCode = as.numeric(GroupCode),
-      CondCode  = as.numeric(CondCode),
-      Subject = as.factor(Subject)
+
+      ## ------------------------------------------------------
+      ## Compute permutation t-maps
+      ## ------------------------------------------------------
+
+      t_perm_group <- compute_tmaps(perm_dat_group)
+      t_perm_cond  <- compute_tmaps(perm_dat_cond)
+
+      ## ------------------------------------------------------
+      ## Apply TFCE
+      ## ------------------------------------------------------
+
+      TFCE_perm_Group <- tfce_transform(t_perm_group$Group,
+                                        E = 0.66,
+                                        H = 2,
+                                        dh = 0.1)
+      
+      TFCE_perm_Cond <- tfce_transform(t_perm_cond$Cond,
+                                       E = 0.66,
+                                       H = 2,
+                                       dh = 0.1)
+      
+      TFCE_perm_Int <- tfce_transform(t_perm_cond$Int,
+                                      E = 0.66,
+                                      H = 2,
+                                      dh = 0.1)
+
+      ## ------------------------------------------------------
+      ## Store maximum absolute TFCE values
+      ## ------------------------------------------------------
+
+      perm_max <- c(
+        Group = max(abs(TFCE_perm_Group), na.rm = TRUE),
+        Cond = max(abs(TFCE_perm_Cond), na.rm = TRUE),
+        Int = max(abs(TFCE_perm_Int), na.rm = TRUE)
+      )
+      
+      progress_update()
+      
+      perm_max
+    }, 
+    future.seed = TRUE,
+    future.packages = c(
+      "dplyr",
+      "tidyr",
+      "lme4",
+      "lmerTest"
     )
-  
-  verify <- perm_dat_group %>% distinct(GroupCode, GroupName)
-  View(verify)
-  
-  ## ----------------------------------------------------------
-  ## 3.2 Permute CondCode within subjects
-  ## ----------------------------------------------------------
-  
-  perm_cond <- designTable %>%
-    distinct(RowID, Subject, CondCode) %>%
-    group_by(Subject) %>% mutate(CondCode_perm = sample(CondCode)) %>%
-    select(-CondCode) %>%
-    rename(CondCode = CondCode_perm)
-  
-  perm_dat_cond <- dat %>%
-    select(-CondCode, -Subject) %>%
-    left_join(perm_cond, by = "RowID") %>%
-    mutate(
-      GroupCode = as.numeric(GroupCode),
-      CondCode  = as.numeric(CondCode),
-      Subject = as.factor(Subject)
-    )
-  
-  verify2 <- perm_dat_cond %>% distinct(CondCode, RowID) %>% filter(RowID %% 2 == 0)
-  View(verify2)
-  
-  ## ----------------------------------------------------------
-  ## 3.3 Compute permutation t-maps
-  ## ----------------------------------------------------------
-  
-  t_perm_group <- compute_tmaps(perm_dat_group)
-  t_perm_cond  <- compute_tmaps(perm_dat_cond)
-  
-  TFCE_perm_Group <- tfce_transform(t_perm_group$Group,
-                                    E = 0.66,
-                                    H = 2,
-                                    dh = 0.1)
-  
-  TFCE_perm_Cond <- tfce_transform(t_perm_cond$Cond,
-                                   E = 0.66,
-                                   H = 2,
-                                   dh = 0.1)
-  
-  TFCE_perm_Int <- tfce_transform(t_perm_cond$Int,
-                                  E = 0.66,
-                                  H = 2,
-                                  dh = 0.1)
-  
-  TFCE_permMax_Group[p] <- max(abs(TFCE_perm_Group), na.rm = TRUE)
-  TFCE_permMax_Cond[p]  <- max(abs(TFCE_perm_Cond), na.rm = TRUE)
-  TFCE_permMax_Int[p]   <- max(abs(TFCE_perm_Int), na.rm = TRUE)
-  
-  if (p %% 50 == 0) {
-    cat("Permutation", p, "of", n_perm, "\n")
-  }
-}
+  )
+})
+
+## ------------------------------------------------------------
+## 3.4 Combine permutation results
+## ------------------------------------------------------------
+
+perm_results <- do.call(rbind, perm_results)
+
+TFCE_permMax_Group <- perm_results[, "Group"]
+TFCE_permMax_Cond  <- perm_results[, "Cond"]
+TFCE_permMax_Int   <- perm_results[, "Int"]
+
+## Return to normal single-session execution
+plan(sequential)
 
 cat("Permutation testing completed.\n")
-
-## ==========================================================
-## Step 4: TFCE-corrected significance
-## ==========================================================
 
 cat("Step 4: Computing TFCE-corrected significance...\n")
 
@@ -344,18 +430,18 @@ cat("Results stored.\n")
 ## Step 6: Save TFCE results
 ## ==========================================================
 
-if (!dir.exists("../results")) {
-  dir.create("../results")
+if (!dir.exists("../Results")) {
+  dir.create("../Results")
 }
 
-save(Results, times, nChan, channels, file = "../results/06_TFCE_split_plot_results.RData")
+save(Results, times, nChan, channels, file = "../Results/06_TFCE_split_plot_results.RData")
 
 cat("TFCE split-plot analysis completed and results saved.\n")
 ```
 
 ```{r, echo=TRUE}
 rm(list = ls())
-load("../results/06_TFCE_split_plot_results.RData")
+load("../Results/06_TFCE_split_plot_results.RData")
 source("../R/plot_eeg_map.R")
 ## ==========================================================
 ## Step 7: Plot TFCE-corrected significant t-values
