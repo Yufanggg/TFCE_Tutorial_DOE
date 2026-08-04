@@ -79,7 +79,7 @@ nTime <- length(times)
 ## ==========================================================
 ## Basic checks
 ## ==========================================================
-cell_sizes <- designTable %>%
+cell_sizes <- dat %>%
   count(FactorA, FactorB)
 
 if (nrow(cell_sizes) != 4) {
@@ -130,7 +130,7 @@ compute_tmap_2x2 <- function(data) {
       pull(x)
     
     matrix(
-      values,
+      tmat,
       nrow = nChan,
       ncol = nTime,
       byrow = TRUE,
@@ -138,9 +138,9 @@ compute_tmap_2x2 <- function(data) {
     )
   }
   
-  list(A = make_matrix(t_A),
-       B = make_matrix(t_B),
-       Int = make_matrix(t_Int))
+  list(A = make_matrix("t_A"),
+       B = make_matrix("t_B"),
+       Int = make_matrix("t_Int"))
 }
 
 
@@ -150,7 +150,7 @@ compute_tmap_2x2 <- function(data) {
 
 cat("Step 1: Computing observed t-map...\n")
 
-t_Obs <- compute_tmaps_2x2(dat)
+t_Obs <- compute_tmap_2x2(dat)
 
 t_ObsA <- t_Obs$A
 t_ObsB <- t_Obs$B
@@ -368,7 +368,7 @@ maxTFCEInt <- sort(c(TFCE_permMaxInt, max(abs(TFCE_ObsInt), na.rm = TRUE)))
 
 maxTFCEcritInt <- maxTFCEInt[round(nPerm * (1 - alpha))]
 
-MaskInt <- abs(maxTFCEInt) >= maxTFCEcritInt
+MaskInt <- abs(TFCE_ObsInt) >= maxTFCEcritInt
 
 P_ValuesInt <- matrix(NA,
                     nrow = nChan,
