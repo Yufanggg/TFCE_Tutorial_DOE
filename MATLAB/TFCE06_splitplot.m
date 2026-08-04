@@ -29,7 +29,7 @@ fprintf('\nStarting split-plot TFCE analysis...\n');
 
 %% Load data
 
-load('../data/06_simulated_split_plot_EEG.mat', ...
+load('../Data/06_simulated_split_plot_EEG.mat', ...
      'EEGdata', 'designTable');
 
 times = -200:4:800;
@@ -141,6 +141,7 @@ for ch = 1:nChan
         % 4 = Interaction
         t_Obs_Group(ch,tp) = lme.Coefficients.tStat(2);
         t_Obs_Cond(ch,tp)  = lme.Coefficients.tStat(3);
+        t_Obs_Int(ch, tp) = lme.Coefficients.tStat(4);
 
     end
 end
@@ -153,6 +154,7 @@ fprintf('Step 2: Computing observed TFCE maps...\n');
 
 TFCE_Obs_Group = ept_mex_TFCE2D(t_Obs_Group, ChN, E_H);
 TFCE_Obs_Cond  = ept_mex_TFCE2D(t_Obs_Cond,  ChN, E_H);
+TFCE_Obs_Int   = ept_mex_TFCE2D(t_Obs_Int,  ChN, E_H);
 
 fprintf('Observed TFCE maps completed.\n');
 
