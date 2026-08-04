@@ -320,15 +320,15 @@ disp(size(EEGdata));
 % 14. Save dataset
 %% ==========================================================
 
-if ~exist('../data','dir')
-    mkdir('../data');
+if ~exist('../Data','dir')
+    mkdir('../Data');
 end
 
-save('../data/07_simulated_nested_class_student_EEG.mat', ...
+save('../Data/07_simulated_nested_class_student_EEG.mat', ...
      'EEGdata', ...
      'designTable');
 
-disp('Dataset saved: ../data/07_simulated_nested_class_student_EEG.mat');
+disp('Dataset saved: ../Data/07_simulated_nested_class_student_EEG.mat');
 disp('Saved variables: EEGdata, designTable');
 disp('Final EEGdata size:');
 disp(size(EEGdata));

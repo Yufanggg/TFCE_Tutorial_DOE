@@ -302,18 +302,18 @@ designTable = table(Subject, Group, group, covariate, ...
 
 disp(designTable(1:10,:));
 
-%% ==========================================================
-% Save dataset
-% Only EEGdata and designTable are saved
-%% ==========================================================
+% ==========================================================
+Save dataset
+Only EEGdata and designTable are saved
+% ==========================================================
 
-if ~exist('../data', 'dir')
-    mkdir('../data');
+if ~exist('../Data', 'dir')
+    mkdir('../Data');
 end
 
-save('../data/02_simulated_between_subject_covariate_EEG.mat', ...
+save('../Data/02_simulated_between_subject_covariate_EEG.mat', ...
      'EEGdata', ...
      'designTable');
 
-disp('Dataset saved: ../data/02_simulated_between_subject_covariate_EEG.mat');
+disp('Dataset saved: ../Data/02_simulated_between_subject_covariate_EEG.mat');
 disp('Saved variables: EEGdata, designTable');

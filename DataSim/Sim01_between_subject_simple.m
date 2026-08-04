@@ -281,13 +281,13 @@ disp(designTable(1:10,:));
 % Only EEGdata and designTable will be saved
 %% ==========================================================
 
-if ~exist('../data', 'dir')
-    mkdir('../data');
+if ~exist('../Data', 'dir')
+    mkdir('../Data');
 end
 
-save('../data/01_simulated_between_subject_EEG.mat', ...
+save('../Data/01_simulated_between_subject_EEG.mat', ...
      'EEGdata', ...
      'designTable');
 
-disp('Dataset saved: ../data/01_simulated_between_subject_EEG.mat');
+disp('Dataset saved: ../Data/01_simulated_between_subject_EEG.mat');
 disp('Saved variables: EEGdata, designTable');

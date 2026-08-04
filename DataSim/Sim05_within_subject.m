@@ -16,7 +16,8 @@
 %   CondName    % Control / Treatment
 %% ==========================================================
 
-clear; clc; close all; rng(123);
+clear; clc; close all; 
+rng(123);
 
 %% ==========================================================
 % Simulation settings
@@ -296,15 +297,15 @@ end
 % Only EEGdata and designTable are saved
 %% ==========================================================
 
-if ~exist('../data','dir')
-    mkdir('../data');
+if ~exist('../Data','dir')
+    mkdir('../Data');
 end
 
-save('../data/05_simulated_within_subject_EEG.mat', ...
+save('../Data/05_simulated_within_subject_EEG.mat', ...
      'EEGdata', ...
      'designTable');
 
-disp('Dataset saved: ../data/05_simulated_within_subject_EEG.mat');
+disp('Dataset saved: ../Data/05_simulated_within_subject_EEG.mat');
 disp('Saved variables: EEGdata, designTable');
 disp('Final EEGdata size:');
 disp(size(EEGdata));

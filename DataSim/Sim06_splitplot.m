@@ -361,6 +361,18 @@ subplot(3,1,1);
 imagesc(times, 1:nChan, truthGroupDiff);
 axis xy;
 xlim([-200 800]);
+
+set(gca, ...
+    'YTick', 1:nChan, ...
+    'YTickLabel', {chanlocs_EEG.labels}, ...
+    'XTick', -200:200:800, ...
+    'TickLength', [0 0], ...
+    'FontSize', 10, ...
+    'FontName', 'Arial');
+
+xlabel('Time (ms)');
+ylabel('Channel');
+
 title('Ground-Truth Main Group Effect: Patient - HC');
 ylabel('Channel');
 colorbar;
@@ -369,6 +381,17 @@ subplot(3,1,2);
 imagesc(times, 1:nChan, truthWordTypeDiff);
 axis xy;
 xlim([-200 800]);
+set(gca, ...
+    'YTick', 1:nChan, ...
+    'YTickLabel', {chanlocs_EEG.labels}, ...
+    'XTick', -200:200:800, ...
+    'TickLength', [0 0], ...
+    'FontSize', 10, ...
+    'FontName', 'Arial');
+
+xlabel('Time (ms)');
+ylabel('Channel');
+
 title('Ground-Truth Main Word-Type Effect: Verb - Noun');
 ylabel('Channel');
 colorbar;
@@ -377,6 +400,16 @@ subplot(3,1,3);
 imagesc(times, 1:nChan, truthInteractionDiff);
 axis xy;
 xlim([-200 800]);
+set(gca, ...
+    'YTick', 1:nChan, ...
+    'YTickLabel', {chanlocs_EEG.labels}, ...
+    'XTick', -200:200:800, ...
+    'TickLength', [0 0], ...
+    'FontSize', 10, ...
+    'FontName', 'Arial');
+
+xlabel('Time (ms)');
+ylabel('Channel');
 title('Ground-Truth Interaction Effect');
 xlabel('Time (ms)');
 ylabel('Channel');
@@ -387,6 +420,50 @@ colorbar;
 
 chanlocs_plot = chanlocs_EEG;
 
+for k = 1:length(chanlocs_plot)
+    chanlocs_plot(k).theta = chanlocs_plot(k).theta + 90;
+end
+
+[~, peakIdx] = min(abs(times - p300Latency));
+
+if exist('topoplot', 'file')
+
+    figure;
+    topoplot(groupDiff(:,peakIdx), ...
+        chanlocs_plot, 'electrodes', 'labels');
+
+    colorbar;
+    title('Observed group difference at 300 ms');
+
+else
+
+    warning('topoplot not found. Please add EEGLAB to your MATLAB path.');
+
+end
+
+chanlocs_plot = chanlocs_EEG;
+for k = 1:length(chanlocs_plot)
+    chanlocs_plot(k).theta = chanlocs_plot(k).theta + 90;
+end
+
+[~, peakIdx] = min(abs(times - p300Latency));
+
+if exist('topoplot', 'file')
+
+    figure;
+    topoplot(wordTypeDiff(:,peakIdx), ...
+        chanlocs_plot, 'electrodes', 'labels');
+
+    colorbar;
+    title('Observed wordType difference at 300 ms');
+
+else
+
+    warning('topoplot not found. Please add EEGLAB to your MATLAB path.');
+
+end
+
+chanlocs_plot = chanlocs_EEG;
 for k = 1:length(chanlocs_plot)
     chanlocs_plot(k).theta = chanlocs_plot(k).theta + 90;
 end
@@ -413,15 +490,15 @@ end
 % Only EEGdata and designTable are saved
 %% ==========================================================
 
-if ~exist('../data', 'dir')
-    mkdir('../data');
+if ~exist('../Data', 'dir')
+    mkdir('../Data');
 end
 
-save('../data/06_simulated_split_plot_EEG.mat', ...
+save('../Data/06_simulated_split_plot_EEG.mat', ...
      'EEGdata', ...
      'designTable');
 
-disp('Dataset saved: ../data/06_simulated_split_plot_EEG.mat');
+disp('Dataset saved: ../Data/06_simulated_split_plot_EEG.mat');
 disp('Saved variables: EEGdata, designTable');
 disp('Final EEGdata size:');
 disp(size(EEGdata));

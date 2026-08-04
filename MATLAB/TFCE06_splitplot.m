@@ -123,6 +123,7 @@ fprintf('Step 1: Computing observed t-statistic maps...\n');
 
 t_Obs_Group = zeros(nChan, nTime);
 t_Obs_Cond  = zeros(nChan, nTime);
+t_Obs_Int   = zeros(nChan, nTime);
 
 for ch = 1:nChan
     for tp = 1:nTime
@@ -141,7 +142,7 @@ for ch = 1:nChan
         % 4 = Interaction
         t_Obs_Group(ch,tp) = lme.Coefficients.tStat(2);
         t_Obs_Cond(ch,tp)  = lme.Coefficients.tStat(3);
-        t_Obs_Int(ch, tp) = lme.Coefficients.tStat(4);
+        t_Obs_Int(ch, tp)  = lme.Coefficients.tStat(4);
 
     end
 end
@@ -173,6 +174,7 @@ fprintf('Observed TFCE maps completed.\n');
 
 TFCE_permMax_Group = nan(nPerm,1);
 TFCE_permMax_Cond  = nan(nPerm,1);
+TFCE_permMax_Int   = nan(nPerm,1);
 
 fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
 
@@ -180,6 +182,7 @@ parfor p = 1:nPerm
 
     perm_t_Group = nan(nChan, nTime);
     perm_t_Cond  = nan(nChan, nTime);
+    perm_t_Int   = nan(nChan, nTime);
 
     %% Permute Group between subjects
 
@@ -238,6 +241,7 @@ parfor p = 1:nPerm
                 'EEG ~ Group * Cond + (1|Subject)');
 
             perm_t_Cond(ch,tp) = lme_C.Coefficients.tStat(3);
+            perm_t_Int(ch,tp)  = lme_C.Coefficients.tStat(4);
 
         end
     end
@@ -246,9 +250,12 @@ parfor p = 1:nPerm
 
     TFCE_perm_Group = ept_mex_TFCE2D(perm_t_Group, ChN, E_H);
     TFCE_perm_Cond  = ept_mex_TFCE2D(perm_t_Cond,  ChN, E_H);
+    TFCE_perm_Int   = ept_mex_TFCE2D(perm_t_Int,  ChN, E_H);
+    
 
     TFCE_permMax_Group(p) = max(abs(TFCE_perm_Group(:)));
     TFCE_permMax_Cond(p)  = max(abs(TFCE_perm_Cond(:)));
+    TFCE_permMax_Int(p)   = max(abs(TFCE_perm_Int(:)));
 
 end
 
@@ -265,12 +272,17 @@ maxTFCEcrit_Group = maxTFCE_Group(round(nPerm*(1-alpha)));
 maxTFCE_Cond = sort([TFCE_permMax_Cond;max(abs(TFCE_Obs_Cond(:)))]);
 maxTFCEcrit_Cond = maxTFCE_Cond(round(nPerm*(1-alpha)));
 
+maxTFCE_Int = sort([TFCE_permMax_Int;max(abs(TFCE_Obs_Int(:)))]);
+maxTFCEcrit_Int = maxTFCE_Int(round(nPerm*(1-alpha)));
+
 
 Mask_Group = abs(TFCE_Obs_Group) >= maxTFCEcrit_Group;
 Mask_Cond  = abs(TFCE_Obs_Cond)  >= maxTFCEcrit_Cond;
+Mask_Int   = abs(TFCE_Obs_Int)   >= maxTFCEcrit_Int;
 
 P_Values_Group = nan(nChan, nTime);
 P_Values_Cond  = nan(nChan, nTime);
+P_Values_Int  = nan(nChan, nTime);
 
 
 for ch = 1:nChan
@@ -282,6 +294,11 @@ for ch = 1:nChan
         P_Values_Cond(ch, tpoint) = ...
             (sum(TFCE_permMax_Cond >= abs(TFCE_Obs_Cond(ch, tpoint))) + 1) / ...
             (nPerm + 1);
+        
+        P_Values_Int(ch, tpoint) = ...
+            (sum(TFCE_permMax_Int >= abs(TFCE_Obs_Int(ch, tpoint))) + 1) / ...
+            (nPerm + 1);
+        
     end
 end
 
@@ -302,6 +319,13 @@ Results.TFCE_Null_Cond = TFCE_permMax_Cond;
 Results.maxTFCEcrit_Cond  = maxTFCEcrit_Cond;
 Results.P_Values_Cond  = P_Values_Cond;
 Results.Mask_Cond      = Mask_Cond;
+
+Results.tObs_Int       = t_Obs_Int;
+Results.TFCE_Obs_Int  = TFCE_Obs_Int;
+Results.TFCE_Null_Int = TFCE_permMax_Int;
+Results.maxTFCEcrit_Int = maxTFCEcrit_Int;
+Results.P_Values_Int  = P_Values_Int;
+Results.Mask_Int      = Mask_Int;
 
 Results.alpha = alpha;
 Results.nPerm = nPerm;
@@ -330,4 +354,7 @@ plot_tfce_results(Results.tObs_Group, Results.Mask_Group, times, e_loc, ...
     'TFCE-corrected Group Effect');
 
 plot_tfce_results(Results.tObs_Cond, Results.Mask_Cond, times, e_loc, ...
+    'TFCE-corrected Condition Effect');
+
+plot_tfce_results(Results.tObs_Int, Results.Mask_Int, times, e_loc, ...
     'TFCE-corrected Condition Effect');

@@ -609,10 +609,10 @@ disp(size(designTable));
 %% ==========================================================
 
 outputDirectory = ...
-    '../data';
+    '../Data';
 
 outputFile = ...
-    '../data/08_simulated_fully_crossed_subject_item_EEG.mat';
+    '../Data/08_simulated_fully_crossed_subject_item_EEG.mat';
 
 if ~exist(outputDirectory, 'dir')
 
