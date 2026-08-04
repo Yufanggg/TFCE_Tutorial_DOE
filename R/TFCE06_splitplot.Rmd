@@ -96,12 +96,14 @@ for (s in subjects) {
 compute_tmaps <- function(data) {
   res <- data %>%
     group_by(Channel, Time) %>%
-    group_modify(~ {
+    group_modify( ~ {
       fit <- lmer(Amplitude ~ GroupCode * CondCode + (1 | Subject), data = .x)
       
       cf <- coef(summary(fit))
       
-      tibble(t_Group = cf["GroupCode", "t value"], t_Cond  = cf["CondCode", "t value"], )
+      tibble(t_Group = cf["GroupCode", "t value"],
+             t_Cond  = cf["CondCode", "t value"],
+             t_Int   = cf["GroupCode:CondCode", "t value"])
     }) %>%
     ungroup()
   
@@ -123,7 +125,7 @@ compute_tmaps <- function(data) {
     )
   }
   
-  list(Group = make_mat("t_Group"), Cond  = make_mat("t_Cond"))
+  list(Group = make_mat("t_Group"), Cond  = make_mat("t_Cond"), Int = make_mat("t_Int"))
 }
 
 ## ==========================================================
@@ -136,6 +138,8 @@ t_Obs <- compute_tmaps(dat)
 
 t_Obs_Group <- t_Obs$Group
 t_Obs_Cond  <- t_Obs$Cond
+t_Obs_Int   <- t_Obs$Int
+
 
 
 cat("Observed t-maps completed.\n")
@@ -153,6 +157,10 @@ TFCE_Obs_Cond  <- tfce_transform(t_Obs_Cond,
                                  E = 0.66,
                                  H = 2,
                                  dh = 0.1)
+TFCE_Obs_Int <- tfce_transform(t_Obs_Int,
+                               E = 0.66,
+                               H = 2,
+                               dh = 0.1)
 
 cat("Observed TFCE maps completed.\n")
 
@@ -166,6 +174,7 @@ n_perm <- 999
 
 TFCE_permMax_Group <- rep(NaN, n_perm)
 TFCE_permMax_Cond  <- rep(NaN, n_perm)
+TFCE_permMax_Int  <- rep(NaN, n_perm)
 
 for (p in seq_len(n_perm)) {
   ## ----------------------------------------------------------
@@ -229,8 +238,14 @@ for (p in seq_len(n_perm)) {
                                    H = 2,
                                    dh = 0.1)
   
+  TFCE_perm_Int <- tfce_transform(t_perm_cond$Int,
+                                  E = 0.66,
+                                  H = 2,
+                                  dh = 0.1)
+  
   TFCE_permMax_Group[p] <- max(abs(TFCE_perm_Group), na.rm = TRUE)
   TFCE_permMax_Cond[p]  <- max(abs(TFCE_perm_Cond), na.rm = TRUE)
+  TFCE_permMax_Int[p]   <- max(abs(TFCE_perm_Int), na.rm = TRUE)
   
   if (p %% 50 == 0) {
     cat("Permutation", p, "of", n_perm, "\n")
@@ -248,14 +263,17 @@ cat("Step 4: Computing TFCE-corrected significance...\n")
 alpha <- 0.05
 
 maxTFCE_Group <- sort(c(TFCE_permMax_Group, max(abs(TFCE_Obs_Group), na.rm = TRUE)))
-
 maxTFCE_Cond <- sort(c(TFCE_permMax_Cond, max(abs(TFCE_Obs_Cond), na.rm = TRUE)))
+maxTFCE_Int <- sort(c(TFCE_permMax_Int, max(abs(TFCE_Obs_Int), na.rm = TRUE)))
 
 maxTFCEcrit_Group <- maxTFCE_Group[round((n_perm + 1) * (1 - alpha))]
 maxTFCEcrit_Cond  <- maxTFCE_Cond[round((n_perm + 1) * (1 - alpha))]
+maxTFCEcrit_Int <- maxTFCE_Int[round((n_perm + 1) * (1 - alpha))]
+
 
 Mask_Group <- abs(TFCE_Obs_Group) >= maxTFCEcrit_Group
 Mask_Cond  <- abs(TFCE_Obs_Cond)  >= maxTFCEcrit_Cond
+Mask_Int <- abs(TFCE_Obs_Int) >= maxTFCEcrit_Int
 
 compute_p_values <- function(TFCE_Obs, TFCE_permMax) {
   P <- matrix(
@@ -278,10 +296,12 @@ compute_p_values <- function(TFCE_Obs, TFCE_permMax) {
 
 P_Values_Group <- compute_p_values(TFCE_Obs_Group, TFCE_permMax_Group)
 P_Values_Cond  <- compute_p_values(TFCE_Obs_Cond, TFCE_permMax_Cond)
+P_Values_Int <- compute_p_values(TFCE_Obs_Int, TFCE_permMax_Int)
 
 cat("TFCE-corrected significance completed.\n")
-cat(sprintf("Critical TFCE Group = %.4f\n", maxTFCEcrit_Group))
-cat(sprintf("Critical TFCE Cond  = %.4f\n", maxTFCEcrit_Cond))
+cat(sprintf("Critical TFCE Group       = %.4f\n", maxTFCEcrit_Group))
+cat(sprintf("Critical TFCE Condition   = %.4f\n", maxTFCEcrit_Cond))
+cat(sprintf("Critical TFCE Interaction = %.4f\n", maxTFCEcrit_Int))
 
 ## ==========================================================
 ## Step 5: Store results
@@ -303,6 +323,13 @@ Results <- list(
   maxTFCEcrit_Cond = maxTFCEcrit_Cond,
   P_Values_Cond = P_Values_Cond,
   Mask_Cond = Mask_Cond,
+  
+  tObs_Int = t_Obs_Int,
+  TFCE_Obs_Int = TFCE_Obs_Int,
+  TFCE_Null_Int = TFCE_permMax_Int,
+  maxTFCEcrit_Int = maxTFCEcrit_Int,
+  P_Values_Int = P_Values_Int,
+  Mask_Int = Mask_Int,
   
   alpha = alpha,
   nPerm = n_perm,
@@ -348,6 +375,17 @@ plot_eeg_map(mT_Cond,
              nChan,
              channels)
 
+mT_Int <- Results$tObs_Int
+mT_Int[!Results$Mask_Int] <- 0
+
+plot_eeg_map(
+  mT_Int,
+  "TFCE-corrected Group ¡Á Condition Interaction",
+  times,
+  nChan,
+  channels
+)
+
 ## ==========================================================
 ## Step 7: Plot observed TFCE maps
 ## ==========================================================
@@ -363,4 +401,12 @@ plot_eeg_map(Results$TFCE_Obs_Cond,
              times,
              nChan,
              channels)
+
+plot_eeg_map(
+  Results$TFCE_Obs_Int,
+  "Observed TFCE Map: Group ¡Á Condition Interaction",
+  times,
+  nChan,
+  channels
+)
 ```
