@@ -252,7 +252,10 @@ set(gca, ...
 xlabel('Time (ms)');
 ylabel('Channel');
 title('TFCE-corrected t-Obs: Treatment - Control');
-colorbar;
+cb = colorbar;
+ylabel(cb, 't-value', ...
+    'FontSize', 15, ...
+    'FontName', 'Arial');
 
 %% Step 7: Plot observed TFCE map
 
@@ -271,6 +274,8 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Observed TFCE Map: LME Treatment Effect');
-colorbar;
+cb = colorbar;
+ylabel(cb, 'TFCE-value', ...
+    'FontSize', 15, ...
+    'FontName', 'Arial');
 

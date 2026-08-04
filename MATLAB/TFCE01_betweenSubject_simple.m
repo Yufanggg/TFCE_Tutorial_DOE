@@ -237,7 +237,10 @@ xlabel('Time (ms)');
 ylabel('Channel');
 title('TFCE-corrected Significant Effects');
 
-colorbar;
+cb = colorbar;
+ylabel(cb, 't-value', ...
+    'FontSize', 15, ...
+    'FontName', 'Arial');
 
 %% ==========================================================
 % Step 8: Plot TFCE values
@@ -260,7 +263,9 @@ set(gca, ...
 
 xlabel('Time (ms)');
 ylabel('Channel');
-title('Observed TFCE Map');
 
-colorbar;
+cb = colorbar;
+ylabel(cb, 'TFCE-value', ...
+    'FontSize', 15, ...
+    'FontName', 'Arial');
 
