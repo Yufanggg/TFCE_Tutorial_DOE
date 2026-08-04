@@ -225,7 +225,6 @@ plan(
   workers = n_workers
 )
 
-handlers(global = TRUE)
 handlers("txtprogressbar")
 
 ## ------------------------------------------------------------
@@ -410,7 +409,7 @@ Results <- list(
   P_Values     = P_Values,
   Mask         = Mask,
   alpha        = alpha,
-  nPerm        = nPerm,
+  nPerm        = 999,
   model = paste0("Amplitude ~ ConditionCode + ", "(1 | Class) + ", "(1 | Class:Student)"),
   permutation = paste0(
     "Condition labels permuted within each ",
@@ -424,8 +423,8 @@ cat("Results stored.\n")
 ## Step 6: Save TFCE results
 ## ==========================================================
 
-if (!dir.exists("../results")) {
-  dir.create("../results")
+if (!dir.exists("../Results")) {
+  dir.create("../Results")
 }
 
 save(
