@@ -440,9 +440,9 @@ if ~exist('../Data', 'dir')
     mkdir('../Data');
 end
 
-save('../Data/03_simulated_between_subject_2by2Int_EEG.mat', ...
+save('../Data/03_simulated_between_subject_2by2_EEG.mat', ...
     'EEGdata', ...
     'designTable');
 
-disp('Dataset saved: ../Data/03_simulated_between_subject_2by2Int_EEG.mat');
+disp('Dataset saved: ../Data/03_simulated_between_subject_2by2_EEG.mat');
 disp('Saved variables: EEGdata, designTable');

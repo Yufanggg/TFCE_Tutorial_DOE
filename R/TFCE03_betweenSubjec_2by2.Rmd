@@ -7,19 +7,31 @@ output: html_document
 
 ```{r, echo=TRUE}
 ## ==========================================================
-## TFCE for between-subject 2 x 2 factorial design without interaction in R
+## TFCE for between-subject 2 x 2 factorial design in R
 ##
-## Model:
-##   Amplitude ~ FactorA + FactorB
+## Full model:
+##   Amplitude ~ FactorA * FactorB
 ##
 ## Tests:
 ##   1. Factor A main effect
 ##   2. Factor B main effect
+##   3. Factor A x Factor B interaction
 ##
 ## Permutation:
-##   Synchronized permutation test
-##   subject-level design labels are permuted once per permutation
-##   and reused for all Channel x Time points
+##
+##   Factor A:
+##     Permute FactorA within levels of FactorB.
+##
+##   Factor B:
+##     Permute FactorB within levels of FactorA.
+##
+##   Interaction:
+##     Obtain the interaction statistic from the same full
+##     model fitted after permuting FactorB within FactorA.
+##
+## Synchronized permutation:
+##   Subject-level design labels are permuted once during each
+##   permutation and reused at every Channel x Time point.
 ## ==========================================================
 
 rm(list = ls())
@@ -29,7 +41,6 @@ library(dplyr)
 library(fields)
 
 source("../R/tfce_transform.R")
-
 
 cat("\nStarting TFCE 2 x 2 between-subject analysis...\n")
 
@@ -63,32 +74,72 @@ nChan <- length(channels)
 nTime <- length(times)
 
 ## ==========================================================
+## Basic checks
+## ==========================================================
+cell_sizes <- designTable %>%
+  count(FactorA, FactorB)
+
+if (nrow(cell_sizes) != 4) {
+  stop("Some FactorA ¡Á FactorB combinations are missing.")
+}
+
+if (length(unique(cell_sizes$n)) != 1) {
+
+  print(cell_sizes)
+
+  stop(
+    "The experimental design is unbalanced. ",
+    "All FactorA ¡Á FactorB cells must contain ",
+    "the same number of subjects.",
+    
+    "IN THE CASE OF UNBALANCED DATA, PLEASE TURN TO TFCE04"
+  )
+
+}
+
+cat("\nBalanced 2 ¡Á 2 design detected.\n")
+
+## ==========================================================
 ## -2. Function: compute t-map for one effect
 ## ==========================================================
 
-compute_tmap_2x2 <- function(data, effect_name) {
+compute_tmap_2x2 <- function(data) {
   res <- data %>%
     group_by(Channel, Time) %>%
-    summarise(t_value = coef(summary(lm(
-      Amplitude ~ FactorA + FactorB
-    )))[effect_name, "t value"], .groups = "drop")
+    group_modify( ~ {
+      fit <- lm(Amplitude ~ FactorA * FactorB, data = .x)
+      
+      cf <- coef(summary(fit))
+      
+      tibble(t_A = cf["FactorA", "t value"],
+             t_B = cf["FactorB", "t value"],
+             t_Int = cf["FactorA:FactorB", "t value"])
+    }) %>%
+    ungroup()
   
-  tvec <- res %>%
-    mutate(
-      Channel = factor(Channel, levels = channels),
-      Time    = factor(Time, levels = times)
-    ) %>%
-    arrange(Channel, Time) %>%
-    pull(t_value)
+  make_matrix <- function(x) {
+    tmat <- res %>%
+      mutate(
+        Channel = factor(Channel, levels = channels),
+        Time = factor(Time, levels = times)
+      ) %>%
+      arrange(Channel, Time) %>%
+      pull(x)
+    
+    matrix(
+      values,
+      nrow = nChan,
+      ncol = nTime,
+      byrow = TRUE,
+      dimnames = list(channels, times)
+    )
+  }
   
-  matrix(
-    tvec,
-    nrow = nChan,
-    ncol = nTime,
-    byrow = TRUE,
-    dimnames = list(channels, times)
-  )
+  list(A = make_matrix(t_A),
+       B = make_matrix(t_B),
+       Int = make_matrix(t_Int))
 }
+
 
 ## ==========================================================
 ## Step 1: Observed t-map
@@ -96,8 +147,11 @@ compute_tmap_2x2 <- function(data, effect_name) {
 
 cat("Step 1: Computing observed t-map...\n")
 
-t_ObsA <- compute_tmap_2x2(dat, "FactorA")
-t_ObsB <- compute_tmap_2x2(dat, "FactorB")
+t_Obs <- compute_tmaps_2x2(dat)
+
+t_ObsA <- t_Obs$A
+t_ObsB <- t_Obs$B
+t_ObsInt <- t_Obs$Int
 
 cat("Observed t-map completed.\n")
 
@@ -111,6 +165,8 @@ TFCE_ObsA <- tfce_transform(t_ObsA, E  = 0.66, H  = 2, dh = 0.1)
 
 TFCE_ObsB <- tfce_transform(t_ObsB, E  = 0.66, H  = 2, dh = 0.1)
 
+TFCE_ObsInt <- tfce_transform(t_ObsInt, E = 0.66, H = 2, dh = 0.1)
+
 cat("Observed TFCE map completed.\n")
 
 ## ========================================================
@@ -122,8 +178,8 @@ cat("Observed TFCE map completed.\n")
 ## For Factor B:
 ##   permute FactorB within strata of FactorA
 ##
-## For Interaction:
-##   permute full 2 x 2 cell labels across subjects
+## The Factor B and interaction statistics are extracted from
+## the same permuted full factorial model
 ##
 ## The same subject-level permutation is reused for all
 ## Channel x Time points.
@@ -137,9 +193,11 @@ TFCE_permMaxA <- TFCE_permMaxB <- rep(NA_real_, nPerm)
 cat("Step 3: Starting synchronized permutation testing...\n")
 
 for (p in seq_len(nPerm)) {
-  #-----------------------------------------------
-  # for factor A
-  #-----------------------------------------------
+  ## --------------------------------------------------------
+  ## 3.1 Factor A permutation
+  ##
+  ## Permute FactorA within levels of FactorB.
+  ## --------------------------------------------------------
   perm_designA <- designTable %>%
     group_by(FactorB) %>%
     mutate(FactorA = sample(FactorA)) %>%
@@ -155,17 +213,25 @@ for (p in seq_len(nPerm)) {
       FactorB     = as.numeric(FactorB)
     )
   
-  t_perm_A <- compute_tmap_2x2(perm_datA, "FactorA")
+  t_perm_A <- compute_tmap_2x2(perm_datA)
   
-  TFCE_perm_A <- tfce_transform(t_perm_A,
+  TFCE_perm_A <- tfce_transform(t_permA$A,
                                 E  = 0.66,
                                 H  = 2,
                                 dh = 0.1)
   TFCE_permMaxA[p] <- max(abs(TFCE_perm_A), na.rm = TRUE)
   
-  #-----------------------------------------------
-  # for factor B
-  #-----------------------------------------------
+  ## --------------------------------------------------------
+  ## 3.2 Factor B and interaction permutation
+  ##
+  ## Permute FactorB within levels of FactorA.
+  ##
+  ## Extract both:
+  ##   - FactorB coefficient
+  ##   - FactorA:FactorB coefficient
+  ##
+  ## from the same permuted full model.
+  ## --------------------------------------------------------
   perm_designB <- designTable %>%
     group_by(FactorA) %>%
     mutate(FactorB = sample(FactorB)) %>%
@@ -181,13 +247,19 @@ for (p in seq_len(nPerm)) {
       FactorB     = as.numeric(FactorB)
     )
   
-  t_perm_B <- compute_tmap_2x2(perm_datB, "FactorB")
-  TFCE_perm_B <- tfce_transform(t_perm_B,
+  t_perm_B <- compute_tmap_2x2(perm_datB)
+  TFCE_perm_B <- tfce_transform(t_permB$B,
                                 E  = 0.66,
                                 H  = 2,
                                 dh = 0.1)
   
+  TFCE_permInt <- tfce_transform(t_permB$Int,
+                                 E = 0.66,
+                                 H = 2,
+                                 dh = 0.1)
+  
   TFCE_permMaxB[p] <- max(abs(TFCE_perm_B), na.rm = TRUE)
+  TFCE_permMaxInt[p] <- max(abs(TFCE_permInt), na.rm = TRUE)
   
   if (p %% 50 == 0) {
     cat("Permutation", p, "of", nPerm, "\n")
@@ -243,16 +315,18 @@ for (ch in seq_len(nChan)) {
   }
 }
 
+maxTFCEInt <- sort(c(TFCE_permMaxInt, max(abs(TFCE_ObsInt), na.rm = TRUE)))
+
+maxTFCEcritInt <- maxTFCEInt[round(nPerm * (1 - alpha))]
+
+MaskInt <- abs(maxTFCEInt) >= maxTFCEcritInt
+
+P_ValuesInt <- matrix(NA,
+                    nrow = nChan,
+                    ncol = nTime,
+                    dimnames = dimnames(TFCE_ObsInt))
 
 cat("TFCE-corrected significance completed.\n")
-cat(
-  sprintf(
-    "Critical TFCE value for B  = %.4f\n; Critical TFCE value for B  = %.4f\n",
-    maxTFCEcritB,
-    maxTFCEcritB
-  )
-)
-
 
 Results <- list(
   tObsA          = t_ObsA,
@@ -268,6 +342,13 @@ Results <- list(
   maxTFCEcritB  = maxTFCEcritB,
   P_ValuesB     = P_ValuesB,
   MaskB         = MaskB,
+  
+  tObsInt = t_ObsInt,
+  TFCE_ObsInt = TFCE_ObsInt,
+  TFCE_NullInt = TFCE_permMaxInt,
+  maxTFCEcritInt = maxTFCEcritInt,
+  P_ValuesInt = P_ValuesInt,
+  MaskInt = MaskInt,
   
   alpha        = alpha,
   nPerm        = nPerm,
@@ -309,6 +390,11 @@ mB <- Results$tObsB
 mB[!Results$MaskB] <- 0
 plot_eeg_map(mB, "TFCE-corrected Factor B Effect", times, nChan, channels)
 
+
+mInt <- Results$tObsInt
+mInt[!Results$MaskInt] <- 0
+plot_eeg_map(mInt, "TFCE-corrected Factor A x Factor B Interaction", times, nChan, channels)
+
 ## ==========================================================
 ## Plot observed TFCE maps
 ## ==========================================================
@@ -316,5 +402,7 @@ plot_eeg_map(mB, "TFCE-corrected Factor B Effect", times, nChan, channels)
 plot_eeg_map(Results$TFCE_ObsA, "Observed TFCE Map: Factor A", times, nChan, channels)
 
 plot_eeg_map(Results$TFCE_ObsB, "Observed TFCE Map: Factor B", times, nChan, channels)
+
+plot_eeg_map(Results$TFCE_ObsInt, "Observed TFCE Map: Factor A x Factor B Interaction", times, nChan, channels)
 ```
   
