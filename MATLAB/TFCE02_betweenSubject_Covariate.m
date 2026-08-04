@@ -22,7 +22,7 @@ fprintf('\nStarting TFCE analysis...\n');
 % Load simulated data
 %% ==========================================================
 
-load('../data/02_simulated_between_subject_covariate_EEG.mat', ...
+load('../Data/02_simulated_between_subject_covariate_EEG.mat', ...
      'EEGdata', 'designTable');
 
 group     = designTable.CondCode;
@@ -233,18 +233,18 @@ fprintf('Results stored.\n');
 % Step 6: Save TFCE results
 %% ==========================================================
 
-if ~exist('../results', 'dir')
-    mkdir('../results');
+if ~exist('../Results', 'dir')
+    mkdir('../Results');
 end
 
-save('../results/02_TFCE_between_subject_covariate_results.mat', ...
+save('../Results/02_TFCE_between_subject_covariate_results.mat', ...
      'Results', ...
      'nChan', ...
      'times', ...
      'e_loc');
 
 disp('TFCE covariate-adjusted between-subject analysis completed.');
-disp('Saved results: ../results/02_TFCE_between_subject_covariate_results.mat');
+disp('Saved results: ../Results/02_TFCE_between_subject_covariate_results.mat');
 
 %% ==========================================================
 % Step 7: Plot significant effects
@@ -252,7 +252,7 @@ disp('Saved results: ../results/02_TFCE_between_subject_covariate_results.mat');
 
 clear all; close all; clc
 
-load('../results/02_TFCE_between_subject_covariate_results.mat')
+load('../Results/02_TFCE_between_subject_covariate_results.mat')
 sigT = Results.tObs;
 sigT(~Results.Mask) = 0;
 

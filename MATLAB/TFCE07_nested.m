@@ -56,10 +56,10 @@ nPerm = 999;
 alpha = 0.05;
 
 inputFile = ...
-    '../data/07_simulated_nested_class_student_EEG.mat';
+    '../Data/07_simulated_nested_class_student_EEG.mat';
 
 outputFile = ...
-    '../results/07_TFCE_nested_class_student_results.mat';
+    '../Results/07_TFCE_nested_class_student_results.mat';
 
 
 
@@ -418,8 +418,8 @@ fprintf('Results stored.\n');
 % Step 11: Save results
 %% ==========================================================
 
-if ~exist('../results', 'dir')
-    mkdir('../results');
+if ~exist('../Results', 'dir')
+    mkdir('../Results');
 end
 
 save(outputFile, ...

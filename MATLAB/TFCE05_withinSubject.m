@@ -24,7 +24,7 @@ fprintf('\nStarting TFCE analysis...\n');
 
 %% Load data
 
-load('../data/05_simulated_within_subject_EEG.mat', ...
+load('../Data/05_simulated_within_subject_EEG.mat', ...
      'EEGdata', 'designTable');
 
 times = -200:4:800;

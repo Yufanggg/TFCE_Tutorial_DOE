@@ -19,7 +19,7 @@ fprintf('\nStarting TFCE analysis...\n');
 
 %% Load simulated data
 
-load('../data/03_simulated_between_subject_2by2_EEG.mat', ...
+load('../Data/03_simulated_between_subject_2by2_EEG.mat', ...
      'EEGdata', 'designTable');
 
 var1 = designTable.FactorA;
@@ -261,11 +261,11 @@ fprintf('Results stored.\n');
 
 %% Step 6: Save results
 
-if ~exist('../results', 'dir')
-    mkdir('../results');
+if ~exist('../Results', 'dir')
+    mkdir('../Results');
 end
 
-save('../results/03_TFCE_between_subject_2by2_no_interaction_results.mat', ...
+save('../Results/03_TFCE_between_subject_2by2_no_interaction_results.mat', ...
      'Results', ...
      'nChan', ...
      'times', ...
@@ -275,7 +275,7 @@ disp('TFCE analysis completed and saved.');
 
 %% Step 7: Plot significant observed effects
 clear all; close all; clc
-load('../results/03_TFCE_between_subject_2by2_no_interaction_results.mat')
+load('../Results/03_TFCE_between_subject_2by2_no_interaction_results.mat')
 plot_tfce_results(Results.Obs_var1, Results.Mask_var1, ...
                   times, e_loc, ...
                   'TFCE-corrected Main Effect: FactorA');

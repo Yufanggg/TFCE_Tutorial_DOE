@@ -25,7 +25,7 @@ fprintf('\nStarting TFCE interaction analysis...\n');
 % Load data
 %% ==========================================================
 
-load('../data/04_simulated_between_subject_2by2Int_EEG.mat', ...
+load('../Data/04_simulated_between_subject_2by2Int_EEG.mat', ...
      'EEGdata', 'designTable');
 
 var1 = designTable.FactorA;
@@ -254,11 +254,11 @@ fprintf('Results stored.\n');
 % Step 6: Save results
 %% ==========================================================
 
-if ~exist('../results', 'dir')
-    mkdir('../results');
+if ~exist('../Results', 'dir')
+    mkdir('../Results');
 end
  
-save('../results/04_TFCE_between_subject_2by2_interaction_results.mat', ...
+save('../Results/04_TFCE_between_subject_2by2_interaction_results.mat', ...
      'Results', ...
      'nChan', ...
      'times', ...
@@ -270,7 +270,7 @@ disp('TFCE interaction analysis completed and saved.');
 % Step 6: Plot significant interaction effects
 %% ==========================================================
 clear all; close all; clc
-load('../results/04_TFCE_between_subject_2by2_interaction_results.mat')
+load('../Results/04_TFCE_between_subject_2by2_interaction_results.mat')
 
 mT = Results.tObs ;
 mT(~Results.Mask) = 0;

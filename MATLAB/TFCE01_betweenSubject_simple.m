@@ -19,7 +19,7 @@ fprintf('\nStarting TFCE analysis...\n');
 % Load dataset
 %% ==========================================================
 
-load('../data/01_simulated_between_subject_EEG.mat', ...
+load('../Data/01_simulated_between_subject_EEG.mat', ...
      'EEGdata', 'designTable');
 
 group = designTable.CondCode;
@@ -198,11 +198,11 @@ fprintf('Results stored.\n');
 % Step 6: Save TFCE results
 %% ==========================================================
 
-if ~exist('../results', 'dir')
-    mkdir('../results');
+if ~exist('../Results', 'dir')
+    mkdir('../Results');
 end
 
-save('../results/01_TFCE_between_subject_results.mat', ...
+save('../Results/01_TFCE_between_subject_results.mat', ...
      'Results', ...
      'nChan', ...
      'times', ...
@@ -214,7 +214,7 @@ disp('TFCE analysis completed and results saved.');
 %% ==========================================================
 clear all; close all; clc
 
-load('../results/01_TFCE_between_subject_results.mat')
+load('../Results/01_TFCE_between_subject_results.mat')
 sigT = Results.tObs;
 sigT(~Results.Mask) = 0;
 

@@ -38,13 +38,6 @@ fprintf('\nStarting fully crossed subject-item TFCE analysis...\n');
 rng(123);
 
 %% ==========================================================
-% Load data
-%% ==========================================================
-
-load('../data/08_simulated_fully_crossed_subject_item_EEG.mat', ...
-     'EEGdata', 'designTable');
- 
-%% ==========================================================
 % Analysis settings
 %% ==========================================================
 
@@ -52,10 +45,10 @@ nPerm = 999;
 alpha = 0.05;
 
 inputFile = ...
-    '../data/08_simulated_fully_crossed_subject_item_EEG.mat';
+    '../Data/08_simulated_fully_crossed_subject_item_EEG.mat';
 
 outputFile = ...
-    '../results/08_TFCE_fully_crossed_subject_item_results.mat';
+    '../Results/08_TFCE_fully_crossed_subject_item_results.mat';
 
 
 %% ==========================================================
@@ -306,8 +299,8 @@ fprintf('Results stored.\n');
 % Step 8: Save results
 %% ==========================================================
 
-if ~exist('../results', 'dir')
-    mkdir('../results');
+if ~exist('../Results', 'dir')
+    mkdir('../Results');
 end
 
 save(outputFile, ...
