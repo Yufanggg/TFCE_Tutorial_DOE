@@ -54,7 +54,7 @@ outputFile = ...
 %% ==========================================================
 % Reconstruct EEG array
 %
-% EEGarray:
+% EEGdata:
 %   Observation x Channel x Time
 %
 % Observation = one Subject-Item-Condition row
@@ -156,11 +156,11 @@ E_H = [0.66, 2];
 %% ==========================================================
 % Step 0: Get mEEG
 %% ==========================================================
-mEEG = nan(size(EEGarray));
+mEEG = nan(size(EEGdata));
 for ch = 1:nChan
     for tp = 1:nTime
         
-        EEG = double(squeeze(EEGarray(ch,tp,:)));
+        EEG = double(squeeze(EEGdata(:, ch,tp)));
         
         tbl = table(EEG, CondCode, SubjectLME, ItemLME, ...
             'VariableNames', {'EEG','Condition','Subject','Item'});
@@ -168,7 +168,7 @@ for ch = 1:nChan
         lme = fitlme(tbl, ...
             'EEG ~ Condition + (1|Subject) + (1|Item)');
 
-        mEEG(ch,tpoint,:) = fitted(lme,'Conditional',0) + residuals(m);        
+        mEEG(:, ch,tp) = fitted(lme,'Conditional',0) + residuals(lme);        
     end
 end
 disp('the marginalization stage is done!!!!!!!!!!');
@@ -185,12 +185,12 @@ t_Obs = zeros(nChan, nTime);
 for ch = 1:nChan
     for tp = 1:nTime
 
-        EEG = double(squeeze(mEEG(:, ch, tp)));
+        EEG = double(squeeze(mEEG(:, ch,tp)));
 
         tbl = table(EEG, CondCode, SubjectLME, ItemLME, ...
             'VariableNames', {'EEG','Condition','Subject','Item'});
 
-        lme = fitlm(tbl, 'EEG ~ Condition');
+        lm_local = fitlm(tbl, 'EEG ~ Condition');
 
         % Row 2 = Treatment - Control fixed effect
         t_Obs(ch,tp) = lm_local.Coefficients.tStat(2);
@@ -229,8 +229,8 @@ for p =1:nPerm
         
         parfor tp = 1:nTime
             
-            EEG = squeeze(mEEG(ch,tpoint,:));
-            lm_local = fitlm(permCondCode, EEG);
+            EEG = squeeze(mEEG(:, ch,tp));
+            lm_perm = fitlm(permCondCode, EEG);
             
             % Coefficient 2 = permuted Group effect
             permT(ch, tp) = lm_perm.Coefficients.tStat(2);
@@ -262,9 +262,9 @@ Mask = abs(TFCE_Obs) >= critTFCE;
 P_Values = nan(nChan, nTime);
 
 for ch = 1:nChan
-    for tpoint = 1:nTime
-        P_Values(ch, tpoint) = ...
-            (sum(TFCE_permMax >= abs(TFCE_Obs(ch, tpoint))) + 1) / ...
+    for tp = 1:nTime
+        P_Values(ch, tp) = ...
+            (sum(TFCE_permMax >= abs(TFCE_Obs(ch, tp))) + 1) / ...
             (nPerm + 1);
     end
 
