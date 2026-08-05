@@ -111,8 +111,8 @@ CondCode = designTable.ConditionCode(:);
 %   Treatment =  1
 Condition = double(designTable.ConditionCode(:));
 
-SubjectLME = categorical(Subject);
-ItemLME = categorical(Item);
+SubjectLME = nominal(Subject);
+ItemLME = nominal(Item);
 
 times = -200:4:800
 
