@@ -88,7 +88,7 @@ nTime <- length(times)
 ## Check whether all 2 x 2 cells are present
 ## ----------------------------------------------------------
 
-cell_sizes <- designTable %>%
+cell_sizes <- dat %>%
   count(FactorA, FactorB, name = "n") %>%
   arrange(FactorA, FactorB)
 
