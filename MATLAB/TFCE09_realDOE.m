@@ -41,7 +41,7 @@ fprintf('\nStarting lmeEEG Freedman-Lane analysis...\n');
 load('../Data/realDOE.mat');
 
 %% ==========================================================
-% Check data dimensions 
+% Check data dimensions
 %% ==========================================================
 
 [nObs, nChan, nTime] = size(EEGdata);
@@ -94,26 +94,57 @@ end
 Item = nominal(designTable.Target);
 
 % Predictors
-JSD = categorical(designTable.JSD);
+% Classifier (-1 / +1 coding)
+JSD_cat = categorical(designTable.JSD);
 
-Classifier = categorical( ...
-    designTable.ClassifierCongruency ...
-);
+levels = categories(JSD_cat);
+
+if numel(levels) ~= 2
+    error('JSD must contain exactly two levels.');
+end
+
+JSD = -1 * ones(height(designTable),1);
+JSD(JSD_cat == levels{2}) = 1;
+
+% Classifier (-1 / +1 coding)
+Classifier_cat = categorical(designTable.ClassifierCongruency);
+
+levels = categories(Classifier_cat);
+
+if numel(levels) ~= 2
+    error('Classifier must contain exactly two levels.');
+end
+
+Classifier = -1 * ones(height(designTable),1);
+Classifier(Classifier_cat == levels{2}) = 1;
+
 
 Freq = log( ...
     double(designTable.Frequency) ...
 );
 
-StrokeRaw = double( ...
-    designTable.NumbersofStorks ...
-);
+StrokeRaw = double(designTable.NumbersofStorks);
 
 Stroke = ...
     (StrokeRaw - mean(StrokeRaw)) ./ std(StrokeRaw);
 
-CongruencySemanticCategories = categorical( ...
+% CongruencySemanticCategories (-1 / +1 coding)
+
+CongruencySemanticCategories_cat = categorical( ...
     designTable.CongruencySemanticCategories ...
 );
+
+levels = categories(CongruencySemanticCategories_cat);
+
+if numel(levels) ~= 2
+    error('CongruencySemanticCategories must contain exactly two levels.');
+end
+
+CongruencySemanticCategories = -1 * ones(height(designTable),1);
+
+CongruencySemanticCategories( ...
+    CongruencySemanticCategories_cat == levels{2} ...
+) = 1;
 
 %% ==========================================================
 % Check predictor lengths and missing values
@@ -280,7 +311,7 @@ parfor p = 1:nPerm
 
             Y = double(mEEG(:, ch, tpoint));
 
-            % Reduced model: EEG ~ Covariate
+            % Reduced model: EEG ~ CongruencySemanticCategories + Stroke + Freq + JSD
             lm_red = fitlm(X_null, Y);
 
             Y_hat_red = lm_red.Fitted;
@@ -353,8 +384,8 @@ Results.P_Values  = P_Values;
 Results.Mask      = Mask;
 Results.alpha     = alpha;
 Results.nPerm     = nPerm;
-Results.model     = 'EEG ~ Covariate + Group';
-Results.test      = 'Group effect adjusted for covariate';
+Results.model     = 'EEG ~ CongruencySemanticCategories + Stroke + Freq + JSD + Classifier';
+Results.test      = 'Classifier effect adjusted for CongruencySemanticCategories, Stroke, Freq and JSD';
 
 fprintf('Results stored.\n');
 
