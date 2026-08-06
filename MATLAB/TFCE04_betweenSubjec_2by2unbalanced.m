@@ -37,7 +37,7 @@ rng(123);
 % Load data
 %% ==========================================================
 
-load('../Data/04_simulated_between_subject_2by2Int_EEG_unbalanced.mat');
+load('../Data/04_simulated_between_subject_2by2_EEG_unbalanced.mat');
 
 var1 = double(designTable.FactorA(:));
 var2 = double(designTable.FactorB(:));
@@ -267,6 +267,7 @@ fprintf( ...
 
 parfor p = 1:nPerm
 
+    
     perm_t_var1 = zeros(nChan, nTime);
     perm_t_var2 = zeros(nChan, nTime);
     perm_t_Int  = zeros(nChan, nTime);
@@ -366,6 +367,8 @@ parfor p = 1:nPerm
 
         end
     end
+
+    fprintf('Permutation %d of %d completed.\n', p, nPerm);
 
     %% ------------------------------------------------------
     % Apply TFCE
@@ -608,7 +611,7 @@ disp('TFCE factorial analysis completed and saved.');
 clear all; close all; clc;
 
 load( ...
-    '../Results/04_TFCE_between_subject_2by2_all_effects_results.mat', ...
+    '../Results/04_TFCE_between_subject_2by2_unbalanced_results.mat', ...
     'Results', ...
     'nChan', ...
     'times', ...
