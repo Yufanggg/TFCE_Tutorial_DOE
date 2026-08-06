@@ -151,7 +151,7 @@ with_progress({
   TFCE_permMax <- future_sapply(seq_len(n_perm), function(p) {
     perm_info <- subject_info %>%
       group_by(Subject) %>%
-      mutate(PermCondCode = sample(CondCode)) %>%
+      mutate(CondCode = sample(CondCode)) %>%
       ungroup()
     
     perm_dat <- EEGlong %>%

@@ -1,0 +1,546 @@
+---
+title: "TFCE09_realDOE.Rmd"
+author: "Yufang"
+date: "2026-06-26"
+output: html_document
+---
+
+```{r, echo=TRUE}
+## ==========================================================
+## TFCE for an unbalanced between-subject 2 x 2 factorial
+## design in R
+##
+## Full model:
+##   Amplitude ~ FactorA + FactorB + Interaction
+##
+## Tests:
+##   1. Factor A main effect
+##   2. Factor B main effect
+##   3. Factor A x Factor B interaction
+##
+## Permutation:
+##   Freedman-Lane residual permutation
+##
+## Reduced models:
+##
+##   Factor A:
+##     Amplitude ~ FactorB + Interaction
+##
+##   Factor B:
+##     Amplitude ~ FactorA + Interaction
+##
+##   Interaction:
+##     Amplitude ~ FactorA + FactorB
+##
+## A single subject-level residual permutation is reused across
+## all Channel x Time points within each permutation.
+## ==========================================================
+
+rm(list = ls())
+
+library(readr)
+library(dplyr)
+library(tidyr)
+library(future)
+library(future.apply)
+library(progressr)
+library(fields)
+
+source("../R/tfce_transform.R")
+
+cat("\nStarting TFCE 2 x 2 between-subject analysis...\n")
+
+## ==========================================================
+## -1. Load data
+## ==========================================================
+
+designTable <- read_csv("../data/04_designTable.csv")
+
+EEGlong <- read_csv("../data/04_EEGdata_long.csv")
+
+print(names(designTable))
+print(names(EEGlong))
+
+## ==========================================================
+## 0. Prepare data
+## ==========================================================
+
+dat <- EEGlong %>%
+  left_join(designTable, by = "Subject") %>%
+  mutate(
+    Subject = factor(Subject),
+    Channel = factor(Channel),
+    Time = as.numeric(Time),
+    Amplitude = as.numeric(Amplitude),
+    FactorA = as.numeric(FactorA),
+    FactorB = as.numeric(FactorB),
+    Interaction = as.numeric(Interaction)
+  )
+
+channels <- unique(EEGlong$Channel)
+times <- sort(unique(EEGlong$Time))
+
+nChan <- length(channels)
+nTime <- length(times)
+
+
+## ----------------------------------------------------------
+## Check whether all 2 x 2 cells are present
+## ----------------------------------------------------------
+
+cell_sizes <- dat %>%
+  count(FactorA, FactorB, name = "n") %>%
+  arrange(FactorA, FactorB)
+
+print(cell_sizes)
+
+if (nrow(cell_sizes) != 4) {
+  stop("All four FactorA x FactorB cells must be present.")
+}
+
+## ==========================================================
+## -2. Function: compute t-map for one effect
+## ==========================================================
+
+compute_tmaps_2x2 <- function(data) {
+  res <- data %>%
+    group_by(Channel, Time) %>%
+    group_modify(~ {
+      fit <- lm(Amplitude ~ FactorA * FactorB, data = .x)
+      
+      cf <- coef(summary(fit))
+      
+      tibble(t_A = cf["FactorA", "t value"],
+             t_B = cf["FactorB", "t value"],
+             t_Int = cf["FactorA:FactorB", "t value"])
+    }) %>%
+    ungroup()
+  
+  make_matrix <- function(x) {
+    tmat <- res %>%
+      mutate(
+        Channel = factor(Channel, levels = channels),
+        Time = factor(Time, levels = times)
+      ) %>%
+      arrange(Channel, Time) %>%
+      pull(x)
+    
+    matrix(
+      tmat,
+      nrow = nChan,
+      ncol = nTime,
+      byrow = TRUE,
+      dimnames = list(channels, times)
+    )
+  }
+  
+  list(A = make_matrix("t_A"),
+       B = make_matrix("t_B"),
+       Int = make_matrix("t_Int"))
+}
+
+## ==========================================================
+## Function: precompute reduced-model components
+## ==========================================================
+
+prepare_freedman_lane <- function(data, reduced_formula) {
+
+  data %>%
+    group_by(Channel, Time) %>%
+    group_modify(~ {
+      fit_reduced <- lm(formula = reduced_formula, data = .x)
+      
+      .x %>%
+        mutate(
+          Y_hat_red = fitted(fit_reduced),
+          resid_red = residuals(fit_reduced)
+        )
+    }) %>%
+    ungroup()
+}
+
+## ==========================================================
+## Function: create a Freedman-Lane permuted dataset
+## ==========================================================
+
+construct_permuted_dataset <- function(fl_parts) {
+  fl_parts %>%
+    group_by(Channel, Time) %>%
+    group_modify(~ {
+      df <- .x
+      perm_idx <- sample(seq_len(length(unique(dat$Subject))))
+      
+      df$Amplitude <- df$Y_hat_red + df$resid_red[perm_idx]
+      
+      df
+    }) %>%
+    ungroup()
+}
+
+## ==========================================================
+## Step 1: Observed t-maps
+## ==========================================================
+
+cat("Step 1: Computing observed t-maps...\n")
+
+t_Obs <- compute_tmaps_2x2(dat)
+
+t_ObsA <- t_Obs$A
+t_ObsB <- t_Obs$B
+t_ObsInt <- t_Obs$Int
+
+cat("Observed t-maps completed.\n")
+
+## ==========================================================
+## Step 2: Observed TFCE maps
+## ==========================================================
+
+cat("Step 2: Computing observed TFCE maps...\n")
+
+TFCE_ObsA <- tfce_transform(t_ObsA, E = 0.66, H = 2, dh = 0.1)
+
+TFCE_ObsB <- tfce_transform(t_ObsB, E = 0.66, H = 2, dh = 0.1)
+
+TFCE_ObsInt <- tfce_transform(t_ObsInt, E = 0.66, H = 2, dh = 0.1)
+
+cat("Observed TFCE maps completed.\n")
+
+## ==========================================================
+## Step 3: Precompute Freedman-Lane components
+## ==========================================================
+
+cat(paste(
+  "Step 3: Precomputing reduced-model fitted values",
+  "and residuals...\n"
+))
+
+## ----------------------------------------------------------
+## Factor A reduced model
+##
+## Remove FactorA while retaining FactorB and Interaction.
+## ----------------------------------------------------------
+
+FL_partsA <- prepare_freedman_lane(dat, Amplitude ~ FactorB + Interaction)
+
+## ----------------------------------------------------------
+## Factor B reduced model
+##
+## Remove FactorB while retaining FactorA and Interaction.
+## ----------------------------------------------------------
+
+FL_partsB <- prepare_freedman_lane(dat, Amplitude ~ FactorA + Interaction)
+
+## ----------------------------------------------------------
+## Interaction reduced model
+##
+## Remove Interaction while retaining FactorA and FactorB.
+## ----------------------------------------------------------
+
+FL_partsInt <- prepare_freedman_lane(dat, Amplitude ~ FactorA + FactorB)
+
+cat("Reduced-model components completed.\n")
+
+## ==========================================================
+## Step 4: Freedman-Lane permutation testing
+## ==========================================================
+
+## ----------------------------------------------------------
+## 4.1 Set up parallel workers
+## ----------------------------------------------------------
+
+set.seed(123)
+
+n_perm <- 999
+
+TFCE_permMaxA <- rep(NA_real_, n_perm)
+
+TFCE_permMaxB <- rep(NA_real_, n_perm)
+
+TFCE_permMaxInt <- rep(NA_real_, n_perm)
+
+n_workers <- max(1, parallel::detectCores() - 1)
+
+plan(multisession, workers = n_workers)
+
+handlers("txtprogressbar")
+
+cat(
+  "Step 4: Starting parallel Freedman-Lane permutation testing ",
+  "with ",
+  n_workers,
+  " workers...\n",
+  sep = ""
+)
+
+
+
+with_progress({
+  progress_update <- progressor(along = seq_len(n_perm))
+  
+  permutation_results <- future_lapply(seq_len(n_perm), function(p) {
+    ## ----------------------------------------------------
+    ## Factor A permutation
+    ## ----------------------------------------------------
+    
+    perm_datA <- construct_permuted_dataset(FL_partsA)
+    
+    t_permA <- compute_tmaps_2x2(perm_datA)$A
+    
+    TFCE_permA <- tfce_transform(t_permA,
+                                 E = 0.66,
+                                 H = 2,
+                                 dh = 0.1)
+    
+    perm_maxA <- max(abs(TFCE_permA), na.rm = TRUE)
+    
+    ## ----------------------------------------------------
+    ## Factor B permutation
+    ## ----------------------------------------------------
+    
+    perm_datB <- construct_permuted_dataset(FL_partsB)
+    
+    t_permB <- compute_tmaps_2x2(perm_datB)$B
+    
+    TFCE_permB <- tfce_transform(t_permB,
+                                 E = 0.66,
+                                 H = 2,
+                                 dh = 0.1)
+    
+    perm_maxB <- max(abs(TFCE_permB), na.rm = TRUE)
+    
+    
+    ## ----------------------------------------------------
+    ## Interaction permutation
+    ## ----------------------------------------------------
+    
+    perm_datInt <- construct_permuted_dataset(FL_partsInt)
+    
+    t_permInt <- compute_tmaps_2x2(perm_datInt)$Int
+    
+    TFCE_permInt <- tfce_transform(t_permInt,
+                                   E = 0.66,
+                                   H = 2,
+                                   dh = 0.1)
+    
+    perm_maxInt <- max(abs(TFCE_permInt), na.rm = TRUE)
+    
+    ## Update progress bar once per completed permutation
+    progress_update()
+    
+    ## Return the three permutation maxima
+    c(A = perm_maxA, B = perm_maxB, Int = perm_maxInt)
+  }, ## Reproducible parallel random-number generation
+  future.seed = 123, ## Packages required by the workers
+  future.packages = c("dplyr", "tidyr"))
+})
+
+
+## ----------------------------------------------------------
+## Combine worker results
+## ----------------------------------------------------------
+
+permutation_results <- do.call(rbind, permutation_results)
+
+TFCE_permMaxA <- permutation_results[, "A"]
+TFCE_permMaxB <- permutation_results[, "B"]
+TFCE_permMaxInt <- permutation_results[, "Int"]
+
+## Return to ordinary sequential processing
+plan(sequential)
+
+cat("Permutation testing completed.\n")
+
+## ==========================================================
+## Step 5: TFCE-corrected significance
+## ==========================================================
+
+
+cat("Step 5: Computing TFCE-corrected significance...\n")
+
+alpha <- 0.05
+
+## ----------------------------------------------------------
+## Critical values
+## ----------------------------------------------------------
+
+maxTFCE_A <- sort(c(TFCE_permMaxA, max(abs(TFCE_ObsA), na.rm = TRUE)))
+maxTFCE_B <- sort(c(TFCE_permMaxB, max(abs(TFCE_ObsB), na.rm = TRUE)))
+maxTFCE_Int <- sort(c(TFCE_permMaxInt, max(abs(TFCE_ObsInt), na.rm = TRUE)))
+
+maxTFCEcrit_A <- maxTFCE_A[round((n_perm + 1) * (1 - alpha))]
+maxTFCEcrit_B  <- maxTFCE_B[round((n_perm + 1) * (1 - alpha))]
+maxTFCEcrit_Int <- maxTFCE_Int[round((n_perm + 1) * (1 - alpha))]
+
+
+## ----------------------------------------------------------
+## Corrected significance masks
+## ----------------------------------------------------------
+
+MaskA <- abs(TFCE_ObsA) >= maxTFCEcrit_A
+
+MaskB <- abs(TFCE_ObsB) >= maxTFCEcrit_B
+
+MaskInt <- abs(TFCE_ObsInt) >= maxTFCEcrit_Int
+
+## ----------------------------------------------------------
+## Corrected p-value function
+## ----------------------------------------------------------
+
+compute_pvalues <- function(observed_tfce, TFCE_permMax) {
+  p_values <- matrix(
+    NA_real_,
+    nrow = nrow(observed_tfce),
+    ncol = ncol(observed_tfce),
+    dimnames = dimnames(observed_tfce)
+  )
+  
+  for (ch in seq_len(nrow(observed_tfce))) {
+    for (tp in seq_len(ncol(observed_tfce))) {
+      p_values[ch, tp] <-
+        (sum(TFCE_permMax >=
+               abs(observed_tfce[ch, tp]), na.rm = TRUE) + 1) /
+        (length(TFCE_permMax) + 1)
+    }
+  }
+  
+  p_values
+}
+
+P_ValuesA <- compute_pvalues(TFCE_ObsA, TFCE_permMaxA)
+
+P_ValuesB <- compute_pvalues(TFCE_ObsB, TFCE_permMaxB)
+
+P_ValuesInt <- compute_pvalues(TFCE_ObsInt, TFCE_permMaxInt)
+
+cat("TFCE-corrected significance completed.\n")
+
+cat(sprintf("Critical TFCE value for Factor A = %.4f\n", maxTFCEcrit_A))
+
+cat(sprintf("Critical TFCE value for Factor B = %.4f\n", maxTFCEcrit_B))
+
+cat(sprintf(
+  paste0("Critical TFCE value for ", "Factor A x Factor B = %.4f\n"),
+  maxTFCEcrit_Int
+))
+
+## ==========================================================
+## Step 6: Store results
+## ==========================================================
+
+cat("Step 6: Storing results...\n")
+
+Results <- list(
+
+  ## Factor A
+  tObs_A = t_ObsA,
+  TFCE_Obs_A = TFCE_ObsA,
+  TFCE_Null_A = TFCE_permMaxA,
+  maxTFCEcritA = maxTFCEcrit_A,
+  P_ValuesA = P_ValuesA,
+  Mask_A = MaskA,
+
+  ## Factor B
+  tObs_B = t_ObsB,
+  TFCE_Obs_B = TFCE_ObsB,
+  TFCE_Null_B = TFCE_permMaxB,
+  maxTFCEcritB = maxTFCEcrit_B,
+  P_ValuesB = P_ValuesB,
+  Mask_B = MaskB,
+
+  ## Interaction
+  tObs_Int = t_ObsInt,
+  TFCE_Obs_Int = TFCE_ObsInt,
+  TFCE_Null_Int = TFCE_permMaxInt,
+  maxTFCEcritInt = maxTFCEcrit_Int,
+  P_ValuesInt = P_ValuesInt,
+  Mask_Int = MaskInt,
+
+  ## Analysis information
+  alpha = alpha,
+  n_perm = n_perm,
+
+  model =
+    "Amplitude ~ FactorA + FactorB + Interaction",
+
+  test_A =
+    paste("Factor A main effect adjusted for", "Factor B and Interaction"), 
+
+  test_B =
+    paste("Factor B main effect adjusted for", "Factor A and Interaction"), 
+
+  test_Int =
+    paste("Factor A x Factor B interaction",
+          "adjusted for Factor A and Factor B"), 
+  
+  permutation_A =
+    paste("Freedman-Lane under reduced model:",
+          "Amplitude ~ FactorB + Interaction"), 
+
+  permutation_B =
+    paste("Freedman-Lane under reduced model:",
+          "Amplitude ~ FactorA + Interaction"), 
+
+  permutation_Int =
+    paste("Freedman-Lane under reduced model:",
+          "Amplitude ~ FactorA + FactorB"), 
+
+  balanced =
+    length(unique(cell_sizes$n)) == 1, cell_sizes =
+    cell_sizes
+)
+
+cat("Results stored.\n")
+
+## ==========================================================
+## Step 7: Save results
+## ==========================================================
+
+if (!dir.exists("../Results")) {
+  dir.create("../Results", recursive = TRUE)
+}
+
+save(Results, times, nChan, channels, file =
+       "../Results/04_TFCE_between_subject_unbalanced.RData")
+
+cat("\nTFCE 2 x 2 between-subject analysis completed.\n")
+
+cat(
+  paste0(
+    "Saved results: ",
+    "../Results/",
+    "04_TFCE_between_subject_unbalanced.RData\n"
+  )
+)
+```
+
+
+```{r, echo=TRUE}
+## ==========================================================
+## Plot significant corrected t-maps
+## ==========================================================
+rm(list =ls())
+source("../R/plot_eeg_map.R")
+
+load("../Results/04_TFCE_between_subject_unbalanced.RData")
+
+## ========================================================== 
+## Plot TFCE-corrected significant t-maps 
+## ========================================================== 
+mA <- Results$tObs_A 
+mA[!Results$Mask_A] <- 0 
+plot_eeg_map( mA, "TFCE-corrected Factor A Main Effect", times, nChan, channels )
+
+mB <- Results$tObs_B 
+mB[!Results$Mask_B] <- 0 
+plot_eeg_map( mB, "TFCE-corrected Factor B Main Effect", times, nChan, channels )
+
+mInt <- Results$tObs_Int 
+mInt[!Results$Mask_Int] <- 0 
+plot_eeg_map( mInt, "TFCE-corrected Factor A x Factor B Interaction", times, nChan, channels ) 
+## ========================================================== 
+## Plot observed TFCE maps 
+## ========================================================== 
+plot_eeg_map( Results$TFCE_Obs_A, "Observed TFCE Map: Factor A", times, nChan, channels ) 
+plot_eeg_map( Results$TFCE_Obs_B, "Observed TFCE Map: Factor B", times, nChan, channels ) 
+plot_eeg_map( Results$TFCE_Obs_Int, "Observed TFCE Map: Factor A x Factor B Interaction", times, nChan, channels )
+```
