@@ -29,6 +29,8 @@ library(future.apply)
 library(tidyr)
 library(lme4)
 library(lmerTest)
+library(progressr)
+library(fields)
 
 source("../R/tfce_transform.R")
 
@@ -163,14 +165,22 @@ with_progress({
       )
     t_perm <- compute_tmap(perm_dat)
     
-    TFCE_perm <- tfce_transform(t_perm, E = 0.66, H = 2, dh = 0.1)
+    TFCE_perm <- tfce_transform(t_perm,
+                                E = 0.66,
+                                H = 2,
+                                dh = 0.1)
     
     perm_max <- max(abs(TFCE_perm), na.rm = TRUE)
     
     progress_update()
     perm_max
     
-  }, future.seed = TRUE, future.packages = "dplyr")
+  },
+  future.seed = TRUE,
+  future.packages = c("dplyr",
+                      "tidyr",
+                      "lme4",
+                      "lmerTest"))
 })
 
 plan(sequential)
@@ -254,7 +264,7 @@ load("../Results/05_TFCE_within_subject_results.RData")
 mT <- Results$tObs
 mT[!Results$Mask] <- 0
 
-plot_eeg_map(Results$tObs,
+plot_eeg_map(mT,
              "TFCE-corrected Group Effect Adjusted for Covariate",
              times,
              nChan,
