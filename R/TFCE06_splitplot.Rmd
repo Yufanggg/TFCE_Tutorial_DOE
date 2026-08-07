@@ -28,6 +28,7 @@ rm(list = ls())
 library(dplyr)
 library(future)
 library(future.apply)
+library(progressr)
 library(tidyr)
 library(lme4)
 library(lmerTest)
@@ -174,10 +175,6 @@ cat("Observed TFCE maps completed.\n")
 ## ==========================================================
 ## Step 3: Permutation distribution
 ## ==========================================================
-
-library(future)
-library(future.apply)
-library(progressr)
 
 set.seed(123)
 
