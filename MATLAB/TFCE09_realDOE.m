@@ -1,31 +1,20 @@
 %% ==========================================================
-% lmeEEG TFCE analysis using the Freedman-Lane procedure
+% lmeEEG TFCE analysis using Freedman-Lane procedure
 %
-% EEGdata dimensions:
-%   observations x channels x time
+% Stage 1:
+%   Remove subject/item random intercepts using LME
 %
-% designTable:
-%   one row per observation
+% Stage 2:
+%   Freedman-Lane permutation on adjusted EEG
 %
-% Marginalization model:
+% Model:
 %
-%   EEG ~ CongruencySemanticCategories + Stroke + Freq +
-%         JSD + Classifier + (1|Subj) + (1|Item)
+% EEG ~ CongruencySemanticCategories + Stroke + Freq +
+%       JSD + Classifier + (1|Subj) + (1|Item)
 %
-% Test effect:
-%   Classifier
+% Test:
+%   Classifier effect
 %
-% Freedman-Lane procedure:
-%
-%   1. Marginalize nuisance effects using the LME.
-%   2. Fit the reduced target model without Classifier.
-%   3. Permute reduced-model residuals.
-%   4. Construct:
-%
-%        Y_perm = Yhat_reduced + permuted residuals
-%
-%   5. Fit the full target model to Y_perm.
-%   6. Apply TFCE to observed and permutation statistics.
 %% ==========================================================
 
 clear; clc; close all;
@@ -34,438 +23,810 @@ rng(123);
 
 fprintf('\nStarting lmeEEG Freedman-Lane analysis...\n');
 
+
 %% ==========================================================
-% Load prepared data
+% Load data
 %% ==========================================================
 
 load('../Data/realDOE.mat');
 
+
 %% ==========================================================
-% Check data dimensions
+% Dimensions
 %% ==========================================================
 
-[nObs, nChan, nTime] = size(EEGdata);
+[nObs,nChan,nTime] = size(EEGdata);
+
 
 if height(designTable) ~= nObs
-    error(['The number of rows in designTable must equal ' ...
-           'the first dimension of EEGdata.']);
+    error('designTable rows do not match EEG observations.');
 end
+
 
 if length(channelinfo) ~= nChan
-    error(['The number of channel locations does not match ' ...
-           'the second dimension of EEGdata.']);
+    error('Channel information does not match EEG dimensions.');
 end
 
-if exist('time', 'var') && length(time) ~= nTime
-    error(['The length of time does not match the third ' ...
-           'dimension of EEGdata.']);
-end
 
-fprintf('Observations: %d\n', nObs);
-fprintf('Channels:     %d\n', nChan);
-fprintf('Time points:  %d\n', nTime);
+fprintf('Observations: %d\n',nObs);
+fprintf('Channels: %d\n',nChan);
+fprintf('Time points: %d\n',nTime);
+
+
 
 %% ==========================================================
 % Prepare design variables
 %% ==========================================================
 
-variableNames = designTable.Properties.VariableNames;
+varNames = designTable.Properties.VariableNames;
 
-% Subject identifier
-if ismember('SubjID', variableNames)
 
-    Subj = nominal(designTable.SubjID);
+%% ----------------------------
+% Subject
+%% ----------------------------
 
-elseif ismember('SubjSubj', variableNames)
+if ismember('SubjID',varNames)
 
-    Subj = nominal(designTable.SubjSubj);
+    Subj = categorical(designTable.SubjID);
+
+elseif ismember('SubjSubj',varNames)
+
+    Subj = categorical(designTable.SubjSubj);
 
 else
 
-    error(['designTable must contain a subject variable named ' ...
-           'SubjID or SubjSubj.']);
+    error('No subject identifier found.');
+
 end
 
-% Item identifier
-if ~ismember('Target', variableNames)
-    error('designTable must contain the item variable Target.');
+
+
+%% ----------------------------
+% Item
+%% ----------------------------
+
+if ~ismember('Target',varNames)
+
+    error('Target variable missing.');
+
 end
 
-Item = nominal(designTable.Target);
 
-% Predictors
-% Classifier (-1 / +1 coding)
-JSD_cat = categorical(designTable.JSD);
+Item = categorical(designTable.Target);
 
-levels = categories(JSD_cat);
 
-if numel(levels) ~= 2
-    error('JSD must contain exactly two levels.');
+
+%% ==========================================================
+% Binary predictors
+%% ==========================================================
+
+
+%% ----------------------------
+% JSD
+%% ----------------------------
+
+JSD = zeros(nObs,1);
+
+
+JSD(strcmp(string(designTable.JSD),'level1')) = -1;
+JSD(strcmp(string(designTable.JSD),'level2')) = 1;
+
+
+% check
+if all(JSD==0)
+
+    tmp = categorical(designTable.JSD);
+    lev = categories(tmp);
+
+    if length(lev)~=2
+        error('JSD does not have two levels.');
+    end
+
+    JSD(tmp==lev{1})=-1;
+    JSD(tmp==lev{2})=1;
+
 end
 
-JSD = -1 * ones(height(designTable),1);
-JSD(JSD_cat == levels{2}) = 1;
 
-% Classifier (-1 / +1 coding)
-Classifier_cat = categorical(designTable.ClassifierCongruency);
 
-levels = categories(Classifier_cat);
+%% ----------------------------
+% Classifier (effect of interest)
+%% ----------------------------
 
-if numel(levels) ~= 2
-    error('Classifier must contain exactly two levels.');
+Classifier = zeros(nObs,1);
+
+
+tmp = categorical(designTable.ClassifierCongruency);
+lev = categories(tmp);
+
+
+if length(lev)~=2
+    error('Classifier does not have two levels.');
 end
 
-Classifier = -1 * ones(height(designTable),1);
-Classifier(Classifier_cat == levels{2}) = 1;
+
+Classifier(tmp==lev{1})=-1;
+Classifier(tmp==lev{2})=1;
 
 
-Freq = log( ...
-    double(designTable.Frequency) ...
-);
+
+%% ----------------------------
+% Frequency
+%% ----------------------------
+
+Freq = log(double(designTable.Frequency));
+
+
+if any(~isfinite(Freq))
+
+    error('Frequency contains invalid values.');
+
+end
+
+
+
+%% ----------------------------
+% Stroke
+%% ----------------------------
 
 StrokeRaw = double(designTable.NumbersofStorks);
 
+
 Stroke = ...
-    (StrokeRaw - mean(StrokeRaw)) ./ std(StrokeRaw);
+    (StrokeRaw-mean(StrokeRaw)) ./ std(StrokeRaw);
 
-% CongruencySemanticCategories (-1 / +1 coding)
 
-CongruencySemanticCategories_cat = categorical( ...
-    designTable.CongruencySemanticCategories ...
-);
 
-levels = categories(CongruencySemanticCategories_cat);
+%% ----------------------------
+% Semantic category congruency
+%% ----------------------------
 
-if numel(levels) ~= 2
-    error('CongruencySemanticCategories must contain exactly two levels.');
+tmp = categorical( ...
+    designTable.CongruencySemanticCategories);
+
+
+lev = categories(tmp);
+
+
+if length(lev)~=2
+
+    error('CongruencySemanticCategories must have two levels.');
+
 end
 
-CongruencySemanticCategories = -1 * ones(height(designTable),1);
 
-CongruencySemanticCategories( ...
-    CongruencySemanticCategories_cat == levels{2} ...
-) = 1;
+CongruencySemanticCategories=zeros(nObs,1);
 
-%% ==========================================================
-% Check predictor lengths and missing values
-%% ==========================================================
 
-designLengths = [
-    length(Subj), ...
-    length(Item), ...
-    length(JSD), ...
-    length(Classifier), ...
-    length(Freq), ...
-    length(Stroke), ...
-    length(CongruencySemanticCategories)
-];
+CongruencySemanticCategories(tmp==lev{1})=-1;
+CongruencySemanticCategories(tmp==lev{2})=1;
 
-if any(designLengths ~= nObs)
-    error('Every design variable must contain one value per observation.');
-end
 
-if any(isnan(Freq))
-    error('Freq contains missing or undefined values.');
-end
-
-if any(isnan(Stroke))
-    error('Stroke contains missing or undefined values.');
-end
 
 %% ==========================================================
-% Create output directory
-%% ==========================================================
-
-outputDirectory = '.\Output';
-
-if ~exist(outputDirectory, 'dir')
-    mkdir(outputDirectory);
-end
-
-%% ==========================================================
-% Step 1: Marginalize nuisance fixed effects
-%
-% Retain:
-%   Intercept
-%   Classifier effect
-%   Marginal residuals
+% Create adjusted EEG
 %
 % Remove:
-%   CongruencySemanticCategories
-%   Stroke
-%   Freq
-%   JSD
+%   Subject random intercept
+%   Item random intercept
 %
-% mEEG dimensions:
-%   observations x channels x time
+% Keep:
+%   Fixed effects
 %% ==========================================================
 
-fprintf('\nStep 1: Marginalizing nuisance effects...\n');
+
+fprintf('\nRemoving subject/item random effects...\n');
+
 
 mEEG = nan(size(EEGdata));
 
-fullMarginalFormula = [ ...
-    'EEG ~ CongruencySemanticCategories + Stroke + Freq + ' ...
-    'JSD + Classifier + (1|Subj) + (1|Item)' ...
+
+lmeFormula = ...
+    'EEG ~ CongruencySemanticCategories + Stroke + Freq + JSD + Classifier + (1|Subj)+(1|Item)';
+
+
+
+for ch = 1:nChan
+
+
+    fprintf('Channel %d/%d\n',ch,nChan);
+
+
+    for t = 1:nTime
+
+
+        Y = squeeze(double(EEGdata(:,ch,t)));
+
+
+        tbl = table( ...
+            Y,...
+            CongruencySemanticCategories,...
+            Stroke,...
+            Freq,...
+            JSD,...
+            Classifier,...
+            Subj,...
+            Item,...
+            'VariableNames',...
+            {'EEG',...
+             'CongruencySemanticCategories',...
+             'Stroke',...
+             'Freq',...
+             'JSD',...
+             'Classifier',...
+             'Subj',...
+             'Item'});
+
+
+        lme = fitlme(tbl,lmeFormula);
+
+
+
+        % random-effect contribution:
+        %
+        % (fixed + random) - fixed
+        %
+
+        randomContribution = ...
+            fitted(lme,'Conditional',true) - ...
+            fitted(lme,'Conditional',false);
+
+
+
+        % remove only random effects
+
+        mEEG(:,ch,t)=Y-randomContribution;
+
+
+    end
+end
+
+
+fprintf('Random effects removed.\n');
+
+%% ==========================================================
+% Part 2
+%
+% Construct target models
+%
+% Full model:
+%
+% EEG ~ CongruencySemanticCategories
+%       + Stroke + Freq + JSD + Classifier
+%
+% Null model:
+%
+% EEG ~ CongruencySemanticCategories
+%       + Stroke + Freq + JSD
+%
+%% ==========================================================
+
+
+fprintf('\nPreparing target design matrices...\n');
+
+
+X_full = [
+    CongruencySemanticCategories,...
+    Stroke,...
+    Freq,...
+    JSD,...
+    Classifier
 ];
 
+
+X_null = [
+    CongruencySemanticCategories,...
+    Stroke,...
+    Freq,...
+    JSD
+];
+
+
+
+%% ==========================================================
+% Precompute reduced model
+%
+% Freedman-Lane:
+%
+% Y_perm = Y_hat_null + permuted residuals
+%
+%% ==========================================================
+
+
+fprintf('\nPrecomputing reduced models...\n');
+
+
+Yhat_null = nan(nObs,nChan,nTime);
+
+Residual_null = nan(nObs,nChan,nTime);
+
+
+
 for ch = 1:nChan
 
-    fprintf('Marginalization: channel %d of %d\n', ch, nChan);
 
-    for tpoint = 1:nTime
+    fprintf('Reduced model channel %d/%d\n',ch,nChan);
 
-        Y = double(squeeze(EEGdata(:, ch, tpoint)));
 
-        modelTable = table( Y, CongruencySemanticCategories, ...
-            Stroke, Freq, JSD, Classifier, Subj, Item, ...
-            'VariableNames', { 'EEG', 'CongruencySemanticCategories', ...
-                'Stroke', 'Freq', 'JSD', 'Classifier', 'Subj', ...
-                'Item' } );
+    for t = 1:nTime
 
-        lme = fitlme(modelTable, fullMarginalFormula);
 
-        %% --------------------------------------------------
-        % Marginal fitted response plus residuals
-        %% --------------------------------------------------
+        Y = squeeze(mEEG(:,ch,t));
 
-        marginalResponse = fitted(lme, 'Conditional', 0) + ...
-            residuals(lme);
 
-        mEEG(:, ch, tpoint) = marginalResponse;
+        lm_null = fitlm(X_null,Y);
+
+
+        Yhat_null(:,ch,t)=lm_null.Fitted;
+
+
+        Residual_null(:,ch,t)=lm_null.Residuals.Raw;
+
 
     end
 end
 
-fprintf('Marginalization completed.\n');
 
-%% ==========================================================
-% Construct the target design matrix
-%
-% Full target model:
-%   marginalized EEG ~ CongruencySemanticCategories + Stroke + Freq + 
-%                      JSD + Classifier 
-%
-% Random effects were handled during marginalization.
-% The following is about using Freedman-Lane procedure
-%% ==========================================================
-X_full = [CongruencySemanticCategories, Stroke, Freq, JSD, Classifier];
 
-X_null = [CongruencySemanticCategories, Stroke, Freq, JSD];
+fprintf('Reduced models completed.\n');
+
 
 
 %% ==========================================================
-% Step 2: Observed statistics
-%
-% Store:
-%   observed t-values
+% Observed statistics
 %% ==========================================================
 
-fprintf('\nStep 2: Computing observed statistics...\n');
 
-t_Obs = nan(nChan, nTime);
+fprintf('\nComputing observed t-map...\n');
+
+
+t_Obs = nan(nChan,nTime);
+
+
 
 for ch = 1:nChan
-    for tpoint = 1:nTime
 
-        Y = double(mEEG(:, ch, tpoint));
 
-        lm_local = fitlm(X_full, Y);
-        
-        t_Obs(ch, tpoint) = lm_local.Coefficients.tStat(6);
+    for t = 1:nTime
 
-    end
-end
 
-fprintf('Observed t-statistic map completed.\n');
+        Y=squeeze(mEEG(:,ch,t));
 
-%% ==========================================================
-% Step 3: Observed TFCE map
-%% ==========================================================
 
-fprintf('Step 2: Computing observed TFCE map...\n');
+        lm_full = fitlm(X_full,Y);
 
-ChN = ept_ChN2(channelinfo);
-E_H = [0.66, 2];
 
-TFCE_Obs = ept_mex_TFCE2D(t_Obs, ChN, E_H);
+        coefNames = lm_full.Coefficients.Properties.RowNames;
 
-fprintf('Observed TFCE map completed.\n');
-%% ==========================================================
-% Step 4: Freedman-Lane permutation
-%% ==========================================================
 
-nPerm = 999;
-TFCE_permMax = nan(nPerm, 1);
+        idx = contains(coefNames,'x5');
 
-fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
 
-parfor p = 1:nPerm
+        if sum(idx)~=1
 
-    %fprintf('The %dth permutation from %d started\n', p, nPerm);
-
-    perm_t_local = nan(nChan, nTime);
-
-    perm_idx = randperm(nObs);
-
-    for ch = 1:nChan
-        for tpoint = 1:nTime
-
-            Y = double(mEEG(:, ch, tpoint));
-
-            % Reduced model: EEG ~ CongruencySemanticCategories + Stroke + Freq + JSD
-            lm_red = fitlm(X_null, Y);
-
-            Y_hat_red = lm_red.Fitted;
-            resid_red = lm_red.Residuals.Raw;
-
-            % Freedman-Lane permuted response
-            Y_perm = Y_hat_red + resid_red(perm_idx);
-
-            % Full model on permuted data:
-            % EEG_perm ~ Covariate + Group
-            lm_perm = fitlm(X_full, Y_perm);
-
-            % Column 3 = Group coefficient
-            perm_t_local(ch, tpoint) = lm_perm.Coefficients.tStat(6);
+            error('Classifier coefficient not found.');
 
         end
+
+
+        t_Obs(ch,t)= ...
+            lm_full.Coefficients.tStat(idx);
+
+
     end
-
-    fprintf('At the %dth permutation\n', p);
-
-    TFCE_perm = ept_mex_TFCE2D(perm_t_local, ChN, E_H);
-
-    TFCE_permMax(p) = max(abs(TFCE_perm(:)));
 
 end
 
-fprintf('\nPermutation testing completed.\n');
+
+
+fprintf('Observed t-map completed.\n');
+
+
 
 %% ==========================================================
-% Step 5: TFCE-corrected significance
+% TFCE observed map
 %% ==========================================================
 
-fprintf('Step 5: Computing TFCE-corrected significance...\n');
+
+fprintf('\nComputing observed TFCE...\n');
+
+
+ChN=ept_ChN2(channelinfo);
+
+
+E_H=[0.66 2];
+
+
+TFCE_Obs=ept_mex_TFCE2D( ...
+    t_Obs,...
+    ChN,...
+    E_H);
+
+
+
+fprintf('Observed TFCE completed.\n');
+
+
+
+%% ==========================================================
+% Freedman-Lane permutation
+%% ==========================================================
+
+
+nPerm=999;
+
+
+TFCE_permMax=zeros(nPerm,1);
+
+
+
+fprintf('\nStarting Freedman-Lane permutations...\n');
+
+
+
+parfor p=1:nPerm
+
+
+    % ------------------------------------
+    % One permutation for all EEG points
+    % ------------------------------------
+
+    perm_idx=randperm(nObs);
+
+
+
+    perm_t=zeros(nChan,nTime);
+
+
+
+    for ch=1:nChan
+
+
+        for t=1:nTime
+
+
+
+            % original reduced-model fitted values
+
+            Y0 = Yhat_null(:,ch,t);
+
+
+
+            % permuted residuals
+
+            e_perm = Residual_null(perm_idx,ch,t);
+
+
+
+            % Freedman-Lane response
+
+            Y_perm = Y0 + e_perm;
+
+
+
+            % full model
+
+            lm_perm = fitlm(X_full,Y_perm);
+
+
+
+            coefNames = ...
+                lm_perm.Coefficients.Properties.RowNames;
+
+
+
+            idx=contains(coefNames,'x5');
+
+
+
+            perm_t(ch,t)= ...
+                lm_perm.Coefficients.tStat(idx);
+
+
+
+        end
+
+    end
+
+
+
+    % TFCE on this permutation
+
+    TFCE_perm=ept_mex_TFCE2D( ...
+        perm_t,...
+        ChN,...
+        E_H);
+
+
+
+    TFCE_permMax(p)=max(abs(TFCE_perm(:)));
+
+
+
+end
+
+
+
+fprintf('Permutation completed.\n');
+
+%% ==========================================================
+% Part 3
+%
+% TFCE correction
+%
+%% ==========================================================
+
+
+fprintf('\nComputing TFCE corrected significance...\n');
+
 
 alpha = 0.05;
-nPerm = length(TFCE_permMax);
-maxTFCE = sort([TFCE_permMax;max(abs(TFCE_Obs(:)))]);
-maxTFCEcrit = maxTFCE(round(nPerm*(1-alpha)));
+
+
+
+%% ----------------------------------------------------------
+% Critical TFCE threshold
+%
+% Null distribution:
+%
+% max(abs(TFCE_perm))
+%
+% Do NOT include observed TFCE
+%% ----------------------------------------------------------
+
+
+maxTFCEcrit = prctile( ...
+    TFCE_permMax,...
+    100*(1-alpha));
+
+
+
+fprintf('Critical TFCE value = %.4f\n',maxTFCEcrit);
+
+
+
+%% ----------------------------------------------------------
+% Significant TFCE clusters
+%% ----------------------------------------------------------
+
 
 Mask = abs(TFCE_Obs) >= maxTFCEcrit;
 
-P_Values = nan(nChan, nTime);
 
-for ch = 1:nChan
-    for tpoint = 1:nTime
 
-        P_Values(ch, tpoint) = ...
-            (sum(TFCE_permMax >= abs(TFCE_Obs(ch, tpoint))) + 1) / ...
-            (nPerm + 1);
+%% ----------------------------------------------------------
+% TFCE corrected p-values
+%% ----------------------------------------------------------
+
+
+P_Values = nan(nChan,nTime);
+
+
+
+for ch=1:nChan
+
+
+    for t=1:nTime
+
+
+        P_Values(ch,t)= ...
+            (sum(TFCE_permMax >= abs(TFCE_Obs(ch,t)))+1) ...
+            /(nPerm+1);
+
 
     end
+
 end
 
-fprintf('TFCE-corrected significance completed.\n');
-fprintf('Critical TFCE value = %.4f\n', maxTFCEcrit);
+
+
+fprintf('TFCE correction completed.\n');
+
+
 
 %% ==========================================================
-% Step 6: Store results
+% Store results
 %% ==========================================================
 
-fprintf('Step 5: Storing results...\n');
 
-Results = struct();
+Results=struct();
 
-Results.tObs       = t_Obs;
-Results.TFCE_Obs  = TFCE_Obs;
+
+
+Results.tObs = t_Obs;
+
+Results.TFCE_Obs = TFCE_Obs;
+
 Results.TFCE_Null = TFCE_permMax;
-Results.maxTFCEcrit  = maxTFCEcrit;
-Results.P_Values  = P_Values;
-Results.Mask      = Mask;
-Results.alpha     = alpha;
-Results.nPerm     = nPerm;
-Results.model     = 'EEG ~ CongruencySemanticCategories + Stroke + Freq + JSD + Classifier';
-Results.test      = 'Classifier effect adjusted for CongruencySemanticCategories, Stroke, Freq and JSD';
+
+Results.maxTFCEcrit = maxTFCEcrit;
+
+Results.Mask = Mask;
+
+Results.P_Values = P_Values;
+
+Results.alpha = alpha;
+
+Results.nPerm = nPerm;
+
+
+Results.model = ...
+    ['EEG ~ CongruencySemanticCategories + Stroke + ' ...
+     'Freq + JSD + Classifier'];
+
+
+Results.test = ...
+    'Classifier effect after removing subject/item random intercepts';
+
+
 
 fprintf('Results stored.\n');
 
+
+
 %% ==========================================================
-% Step 7: Save TFCE results
+% Save
 %% ==========================================================
 
-if ~exist('../Results', 'dir')
+
+if ~exist('../Results','dir')
+
     mkdir('../Results');
+
 end
 
-save('../Results/09_realDOE_results.mat', ...
-     'Results', ...
-     'nChan', ...
-     'time', ...
-     'channelinfo');
 
-disp('TFCE covariate-adjusted between-subject analysis completed.');
-disp('Saved results: ../Results/09_realDOE_results.mat');
+
+save('../Results/09_realDOE_results.mat',...
+    'Results',...
+    'nChan',...
+    'time',...
+    'channelinfo');
+
+
+
+fprintf('Saved results.\n');
+
+
 
 %% ==========================================================
-% Step 8: Plot significant effects
+% Plot corrected t-map
 %% ==========================================================
 
-clear all; close all; clc
 
-load('../Results/09_realDOE_results.mat')
+figure;
+
+
 sigT = Results.tObs;
-sigT(~Results.Mask) = 0;
 
-figure;
+sigT(~Results.Mask)=0;
 
-imagesc(time, 1:nChan, sigT);
+
+
+imagesc(time,1:nChan,sigT);
+
+
 axis xy;
+
 
 xlim([-200 800]);
 
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {channelinfo.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
+
+
+set(gca,...
+    'YTick',1:nChan,...
+    'YTickLabel',{channelinfo.labels},...
+    'XTick',-200:200:800,...
+    'TickLength',[0 0],...
+    'FontSize',15,...
+    'FontName','Arial');
+
+
 
 xlabel('Time (ms)');
+
 ylabel('Channel');
-title('TFCE-corrected Significant Effects');
 
-cb = colorbar;
-ylabel(cb, 't-value', ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
+
+title('TFCE-corrected Classifier Effect');
+
+
+
+cb=colorbar;
+
+
+ylabel(cb,'t-value',...
+    'FontSize',15,...
+    'FontName','Arial');
+
+
 
 %% ==========================================================
-% Step 9: Plot TFCE values
+% Plot observed TFCE map
 %% ==========================================================
+
 
 figure;
 
-imagesc(time, 1:nChan, Results.TFCE_Obs);
+
+imagesc(time,1:nChan,TFCE_Obs);
+
+
 axis xy;
+
 
 xlim([-200 800]);
 
-set(gca, ...
-    'YTick', 1:nChan, ...
-    'YTickLabel', {channelinfo.labels}, ...
-    'XTick', -200:200:800, ...
-    'TickLength', [0 0], ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
+
+
+set(gca,...
+    'YTick',1:nChan,...
+    'YTickLabel',{channelinfo.labels},...
+    'XTick',-200:200:800,...
+    'TickLength',[0 0],...
+    'FontSize',15,...
+    'FontName','Arial');
+
+
 
 xlabel('Time (ms)');
+
 ylabel('Channel');
+
+
 title('Observed TFCE Map');
 
-cb = colorbar;
-ylabel(cb, 'TFCE-value', ...
-    'FontSize', 15, ...
-    'FontName', 'Arial');
+
+
+cb=colorbar;
+
+
+ylabel(cb,'TFCE value',...
+    'FontSize',15,...
+    'FontName','Arial');
+
+
+
+%% ==========================================================
+% Plot p-value map
+%% ==========================================================
+
+
+figure;
+
+
+imagesc(time,1:nChan,-log10(P_Values));
+
+
+axis xy;
+
+
+xlim([-200 800]);
+
+
+
+set(gca,...
+    'YTick',1:nChan,...
+    'YTickLabel',{channelinfo.labels},...
+    'XTick',-200:200:800,...
+    'TickLength',[0 0],...
+    'FontSize',15,...
+    'FontName','Arial');
+
+
+
+xlabel('Time (ms)');
+
+ylabel('Channel');
+
+
+title('-log10 TFCE corrected p-values');
+
+
+
+cb=colorbar;
+
+
+ylabel(cb,'-log10(p)',...
+    'FontSize',15,...
+    'FontName','Arial');
