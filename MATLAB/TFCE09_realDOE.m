@@ -228,10 +228,6 @@ lmeFormula = ...
 
 for ch = 1:nChan
 
-
-    fprintf('Channel %d/%d\n',ch,nChan);
-
-
     for t = 1:nTime
 
 
@@ -267,8 +263,7 @@ for ch = 1:nChan
         % (fixed + random) - fixed
         %
 
-        randomContribution = ...
-            fitted(lme,'Conditional',true) - ...
+        randomContribution = fitted(lme,'Conditional',true) - ...
             fitted(lme,'Conditional',false);
 
 
@@ -409,8 +404,7 @@ for ch = 1:nChan
         end
 
 
-        t_Obs(ch,t)= ...
-            lm_full.Coefficients.tStat(idx);
+        t_Obs(ch,t)= lm_full.Coefficients.tStat(idx);
 
 
     end
@@ -465,7 +459,8 @@ fprintf('\nStarting Freedman-Lane permutations...\n');
 
 
 parfor p=1:nPerm
-
+    
+    fprintf('At %d/%d permutation\n', p, nPerm);
 
     % ------------------------------------
     % One permutation for all EEG points
