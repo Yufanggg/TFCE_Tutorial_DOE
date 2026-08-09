@@ -302,7 +302,7 @@ fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
 
 parfor p = 1:nPerm
 
-    fprintf('The %dth permutation from %d started\n', p, nPerm);
+    %fprintf('The %dth permutation from %d started\n', p, nPerm);
 
     perm_t_local = nan(nChan, nTime);
 
