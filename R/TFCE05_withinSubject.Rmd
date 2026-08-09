@@ -243,7 +243,7 @@ if (!dir.exists("../Results")) {
   dir.create("../Results")
 }
 
-save(Results, times, nChan, channels, file = "../Results/05_TFCE_within_subject_results.RData")
+save(Results, times, nChan, channels, file = "../Results/05_TFCE_within_subject_LME_results.RData")
 
 
 cat("TFCE within-subject analysis completed and results saved.\n")
@@ -253,7 +253,7 @@ cat("TFCE within-subject analysis completed and results saved.\n")
 ```{r, echo=TRUE}
 rm(list =ls())
 source("../R/plot_eeg_map.R")
-load("../Results/05_TFCE_within_subject_results.RData")
+load("../Results/05_TFCE_within_subject_LME_results.RData")
 ## ==========================================================
 ## Step 7: Plot TFCE-corrected significant t-values
 ## ==========================================================
