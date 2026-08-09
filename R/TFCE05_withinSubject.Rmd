@@ -127,14 +127,9 @@ n_perm <- 999
 
 TFCE_permMax <- rep(NaN, n_perm)
 
-## ------------------------------------------------------------
-## 3.1. Prepare the observed long-format dataset once
-## ------------------------------------------------------------
-subject_info <- designTable %>%
-  select(RowID, Subject, CondCode)
 
 ## ------------------------------------------------------------
-## 3.2. Set up parallel processing
+## 3.1. Set up parallel processing
 ## ------------------------------------------------------------
 
 n_workers <- max(1, parallel::detectCores() - 1)
@@ -144,25 +139,32 @@ plan(multisession, workers = n_workers)
 handlers("txtprogressbar")
 
 ## ------------------------------------------------------------
-## 3.3 Parallel permutation test
+## 3.2 Parallel permutation test
 ## ------------------------------------------------------------
 
 with_progress({
   progress_update <- progressor(along = seq_len(n_perm))
   
   TFCE_permMax <- future_sapply(seq_len(n_perm), function(p) {
-    perm_info <- subject_info %>%
+    perm_info <- designTable %>%
+      distinct(RowID, Subject, CondCode) %>%
       group_by(Subject) %>%
-      mutate(CondCode = sample(CondCode)) %>%
-      ungroup()
+      mutate(CondCode_perm = sample(CondCode)) %>%
+      ungroup() %>%
+      select(RowID, CondCode_perm)
     
-    perm_dat <- EEGlong %>%
-      left_join(perm_info, by = c("Subject", "CondCode")) %>%
+    
+    perm_dat <- dat %>%
+      select(-CondCode) %>%
+      left_join(perm_info, by = "RowID") %>%
       mutate(
+        CondCode = as.numeric(CondCode_perm),
         Subject = factor(Subject),
-        Channel = factor(Channel),
-        CondCode = as.numeric(CondCode)
-      )
+        Channel = factor(Channel)
+      ) %>%
+      select(-CondCode_perm)
+    
+    
     t_perm <- compute_tmap(perm_dat)
     
     TFCE_perm <- tfce_transform(t_perm,
@@ -175,12 +177,7 @@ with_progress({
     progress_update()
     perm_max
     
-  },
-  future.seed = TRUE,
-  future.packages = c("dplyr",
-                      "tidyr",
-                      "lme4",
-                      "lmerTest"))
+  }, future.seed = TRUE, future.packages = c("dplyr", "tidyr", "lme4", "lmerTest"))
 })
 
 plan(sequential)
