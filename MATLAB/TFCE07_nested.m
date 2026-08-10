@@ -227,14 +227,9 @@ TFCE_permMax = nan(nPerm, 1);
 % Identify class-student units
 %% ==========================================================
 
-pairs = [ ...
-    Class(:), ...
-    Student(:)];
+pairs = [Class(:), Student(:)];
 
-[uniquePairs, ~, unitID] = unique( ...
-    pairs, ...
-    'rows', ...
-    'stable');
+[uniquePairs, ~, unitID] = unique(pairs, 'rows', 'stable');
 
 nUnits = size(uniquePairs,1);
 
@@ -242,8 +237,7 @@ nUnits = size(uniquePairs,1);
 % Randomly decide which units are swapped
 %% ==========================================================
 
-swapCondition = ...
-    rand(nUnits,nPerm) < 0.5;
+swapCondition = rand(nUnits,nPerm) < 0.5;
 
 %% ==========================================================
 % Generate permutation matrices
@@ -253,9 +247,7 @@ PermutationMatrix = cell(nPerm,1);
 
 for p = 1:nPerm
 
-    P = sparse( ...
-        nObs, ...
-        nObs);
+    P = sparse(nObs, nObs);
 
     for u = 1:nUnits
 
@@ -263,8 +255,7 @@ for p = 1:nPerm
 
         if numel(rows) ~= 2
 
-            error( ...
-                'Each unit must contain exactly two observations.');
+            error('Each unit must contain exactly two observations.');
 
         end
 
@@ -341,13 +332,9 @@ parfor p = 1:nPerm
     % TFCE transformation and maximum statistic
     %% ------------------------------------------------------
 
-    TFCE_perm = ept_mex_TFCE2D( ...
-        perm_t, ...
-        ChN, ...
-        E_H);
+    TFCE_perm = ept_mex_TFCE2D(perm_t, ChN, E_H);
 
-    TFCE_permMax(p) = ...
-        max(abs(TFCE_perm(:)));
+    TFCE_permMax(p) = max(abs(TFCE_perm(:)));
 
 end
 
@@ -357,8 +344,7 @@ fprintf('permutation completed.\n');
 % Step 4: Compute TFCE-corrected significance
 %% ==========================================================
 
-fprintf( ...
-    '\nStep 4: Computing TFCE-corrected significance...\n');
+fprintf('\nStep 4: Computing TFCE-corrected significance...\n');
 
 
 %% ==========================================================

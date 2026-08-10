@@ -181,8 +181,7 @@ Stroke = ...
 % Semantic category congruency
 %% ----------------------------
 
-tmp = categorical( ...
-    designTable.CongruencySemanticCategories);
+tmp = categorical(designTable.CongruencySemanticCategories);
 
 
 lev = categories(tmp);
@@ -431,10 +430,7 @@ ChN=ept_ChN2(channelinfo);
 E_H=[0.66 2];
 
 
-TFCE_Obs=ept_mex_TFCE2D( ...
-    t_Obs,...
-    ChN,...
-    E_H);
+TFCE_Obs=ept_mex_TFCE2D(t_Obs, ChN, E_H);
 
 
 
@@ -468,75 +464,43 @@ parfor p=1:nPerm
 
     perm_idx=randperm(nObs);
 
-
-
     perm_t=zeros(nChan,nTime);
-
-
 
     for ch=1:nChan
 
-
         for t=1:nTime
-
-
 
             % original reduced-model fitted values
 
             Y0 = Yhat_null(:,ch,t);
 
-
-
             % permuted residuals
 
             e_perm = Residual_null(perm_idx,ch,t);
-
-
 
             % Freedman-Lane response
 
             Y_perm = Y0 + e_perm;
 
-
-
             % full model
 
             lm_perm = fitlm(X_full,Y_perm);
-
-
-
-            coefNames = ...
-                lm_perm.Coefficients.Properties.RowNames;
-
-
+            
+            coefNames = lm_perm.Coefficients.Properties.RowNames;
 
             idx=contains(coefNames,'x5');
 
-
-
-            perm_t(ch,t)= ...
-                lm_perm.Coefficients.tStat(idx);
-
-
-
+            perm_t(ch,t)= lm_perm.Coefficients.tStat(idx);
+            
         end
 
     end
 
-
-
     % TFCE on this permutation
 
-    TFCE_perm=ept_mex_TFCE2D( ...
-        perm_t,...
-        ChN,...
-        E_H);
-
-
+    TFCE_perm=ept_mex_TFCE2D(perm_t, ChN, E_H);
 
     TFCE_permMax(p)=max(abs(TFCE_perm(:)));
-
-
 
 end
 
@@ -551,82 +515,39 @@ fprintf('Permutation completed.\n');
 %
 %% ==========================================================
 
-
 fprintf('\nComputing TFCE corrected significance...\n');
-
 
 alpha = 0.05;
 
+maxTFCE = sort([TFCE_permMax;max(abs(TFCE_Obs(:)))]);
 
-
-%% ----------------------------------------------------------
-% Critical TFCE threshold
-%
-% Null distribution:
-%
-% max(abs(TFCE_perm))
-%
-% Do NOT include observed TFCE
-%% ----------------------------------------------------------
-
-
-maxTFCEcrit = prctile( ...
-    TFCE_permMax,...
-    100*(1-alpha));
-
-
+maxTFCEcrit = maxTFCE(round(nPerm*(1-alpha)));
 
 fprintf('Critical TFCE value = %.4f\n',maxTFCEcrit);
 
-
-
-%% ----------------------------------------------------------
-% Significant TFCE clusters
-%% ----------------------------------------------------------
-
-
 Mask = abs(TFCE_Obs) >= maxTFCEcrit;
-
-
-
-%% ----------------------------------------------------------
-% TFCE corrected p-values
-%% ----------------------------------------------------------
-
 
 P_Values = nan(nChan,nTime);
 
 
-
 for ch=1:nChan
 
+    for tp=1:nTime
 
-    for t=1:nTime
-
-
-        P_Values(ch,t)= ...
-            (sum(TFCE_permMax >= abs(TFCE_Obs(ch,t)))+1) ...
+        P_Values(ch,tp)= ...
+            (sum(TFCE_permMax >= abs(TFCE_Obs(ch,tp)))+1) ...
             /(nPerm+1);
-
-
     end
-
+    
 end
 
-
-
 fprintf('TFCE correction completed.\n');
-
-
 
 %% ==========================================================
 % Store results
 %% ==========================================================
 
-
 Results=struct();
-
-
 
 Results.tObs = t_Obs;
 
@@ -653,16 +574,11 @@ Results.model = ...
 Results.test = ...
     'Classifier effect after removing subject/item random intercepts';
 
-
-
 fprintf('Results stored.\n');
-
-
 
 %% ==========================================================
 % Save
 %% ==========================================================
-
 
 if ~exist('../Results','dir')
 
@@ -671,42 +587,29 @@ if ~exist('../Results','dir')
 end
 
 
-
 save('../Results/09_realDOE_results.mat',...
     'Results',...
     'nChan',...
     'time',...
     'channelinfo');
 
-
-
 fprintf('Saved results.\n');
-
 
 
 %% ==========================================================
 % Plot corrected t-map
 %% ==========================================================
-
-
 figure;
-
 
 sigT = Results.tObs;
 
 sigT(~Results.Mask)=0;
 
-
-
 imagesc(time,1:nChan,sigT);
-
 
 axis xy;
 
-
 xlim([-200 800]);
-
-
 
 set(gca,...
     'YTick',1:nChan,...
@@ -716,19 +619,13 @@ set(gca,...
     'FontSize',15,...
     'FontName','Arial');
 
-
-
 xlabel('Time (ms)');
 
 ylabel('Channel');
 
-
 title('TFCE-corrected Classifier Effect');
 
-
-
 cb=colorbar;
-
 
 ylabel(cb,'t-value',...
     'FontSize',15,...
@@ -740,19 +637,13 @@ ylabel(cb,'t-value',...
 % Plot observed TFCE map
 %% ==========================================================
 
-
 figure;
-
 
 imagesc(time,1:nChan,TFCE_Obs);
 
-
 axis xy;
 
-
 xlim([-200 800]);
-
-
 
 set(gca,...
     'YTick',1:nChan,...
@@ -762,43 +653,29 @@ set(gca,...
     'FontSize',15,...
     'FontName','Arial');
 
-
-
 xlabel('Time (ms)');
 
 ylabel('Channel');
 
-
 title('Observed TFCE Map');
 
-
-
 cb=colorbar;
-
 
 ylabel(cb,'TFCE value',...
     'FontSize',15,...
     'FontName','Arial');
 
-
-
 %% ==========================================================
 % Plot p-value map
 %% ==========================================================
 
-
 figure;
-
 
 imagesc(time,1:nChan,-log10(P_Values));
 
-
 axis xy;
 
-
 xlim([-200 800]);
-
-
 
 set(gca,...
     'YTick',1:nChan,...
@@ -808,19 +685,13 @@ set(gca,...
     'FontSize',15,...
     'FontName','Arial');
 
-
-
 xlabel('Time (ms)');
 
 ylabel('Channel');
 
-
 title('-log10 TFCE corrected p-values');
 
-
-
 cb=colorbar;
-
 
 ylabel(cb,'-log10(p)',...
     'FontSize',15,...
