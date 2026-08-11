@@ -209,7 +209,7 @@ E_H = [0.66, 2];
 
 fprintf('\nStep 1: Computing observed t-statistic map...\n');
 
-t_Obs = zeros(nChan, nTime);
+t_Obs = nan(nChan, nTime);
 
 
 %% ----------------------------------------------------------
@@ -217,7 +217,7 @@ t_Obs = zeros(nChan, nTime);
 %% ----------------------------------------------------------
 
 tbl_obs = table( ...
-    zeros(nObs, 1), ...
+    nan(nObs, 1), ...
     Condition, ...
     ClassLME, ...
     StudentLME, ...
@@ -321,7 +321,7 @@ swapCondition = rand(nUnits, nPerm) < 0.5;
 
 fprintf('Generating permutation indices...\n');
 
-PermIndex = zeros(nObs, nPerm);
+PermIndex = nan(nObs, nPerm);
 
 for p = 1:nPerm
 
@@ -353,7 +353,7 @@ fprintf('Permutation indices created.\n');
 % Preallocate permutation results
 % ==========================================================
 
-TFCE_permMax = zeros(nPerm, 1);
+TFCE_permMax = nan(nPerm, 1);
 
 % ==========================================================
 % Apply permutation matrices
@@ -383,13 +383,13 @@ parfor p = 1:nPerm
     % Initialize permutation t-map
     % ------------------------------------------------------
 
-    perm_t = zeros(nChan, nTime);
+    perm_t = nan(nChan, nTime);
     
     % ------------------------------------------------------
     % Construct mixed-model table once for this permutation
     % ------------------------------------------------------
 
-    tbl_perm = table(zeros(nObs, 1), ...
+    tbl_perm = table(nan(nObs, 1), ...
         Condition_perm, ClassLME, ...
         StudentLME, 'VariableNames', ...
         {'EEG', 'Condition', 'Class', 'Student'});
