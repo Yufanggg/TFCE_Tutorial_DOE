@@ -290,12 +290,9 @@ for u = 1:nUnits
 
     if numel(rows) ~= 2
 
-        error( ...
-            ['Each Class x Student unit must contain exactly ', ...
+        error(['Each Class x Student unit must contain exactly ', ...
              'two observations. Unit %d contains %d.'], ...
-            u, ...
-            numel(rows));
-
+            u, numel(rows));
     end
 
 end
@@ -323,7 +320,6 @@ swapCondition = rand(nUnits, nPerm) < 0.5;
 %% ==========================================================
 
 fprintf('Generating permutation indices...\n');
-
 
 PermIndex = zeros(nObs, nPerm);
 
@@ -353,9 +349,9 @@ end
 
 fprintf('Permutation indices created.\n');
 
-%% ==========================================================
+% ==========================================================
 % Preallocate permutation results
-%% ==========================================================
+% ==========================================================
 
 TFCE_permMax = zeros(nPerm, 1);
 
@@ -406,12 +402,12 @@ parfor p = 1:nPerm
         for tp = 1:nTime
 
             % Replace response only
-            tbl_perm.EEG = squeeze(EEGdata(:, ch,tp));
+            tbl_perm.EEG = double(squeeze(EEGdata(:, ch, tp)));
 
             % Fit nested mixed-effects model
             lme_perm = fitlme(tbl_perm, ...
                 'EEG ~ Condition + (1|Class) + (1|Class:Student)');
-
+            
             % Extract Condition t statistic
             perm_t(ch, tp) = lme_perm.Coefficients.tStat(2);
 
