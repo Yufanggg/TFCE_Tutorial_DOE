@@ -58,7 +58,6 @@ fprintf('\nStarting nested class-student TFCE analysis...\n');
 
 rng(123);
 
-
 %% ==========================================================
 % Analysis settings
 %% ==========================================================
@@ -69,7 +68,6 @@ alpha = 0.05;
 inputFile = '../Data/07_simulated_nested_class_student_EEG.mat';
 
 outputFile = '../Results/07_TFCE_nested_class_student_results.mat';
-
 
 %% ==========================================================
 % Load data
@@ -91,7 +89,6 @@ end
 
 EEGdata = S.EEGdata;
 designTable = S.designTable;
-
 
 %% ==========================================================
 % Basic dimensions and checks
@@ -119,7 +116,6 @@ fprintf( ...
     height(designTable), ...
     width(designTable));
 
-
 %% ==========================================================
 % Extract design variables
 %% ==========================================================
@@ -139,7 +135,6 @@ StudentLME = categorical(Student);
 
 times = -200:4:800;
 
-
 %% ==========================================================
 % Check time dimension
 %% ==========================================================
@@ -151,7 +146,6 @@ if length(times) ~= nTime
          'the time dimension of EEGdata.']);
 
 end
-
 
 %% ==========================================================
 % Load channel locations
@@ -184,19 +178,16 @@ end
 
 e_loc = chanlocs_1020(idx);
 
-
 %% ==========================================================
 % Check number of channels
 %% ==========================================================
 
 if length(e_loc) ~= nChan
 
-    error( ...
-        ['The number of selected channel locations does not ', ...
+    error(['The number of selected channel locations does not ', ...
          'match the channel dimension of EEGdata.']);
 
 end
-
 
 %% ==========================================================
 % Channel-neighbour structure and TFCE parameters
@@ -261,7 +252,6 @@ end
 
 fprintf('Observed t-statistic map completed.\n');
 
-
 %% ==========================================================
 % Step 2: Compute observed TFCE map
 %% ==========================================================
@@ -272,13 +262,11 @@ TFCE_Obs = ept_mex_TFCE2D(t_Obs, ChN, E_H);
 
 fprintf('Observed TFCE map completed.\n');
 
-
 %% ==========================================================
 % Step 3: Generate null maximum-TFCE distribution
 %% ==========================================================
 
 fprintf('\nStep 3: Preparing permutations...\n');
-
 
 % ==========================================================
 % Identify Class x Student units
@@ -297,7 +285,6 @@ nUnits = size(uniquePairs, 1);
 fprintf( ...
     'Number of Class x Student units: %d\n', ...
     nUnits);
-
 
 % ==========================================================
 % Check that each student has exactly two observations
@@ -319,7 +306,6 @@ for u = 1:nUnits
 
 end
 
-
 %% ==========================================================
 % Randomly determine which units are swapped
 %
@@ -331,7 +317,6 @@ end
 %% ==========================================================
 
 swapCondition = rand(nUnits, nPerm) < 0.5;
-
 
 %% ==========================================================
 % Generate sparse permutation matrices
@@ -387,46 +372,17 @@ end
 
 fprintf('Permutation matrices created.\n');
 
-
 %% ==========================================================
 % Preallocate permutation results
 %% ==========================================================
 
 TFCE_permMax = zeros(nPerm, 1);
 
-
-%% ==========================================================
-% Start parallel pool
-%
-% Use an existing pool if one is already running.
-%
-% Six workers are used here as a moderate default because
-% each worker repeatedly fits mixed-effects models.
-%% ==========================================================
-
-poolobj = gcp('nocreate');
-
-if isempty(poolobj)
-
-    fprintf('\nStarting parallel pool...\n');
-
-    parpool('local', 6);
-
-else
-
-    fprintf( ...
-        '\nUsing existing parallel pool with %d workers.\n', ...
-        poolobj.NumWorkers);
-
-end
-
-
 %% ==========================================================
 % Apply permutation matrices
 %% ==========================================================
 
-fprintf('\nStep 3: Permutation test has started...\n');
-
+fprintf('\n Permutation test has started...\n');
 
 parfor p = 1:nPerm
 
@@ -443,17 +399,15 @@ parfor p = 1:nPerm
     % permutation.
     %% ------------------------------------------------------
 
-    fprintf("At %d of %d permutation", p, nPerm);
+    fprintf('At %d of %d permutation\n', p, nPerm);
 
     Condition_perm = PermutationMatrix{p} * Condition;
-
 
     %% ------------------------------------------------------
     % Initialize permutation t-map
     %% ------------------------------------------------------
 
     perm_t = zeros(nChan, nTime);
-
 
     %% ------------------------------------------------------
     % Construct mixed-model table once for this permutation
@@ -468,11 +422,10 @@ parfor p = 1:nPerm
         {'EEG', 'Condition', 'Class', 'Student'} ...
     );
 
-
     %% ------------------------------------------------------
     % Fit permuted mixed-effects models
     %% ------------------------------------------------------
-
+    
     for ch = 1:nChan
 
         for tp = 1:nTime
@@ -491,13 +444,11 @@ parfor p = 1:nPerm
 
     end
 
-
     %% ------------------------------------------------------
     % TFCE transformation
     %% ------------------------------------------------------
 
     TFCE_perm = ept_mex_TFCE2D( perm_t, ChN, E_H);
-
 
     %% ------------------------------------------------------
     % Maximum absolute TFCE statistic
@@ -507,102 +458,33 @@ parfor p = 1:nPerm
 
 end
 
-
 fprintf('Permutation testing completed.\n');
-
 
 %% ==========================================================
 % Step 4: Compute TFCE-corrected significance
 %% ==========================================================
 
-fprintf( ...
-    '\nStep 4: Computing TFCE-corrected significance...\n');
+fprintf('\nStep 4: Computing TFCE-corrected significance...\n');
 
+maxTFCE = sort([TFCE_permMax;max(abs(TFCE_Obs(:)))]);
 
-%% ==========================================================
-% Include observed assignment as the identity permutation
-%
-% Total reference distribution:
-%
-%   nPerm random permutations
-%   +
-%   1 observed assignment
-%% ==========================================================
+maxTFCEcrit = maxTFCE(round(nPerm*(1-Alpha)));
 
-observedMaxTFCE = ...
-    max(abs(TFCE_Obs(:)));
+Mask = abs(TFCE_Obs) >= critTFCE;
 
-allMaxTFCE = sort( ...
-    [observedMaxTFCE; TFCE_permMax] ...
-);
-
-
-%% ==========================================================
-% Critical maximum-TFCE value
-%% ==========================================================
-
-nReference = nPerm + 1;
-
-critIndex = ceil( ...
-    (1 - alpha) * nReference ...
-);
-
-critIndex = min( ...
-    max(critIndex, 1), ...
-    nReference ...
-);
-
-maxTFCEcrit = ...
-    allMaxTFCE(critIndex);
-
-
-%% ==========================================================
-% Significant TFCE mask
-%% ==========================================================
-
-Mask = ...
-    abs(TFCE_Obs) >= maxTFCEcrit;
-
-
-%% ==========================================================
-% TFCE-corrected permutation p-values
-%
-% Monte-Carlo correction:
-%
-%   p = (b + 1) / (nPerm + 1)
-%
-% where b is the number of permutation maxima greater than
-% or equal to the observed absolute TFCE statistic.
-%% ==========================================================
-
-P_Values = zeros(nChan, nTime);
+P_Values = nan(nChan, nTime);
 
 for ch = 1:nChan
-
     for tp = 1:nTime
-
         P_Values(ch, tp) = ...
-            ( ...
-                sum( ...
-                    TFCE_permMax >= ...
-                    abs(TFCE_Obs(ch, tp)) ...
-                ) ...
-                + 1 ...
-            ) ...
-            / ...
+            (sum(TFCE_permMax >= abs(TFCE_Obs(ch, tp))) + 1) / ...
             (nPerm + 1);
-
     end
 
 end
 
-
-fprintf('TFCE correction completed.\n');
-
-fprintf( ...
-    'Critical TFCE value: %.4f\n', ...
-    maxTFCEcrit);
-
+fprintf('TFCE-corrected significance completed.\n');
+fprintf('Critical TFCE value = %.4f\n', maxTFCEcrit);
 
 %% ==========================================================
 % Step 5: Store results
@@ -623,7 +505,6 @@ Results.nPerm        = nPerm;
 
 fprintf('Results stored.\n');
 
-
 %% ==========================================================
 % Step 6: Save results
 %% ==========================================================
@@ -636,16 +517,9 @@ if ~exist('../Results', 'dir')
 
 end
 
-save( ...
-    outputFile, ...
-    'Results', ...
-    'nChan', ...
-    'times', ...
-    'e_loc' ...
-);
+save(outputFile, 'Results', 'nChan', 'times', 'e_loc');
 
 fprintf('Results saved to:\n%s\n', outputFile);
-
 
 %% ==========================================================
 % Step 7: Plot TFCE-corrected significant t-values
@@ -657,18 +531,13 @@ sigT(~Results.Mask) = 0;
 
 figure;
 
-imagesc( ...
-    times, ...
-    1:nChan, ...
-    sigT ...
-);
+imagesc(times, 1:nChan, sigT );
 
 axis xy;
 
 xlim([-200 800]);
 
-set( ...
-    gca, ...
+set(gca, ...
     'YTick', 1:nChan, ...
     'YTickLabel', {e_loc.labels}, ...
     'XTick', -200:200:800, ...
@@ -680,17 +549,11 @@ set( ...
 xlabel('Time (ms)');
 ylabel('Channel');
 
-title( ...
-    'TFCE-corrected Significant Effects' ...
-);
+title('TFCE-corrected Significant Effects');
 
 cb = colorbar;
 
-ylabel( ...
-    cb, ...
-    't-value' ...
-);
-
+ylabel(cb, 't-value');
 
 %% ==========================================================
 % Step 8: Plot observed TFCE values
@@ -698,25 +561,19 @@ ylabel( ...
 
 figure;
 
-imagesc( ...
-    times, ...
-    1:nChan, ...
-    Results.TFCE_Obs ...
-);
+imagesc(times, 1:nChan, Results.TFCE_Obs);
 
 axis xy;
 
 xlim([-200 800]);
 
-set( ...
-    gca, ...
+set(gca, ...
     'YTick', 1:nChan, ...
     'YTickLabel', {e_loc.labels}, ...
     'XTick', -200:200:800, ...
     'TickLength', [0 0], ...
     'FontSize', 15, ...
-    'FontName', 'Arial' ...
-);
+    'FontName', 'Arial');
 
 xlabel('Time (ms)');
 ylabel('Channel');
@@ -725,17 +582,11 @@ title('Observed TFCE Map');
 
 cb = colorbar;
 
-ylabel( ...
-    cb, ...
-    'TFCE value' ...
-);
-
+ylabel(cb, 'TFCE value');
 
 %% ==========================================================
 % Analysis completed
 %% ==========================================================
 
-fprintf( ...
-    '\nNested class-student TFCE analysis completed.\n' ...
-);
+fprintf('\nNested class-student TFCE analysis completed.\n');
 
