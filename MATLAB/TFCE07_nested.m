@@ -357,21 +357,6 @@ fprintf('\n Permutation test has started...\n');
 
 parfor p = 1:nPerm
 
-    % ------------------------------------------------------
-    % Apply permutation to the entire EEG dataset
-    %
-    % This replaces:
-    %
-    %   PermutationMatrix{p} * EEG
-    %
-    % separately for every Channel x Time point.
-    %
-    % The permutation is now performed only once per
-    % permutation.
-    % ------------------------------------------------------
-
-    fprintf('At %d of %d permutation\n', p, nPerm);
-
     Condition_perm = Condition(PermIndex(:,p));
     % ------------------------------------------------------
     % Initialize permutation t-map
@@ -408,6 +393,8 @@ parfor p = 1:nPerm
         end
 
     end
+
+    fprintf('At %d of %d permutation\n', p, nPerm);
 
     % ------------------------------------------------------
     % TFCE transformation
