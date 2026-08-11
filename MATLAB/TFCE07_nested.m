@@ -312,59 +312,46 @@ end
 
 swapCondition = rand(nUnits, nPerm) < 0.5;
 
-% ==========================================================
-% Generate sparse permutation matrices
+%% ==========================================================
+% Generate permutation indices
 %
-% Each permutation matrix is:
+% Each permutation only stores the rearranged observation
+% indices instead of a full permutation matrix.
 %
-%   nObs x nObs
-%
-% Within every Class x Student unit:
-%
-%   no swap:
-%
-%       [1 0
-%        0 1]
-%
-%   swap:
-%
-%       [0 1
-%        1 0]
-% ==========================================================
+% PermIndex(:,p) gives the reordered observations for
+% permutation p.
+%% ==========================================================
 
-PermutationMatrix = cell(nPerm, 1);
+fprintf('Generating permutation indices...\n');
+
+
+PermIndex = zeros(nObs, nPerm);
 
 for p = 1:nPerm
 
-    P = sparse(nObs, nObs);
+    idx_perm = (1:nObs)';
 
     for u = 1:nUnits
 
         rows = find(unitID == u);
 
-        if swapCondition(u, p)
+        if numel(rows) ~= 2
 
-            % Swap responses within the student
-
-            P(rows(1), rows(2)) = 1;
-            P(rows(2), rows(1)) = 1;
-
-        else
-
-            % Keep responses in their original order
-
-            P(rows(1), rows(1)) = 1;
-            P(rows(2), rows(2)) = 1;
-
+            error('Each Class x Student unit must contain exactly two observations.');
         end
 
+        if swapCondition(u,p)
+
+            % swap the two observations within student
+
+            idx_perm(rows) = rows([2 1]);
+        end
     end
 
-    PermutationMatrix{p} = P;
-
+    PermIndex(:,p) = idx_perm;
 end
 
-fprintf('Permutation matrices created.\n');
+fprintf('Permutation indices created.\n');
 
 %% ==========================================================
 % Preallocate permutation results
@@ -395,14 +382,13 @@ parfor p = 1:nPerm
 
     fprintf('At %d of %d permutation\n', p, nPerm);
 
-    Condition_perm = PermutationMatrix{p} * Condition;
-
+    Condition_perm = Condition(PermIndex(:,p));
     % ------------------------------------------------------
     % Initialize permutation t-map
     % ------------------------------------------------------
 
     perm_t = zeros(nChan, nTime);
-
+    
     % ------------------------------------------------------
     % Construct mixed-model table once for this permutation
     % ------------------------------------------------------
@@ -437,7 +423,7 @@ parfor p = 1:nPerm
     % TFCE transformation
     % ------------------------------------------------------
 
-    TFCE_perm = ept_mex_TFCE2D( perm_t, ChN, E_H);
+    TFCE_perm = ept_mex_TFCE2D(perm_t, ChN, E_H);
     
     % ------------------------------------------------------
     % Maximum absolute TFCE statistic
