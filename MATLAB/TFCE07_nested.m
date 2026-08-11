@@ -274,17 +274,11 @@ fprintf('\nStep 3: Preparing permutations...\n');
 
 pairs = [Class(:), Student(:)];
 
-[uniquePairs, ~, unitID] = unique( ...
-    pairs, ...
-    'rows', ...
-    'stable' ...
-);
+[uniquePairs, ~, unitID] = unique(pairs, 'rows', 'stable');
 
 nUnits = size(uniquePairs, 1);
 
-fprintf( ...
-    'Number of Class x Student units: %d\n', ...
-    nUnits);
+fprintf('Number of Class x Student units: %d\n', nUnits);
 
 % ==========================================================
 % Check that each student has exactly two observations
@@ -306,7 +300,7 @@ for u = 1:nUnits
 
 end
 
-%% ==========================================================
+% ==========================================================
 % Randomly determine which units are swapped
 %
 % Rows:
@@ -314,11 +308,11 @@ end
 %
 % Columns:
 %   permutations
-%% ==========================================================
+% ==========================================================
 
 swapCondition = rand(nUnits, nPerm) < 0.5;
 
-%% ==========================================================
+% ==========================================================
 % Generate sparse permutation matrices
 %
 % Each permutation matrix is:
@@ -336,7 +330,7 @@ swapCondition = rand(nUnits, nPerm) < 0.5;
 %
 %       [0 1
 %        1 0]
-%% ==========================================================
+% ==========================================================
 
 PermutationMatrix = cell(nPerm, 1);
 
@@ -378,15 +372,15 @@ fprintf('Permutation matrices created.\n');
 
 TFCE_permMax = zeros(nPerm, 1);
 
-%% ==========================================================
+% ==========================================================
 % Apply permutation matrices
-%% ==========================================================
+% ==========================================================
 
 fprintf('\n Permutation test has started...\n');
 
 parfor p = 1:nPerm
 
-    %% ------------------------------------------------------
+    % ------------------------------------------------------
     % Apply permutation to the entire EEG dataset
     %
     % This replaces:
@@ -397,34 +391,29 @@ parfor p = 1:nPerm
     %
     % The permutation is now performed only once per
     % permutation.
-    %% ------------------------------------------------------
+    % ------------------------------------------------------
 
     fprintf('At %d of %d permutation\n', p, nPerm);
 
     Condition_perm = PermutationMatrix{p} * Condition;
 
-    %% ------------------------------------------------------
+    % ------------------------------------------------------
     % Initialize permutation t-map
-    %% ------------------------------------------------------
+    % ------------------------------------------------------
 
     perm_t = zeros(nChan, nTime);
 
-    %% ------------------------------------------------------
+    % ------------------------------------------------------
     % Construct mixed-model table once for this permutation
-    %% ------------------------------------------------------
+    % ------------------------------------------------------
 
-    tbl_perm = table( ...
-        zeros(nObs, 1), ...
-        Condition_perm, ...
-        ClassLME, ...
-        StudentLME, ...
-        'VariableNames', ...
-        {'EEG', 'Condition', 'Class', 'Student'} ...
-    );
-
-    %% ------------------------------------------------------
+    tbl_perm = table(zeros(nObs, 1), ...
+        Condition_perm, ClassLME, ...
+        StudentLME, 'VariableNames', ...
+        {'EEG', 'Condition', 'Class', 'Student'});
+    % ------------------------------------------------------
     % Fit permuted mixed-effects models
-    %% ------------------------------------------------------
+    % ------------------------------------------------------
     
     for ch = 1:nChan
 
@@ -444,15 +433,15 @@ parfor p = 1:nPerm
 
     end
 
-    %% ------------------------------------------------------
+    % ------------------------------------------------------
     % TFCE transformation
-    %% ------------------------------------------------------
+    % ------------------------------------------------------
 
     TFCE_perm = ept_mex_TFCE2D( perm_t, ChN, E_H);
-
-    %% ------------------------------------------------------
+    
+    % ------------------------------------------------------
     % Maximum absolute TFCE statistic
-    %% ------------------------------------------------------
+    % ------------------------------------------------------
 
     TFCE_permMax(p) = max(abs(TFCE_perm(:)));
 
