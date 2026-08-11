@@ -211,24 +211,18 @@ fprintf('\nStep 1: Computing observed t-statistic map...\n');
 
 t_Obs = nan(nChan, nTime);
 
-
-%% ----------------------------------------------------------
+% ----------------------------------------------------------
 % Construct model table once
-%% ----------------------------------------------------------
+% ----------------------------------------------------------
 
-tbl_obs = table( ...
-    nan(nObs, 1), ...
-    Condition, ...
-    ClassLME, ...
-    StudentLME, ...
-    'VariableNames', ...
-    {'EEG', 'Condition', 'Class', 'Student'} ...
-);
+tbl_obs = table(nan(nObs, 1), ...
+    Condition, ClassLME, ...
+    StudentLME, 'VariableNames', ...
+    {'EEG', 'Condition', 'Class', 'Student'});
 
-
-%% ----------------------------------------------------------
+% ----------------------------------------------------------
 % Fit observed mixed-effects models
-%% ----------------------------------------------------------
+% ----------------------------------------------------------
 
 for ch = 1:nChan
 
@@ -309,7 +303,7 @@ end
 
 swapCondition = rand(nUnits, nPerm) < 0.5;
 
-%% ==========================================================
+% ==========================================================
 % Generate permutation indices
 %
 % Each permutation only stores the rearranged observation
@@ -317,7 +311,7 @@ swapCondition = rand(nUnits, nPerm) < 0.5;
 %
 % PermIndex(:,p) gives the reordered observations for
 % permutation p.
-%% ==========================================================
+% ==========================================================
 
 fprintf('Generating permutation indices...\n');
 
