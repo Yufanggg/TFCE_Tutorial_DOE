@@ -420,9 +420,9 @@ fprintf('\nStep 4: Computing TFCE-corrected significance...\n');
 
 maxTFCE = sort([TFCE_permMax;max(abs(TFCE_Obs(:)))]);
 
-maxTFCEcrit = maxTFCE(round(nPerm*(1-Alpha)));
+maxTFCEcrit = maxTFCE(round(nPerm*(1-alpha)));
 
-Mask = abs(TFCE_Obs) >= critTFCE;
+Mask = abs(TFCE_Obs) >= maxTFCEcrit;
 
 P_Values = nan(nChan, nTime);
 
