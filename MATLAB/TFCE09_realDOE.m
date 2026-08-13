@@ -23,13 +23,11 @@ rng(123);
 
 fprintf('\nStarting lmeEEG Freedman-Lane analysis...\n');
 
-
 %% ==========================================================
 % Load data
 %% ==========================================================
 
 load('../Data/realDOE.mat');
-
 
 %% ==========================================================
 % Dimensions
@@ -37,29 +35,23 @@ load('../Data/realDOE.mat');
 
 [nObs,nChan,nTime] = size(EEGdata);
 
-
 if height(designTable) ~= nObs
     error('designTable rows do not match EEG observations.');
 end
-
 
 if length(channelinfo) ~= nChan
     error('Channel information does not match EEG dimensions.');
 end
 
-
 fprintf('Observations: %d\n',nObs);
 fprintf('Channels: %d\n',nChan);
 fprintf('Time points: %d\n',nTime);
-
-
 
 %% ==========================================================
 % Prepare design variables
 %% ==========================================================
 
 varNames = designTable.Properties.VariableNames;
-
 
 %% ----------------------------
 % Subject
@@ -79,8 +71,6 @@ else
 
 end
 
-
-
 %% ----------------------------
 % Item
 %% ----------------------------
@@ -94,23 +84,17 @@ end
 
 Item = categorical(designTable.Target);
 
-
-
 %% ==========================================================
 % Binary predictors
 %% ==========================================================
-
-
-%% ----------------------------
+%----------------------------
 % JSD
-%% ----------------------------
+%----------------------------
 
 JSD = zeros(nObs,1);
 
-
 JSD(strcmp(string(designTable.JSD),'level1')) = -1;
 JSD(strcmp(string(designTable.JSD),'level2')) = 1;
-
 
 % check
 if all(JSD==0)
@@ -460,7 +444,6 @@ Results.P_Values = P_Values;
 Results.alpha = alpha;
 
 Results.nPerm = nPerm;
-
 
 Results.model = ...
     ['EEG ~ CongruencySemanticCategories + Stroke + ' ...
