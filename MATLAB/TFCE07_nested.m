@@ -476,6 +476,9 @@ fprintf('Results saved to:\n%s\n', outputFile);
 %% ==========================================================
 % Step 7: Plot TFCE-corrected significant t-values
 %% ==========================================================
+clear all; clc; close all
+
+load('../Results/07_TFCE_nested_class_student_results.mat')
 
 sigT = Results.tObs;
 

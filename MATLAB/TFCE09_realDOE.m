@@ -127,35 +127,26 @@ if all(JSD==0)
 
 end
 
-
-
 %% ----------------------------
 % Classifier (effect of interest)
 %% ----------------------------
 
 Classifier = zeros(nObs,1);
 
-
 tmp = categorical(designTable.ClassifierCongruency);
 lev = categories(tmp);
-
 
 if length(lev)~=2
     error('Classifier does not have two levels.');
 end
 
-
 Classifier(tmp==lev{1})=-1;
 Classifier(tmp==lev{2})=1;
-
-
 
 %% ----------------------------
 % Frequency
 %% ----------------------------
-
 Freq = log(double(designTable.Frequency));
-
 
 if any(~isfinite(Freq))
 
@@ -163,19 +154,12 @@ if any(~isfinite(Freq))
 
 end
 
-
-
 %% ----------------------------
 % Stroke
 %% ----------------------------
-
 StrokeRaw = double(designTable.NumbersofStorks);
 
-
-Stroke = ...
-    (StrokeRaw-mean(StrokeRaw)) ./ std(StrokeRaw);
-
-
+Stroke = (StrokeRaw-mean(StrokeRaw)) ./ std(StrokeRaw);
 
 %% ----------------------------
 % Semantic category congruency
@@ -183,9 +167,7 @@ Stroke = ...
 
 tmp = categorical(designTable.CongruencySemanticCategories);
 
-
 lev = categories(tmp);
-
 
 if length(lev)~=2
 
@@ -193,14 +175,10 @@ if length(lev)~=2
 
 end
 
-
 CongruencySemanticCategories=zeros(nObs,1);
-
 
 CongruencySemanticCategories(tmp==lev{1})=-1;
 CongruencySemanticCategories(tmp==lev{2})=1;
-
-
 
 %% ==========================================================
 % Create adjusted EEG
@@ -212,26 +190,18 @@ CongruencySemanticCategories(tmp==lev{2})=1;
 % Keep:
 %   Fixed effects
 %% ==========================================================
-
-
 fprintf('\nRemoving subject/item random effects...\n');
-
 
 mEEG = nan(size(EEGdata));
 
-
 lmeFormula = ...
     'EEG ~ CongruencySemanticCategories + Stroke + Freq + JSD + Classifier + (1|Subj)+(1|Item)';
-
-
 
 for ch = 1:nChan
 
     for t = 1:nTime
 
-
         Y = squeeze(double(EEGdata(:,ch,t)));
-
 
         tbl = table( ...
             Y,...
@@ -252,29 +222,21 @@ for ch = 1:nChan
              'Subj',...
              'Item'});
 
-
         lme = fitlme(tbl,lmeFormula);
-
-
 
         % random-effect contribution:
         %
         % (fixed + random) - fixed
         %
-
         randomContribution = fitted(lme,'Conditional',true) - ...
             fitted(lme,'Conditional',false);
-
-
 
         % remove only random effects
 
         mEEG(:,ch,t)=Y-randomContribution;
-
-
+        
     end
 end
-
 
 fprintf('Random effects removed.\n');
 
@@ -295,27 +257,46 @@ fprintf('Random effects removed.\n');
 %
 %% ==========================================================
 
-
 fprintf('\nPreparing target design matrices...\n');
 
+X_full = [CongruencySemanticCategories, Stroke,...
+    Freq, JSD, Classifier];
 
-X_full = [
-    CongruencySemanticCategories,...
-    Stroke,...
-    Freq,...
-    JSD,...
-    Classifier
-];
+X_null = [CongruencySemanticCategories, Stroke,...
+    Freq, JSD];
 
+%% ==========================================================
+% Observed statistics from the full model
+%% ==========================================================
+fprintf('\nComputing observed t-map...\n');
 
-X_null = [
-    CongruencySemanticCategories,...
-    Stroke,...
-    Freq,...
-    JSD
-];
+t_Obs = nan(nChan,nTime);
 
+for ch = 1:nChan
 
+    for t = 1:nTime
+
+        Y=squeeze(mEEG(:,ch,t));
+
+        lm_full = fitlm(X_full,Y);
+
+        coefNames = lm_full.Coefficients.Properties.RowNames;
+
+        idx = contains(coefNames,'x5');
+
+        if sum(idx)~=1
+            
+            error('Classifier coefficient not found.');
+
+        end
+
+        t_Obs(ch,t)= lm_full.Coefficients.tStat(idx);
+
+    end
+
+end
+
+fprintf('Observed t-map completed.\n');
 
 %% ==========================================================
 % Precompute reduced model
@@ -325,134 +306,52 @@ X_null = [
 % Y_perm = Y_hat_null + permuted residuals
 %
 %% ==========================================================
-
-
 fprintf('\nPrecomputing reduced models...\n');
-
 
 Yhat_null = nan(nObs,nChan,nTime);
 
 Residual_null = nan(nObs,nChan,nTime);
 
-
-
 for ch = 1:nChan
-
 
     fprintf('Reduced model channel %d/%d\n',ch,nChan);
 
-
     for t = 1:nTime
-
 
         Y = squeeze(mEEG(:,ch,t));
 
-
         lm_null = fitlm(X_null,Y);
-
 
         Yhat_null(:,ch,t)=lm_null.Fitted;
 
-
         Residual_null(:,ch,t)=lm_null.Residuals.Raw;
 
-
     end
 end
-
-
 
 fprintf('Reduced models completed.\n');
-
-
-
-%% ==========================================================
-% Observed statistics
-%% ==========================================================
-
-
-fprintf('\nComputing observed t-map...\n');
-
-
-t_Obs = nan(nChan,nTime);
-
-
-
-for ch = 1:nChan
-
-
-    for t = 1:nTime
-
-
-        Y=squeeze(mEEG(:,ch,t));
-
-
-        lm_full = fitlm(X_full,Y);
-
-
-        coefNames = lm_full.Coefficients.Properties.RowNames;
-
-
-        idx = contains(coefNames,'x5');
-
-
-        if sum(idx)~=1
-
-            error('Classifier coefficient not found.');
-
-        end
-
-
-        t_Obs(ch,t)= lm_full.Coefficients.tStat(idx);
-
-
-    end
-
-end
-
-
-
-fprintf('Observed t-map completed.\n');
-
-
 
 %% ==========================================================
 % TFCE observed map
 %% ==========================================================
-
-
 fprintf('\nComputing observed TFCE...\n');
-
 
 ChN=ept_ChN2(channelinfo);
 
-
 E_H=[0.66 2];
-
 
 TFCE_Obs=ept_mex_TFCE2D(t_Obs, ChN, E_H);
 
-
-
 fprintf('Observed TFCE completed.\n');
-
-
 
 %% ==========================================================
 % Freedman-Lane permutation
 %% ==========================================================
-
-
 nPerm=999;
-
 
 TFCE_permMax=zeros(nPerm,1);
 
-
-
 fprintf('\nStarting Freedman-Lane permutations...\n');
-
-
 
 parfor p=1:nPerm
     
@@ -504,8 +403,6 @@ parfor p=1:nPerm
 
 end
 
-
-
 fprintf('Permutation completed.\n');
 
 %% ==========================================================
@@ -528,7 +425,6 @@ fprintf('Critical TFCE value = %.4f\n',maxTFCEcrit);
 Mask = abs(TFCE_Obs) >= maxTFCEcrit;
 
 P_Values = nan(nChan,nTime);
-
 
 for ch=1:nChan
 
@@ -586,30 +482,33 @@ if ~exist('../Results','dir')
 
 end
 
-
 save('../Results/09_realDOE_results.mat',...
     'Results',...
     'nChan',...
     'time',...
     'channelinfo');
 
-fprintf('Saved results.\n');
-
+fprintf('Saved results.\n')
 
 %% ==========================================================
 % Plot corrected t-map
 %% ==========================================================
+
+% clear all; clc; close all
+% 
+% load('../Results/09_realDOE_results.mat')
+
 figure;
 
 sigT = Results.tObs;
 
 sigT(~Results.Mask)=0;
 
-imagesc(time,1:nChan,sigT);
+imagesc(time,1:nChan,Results.tObs);
 
 axis xy;
 
-xlim([-200 800]);
+xlim([-200 700]);
 
 set(gca,...
     'YTick',1:nChan,...
@@ -631,19 +530,17 @@ ylabel(cb,'t-value',...
     'FontSize',15,...
     'FontName','Arial');
 
-
-
 %% ==========================================================
 % Plot observed TFCE map
 %% ==========================================================
 
 figure;
 
-imagesc(time,1:nChan,TFCE_Obs);
+imagesc(time,1:nChan,Results.TFCE_Obs);
 
 axis xy;
 
-xlim([-200 800]);
+xlim([-200 700]);
 
 set(gca,...
     'YTick',1:nChan,...
@@ -662,37 +559,5 @@ title('Observed TFCE Map');
 cb=colorbar;
 
 ylabel(cb,'TFCE value',...
-    'FontSize',15,...
-    'FontName','Arial');
-
-%% ==========================================================
-% Plot p-value map
-%% ==========================================================
-
-figure;
-
-imagesc(time,1:nChan,-log10(P_Values));
-
-axis xy;
-
-xlim([-200 800]);
-
-set(gca,...
-    'YTick',1:nChan,...
-    'YTickLabel',{channelinfo.labels},...
-    'XTick',-200:200:800,...
-    'TickLength',[0 0],...
-    'FontSize',15,...
-    'FontName','Arial');
-
-xlabel('Time (ms)');
-
-ylabel('Channel');
-
-title('-log10 TFCE corrected p-values');
-
-cb=colorbar;
-
-ylabel(cb,'-log10(p)',...
     'FontSize',15,...
     'FontName','Arial');
