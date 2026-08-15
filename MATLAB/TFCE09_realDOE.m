@@ -93,22 +93,18 @@ Item = categorical(designTable.Target);
 
 JSD = zeros(nObs,1);
 
-JSD(strcmp(string(designTable.JSD),'level1')) = -1;
-JSD(strcmp(string(designTable.JSD),'level2')) = 1;
+tmpJSD = string(designTable.JSD);
 
-% check
-if all(JSD==0)
+JSD(tmpJSD == "L") = -1;   % Low JSD
+JSD(tmpJSD == "H") =  1;   % High JSD
 
-    tmp = categorical(designTable.JSD);
-    lev = categories(tmp);
+% Check coding
+fprintf('JSD Low  (L, -1): %d observations\n', sum(JSD == -1));
+fprintf('JSD High (H, +1): %d observations\n', sum(JSD ==  1));
 
-    if length(lev)~=2
-        error('JSD does not have two levels.');
-    end
-
-    JSD(tmp==lev{1})=-1;
-    JSD(tmp==lev{2})=1;
-
+% Check for unexpected/unmatched values
+if any(JSD == 0)
+    error('Some JSD observations were not coded. Check the JSD labels.');
 end
 
 %% ----------------------------
@@ -117,15 +113,14 @@ end
 
 Classifier = zeros(nObs,1);
 
-tmp = categorical(designTable.ClassifierCongruency);
-lev = categories(tmp);
+tmp = string(designTable.ClassifierCongruency);
 
-if length(lev)~=2
-    error('Classifier does not have two levels.');
-end
+Classifier(tmp == "Congruent")   =  1;
+Classifier(tmp == "Incongruent") = -1;
 
-Classifier(tmp==lev{1})=-1;
-Classifier(tmp==lev{2})=1;
+% Check coding
+fprintf('Congruent (+1):   %d observations\n', sum(Classifier == 1));
+fprintf('Incongruent (-1): %d observations\n', sum(Classifier == -1));
 
 %% ----------------------------
 % Frequency
@@ -179,7 +174,7 @@ fprintf('\nRemoving subject/item random effects...\n');
 mEEG = nan(size(EEGdata));
 
 lmeFormula = ...
-    'EEG ~ CongruencySemanticCategories + Stroke + Freq + JSD + Classifier + (1|Subj)+(1|Item)';
+    'EEG ~ CongruencySemanticCategories + Stroke + Freq + JSD * Classifier + (1|Subj)+(1|Item)';
 
 for ch = 1:nChan
 
@@ -244,10 +239,10 @@ fprintf('Random effects removed.\n');
 fprintf('\nPreparing target design matrices...\n');
 
 X_full = [CongruencySemanticCategories, Stroke,...
-    Freq, JSD, Classifier];
+    Freq, JSD, JSD.*Classifier, Classifier];
 
 X_null = [CongruencySemanticCategories, Stroke,...
-    Freq, JSD];
+    Freq, JSD, JSD .* Classifier];
 
 %% ==========================================================
 % Observed statistics from the full model
@@ -266,7 +261,7 @@ for ch = 1:nChan
 
         coefNames = lm_full.Coefficients.Properties.RowNames;
 
-        idx = contains(coefNames,'x5');
+        idx = contains(coefNames,'x6');
 
         if sum(idx)~=1
             
@@ -320,11 +315,11 @@ fprintf('Reduced models completed.\n');
 %% ==========================================================
 fprintf('\nComputing observed TFCE...\n');
 
-ChN=ept_ChN2(channelinfo);
+ChN = ept_ChN2(channelinfo);
 
-E_H=[0.66 2];
+E_H = [0.66 2];
 
-TFCE_Obs=ept_mex_TFCE2D(t_Obs, ChN, E_H);
+TFCE_Obs = ept_mex_TFCE2D(t_Obs, ChN, E_H);
 
 fprintf('Observed TFCE completed.\n');
 
@@ -371,7 +366,7 @@ parfor p=1:nPerm
             
             coefNames = lm_perm.Coefficients.Properties.RowNames;
 
-            idx=contains(coefNames,'x5');
+            idx=contains(coefNames,'x6');
 
             perm_t(ch,t)= lm_perm.Coefficients.tStat(idx);
             
@@ -381,9 +376,9 @@ parfor p=1:nPerm
 
     % TFCE on this permutation
 
-    TFCE_perm=ept_mex_TFCE2D(perm_t, ChN, E_H);
+    TFCE_perm = ept_mex_TFCE2D(perm_t, ChN, E_H);
 
-    TFCE_permMax(p)=max(abs(TFCE_perm(:)));
+    TFCE_permMax(p) = max(abs(TFCE_perm(:)));
 
 end
 
@@ -415,8 +410,7 @@ for ch=1:nChan
     for tp=1:nTime
 
         P_Values(ch,tp)= ...
-            (sum(TFCE_permMax >= abs(TFCE_Obs(ch,tp)))+1) ...
-            /(nPerm+1);
+            (sum(TFCE_permMax >= abs(TFCE_Obs(ch,tp)))+1) /(nPerm+1);
     end
     
 end
@@ -483,11 +477,11 @@ fprintf('Saved results.\n')
 
 figure;
 
-sigT = Results.tObs;
+sigT = -Results.tObs;
 
 sigT(~Results.Mask)=0;
 
-imagesc(time,1:nChan,Results.tObs);
+imagesc(time,1:nChan,P_Values<0.15);
 
 axis xy;
 
