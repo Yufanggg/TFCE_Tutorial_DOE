@@ -180,10 +180,6 @@ set.seed(123)
 
 n_perm <- 999
 
-TFCE_permMax_Group <- rep(NaN, n_perm)
-TFCE_permMax_Cond  <- rep(NaN, n_perm)
-TFCE_permMax_Int   <- rep(NaN, n_perm)
-
 ## ------------------------------------------------------------
 ## 3.1 Prepare the observed long-format dataset once
 ## ------------------------------------------------------------

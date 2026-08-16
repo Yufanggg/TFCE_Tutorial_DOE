@@ -252,12 +252,6 @@ set.seed(123)
 
 n_perm <- 999
 
-TFCE_permMaxA <- rep(NA_real_, n_perm)
-
-TFCE_permMaxB <- rep(NA_real_, n_perm)
-
-TFCE_permMaxInt <- rep(NA_real_, n_perm)
-
 n_workers <- max(1, parallel::detectCores() - 1)
 
 plan(multisession, workers = n_workers)
@@ -271,7 +265,6 @@ cat(
   " workers...\n",
   sep = ""
 )
-
 
 
 with_progress({
@@ -330,7 +323,7 @@ with_progress({
     ## Return the three permutation maxima
     c(A = perm_maxA, B = perm_maxB, Int = perm_maxInt)
   }, ## Reproducible parallel random-number generation
-  future.seed = 123, ## Packages required by the workers
+  future.seed = TRUE, ## Packages required by the workers
   future.packages = c("dplyr", "tidyr"))
 })
 

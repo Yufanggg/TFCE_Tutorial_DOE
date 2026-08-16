@@ -191,7 +191,6 @@ cat("Observed TFCE map completed.\n")
 set.seed(123)
 
 nPerm <- 999
-TFCE_permMaxA <- TFCE_permMaxB <- TFCE_permMaxInt <- rep(NA_real_, nPerm)
 
 ## ==========================================================
 ## Step 3: Synchronized permutation test
@@ -304,10 +303,7 @@ with_progress({
 ## Combine permutation distributions
 ## ----------------------------------------------------------
 
-perm_results <- do.call(
-  rbind,
-  perm_results
-)
+perm_results <- do.call(rbind, perm_results)
 
 TFCE_permMaxA <- perm_results[, "A"]
 TFCE_permMaxB <- perm_results[, "B"]
