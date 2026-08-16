@@ -126,8 +126,6 @@ set.seed(123)
 
 n_perm <- 999
 
-TFCE_permMax <- rep(NaN, n_perm)
-
 subject_info <- designTable %>% select(Subject, CondCode) %>% distinct()
 
 ## Confirm that each subject has only one condition code
@@ -149,10 +147,8 @@ cat("Step 3: Starting parallel permutation testing with ",
 with_progress({
   progress_update <- progressor(along = seq_len(n_perm))
   
-  TFCE_permMax <- future_lapply(seq_len(n_perm), function(p) {
-    ## Update progress bar once per completed permutation
-    progress_update()
-    
+  TFCE_permMax <- future_sapply(seq_len(n_perm), function(p) {
+
     ## ----------------------------------------------------
     ## Construct the permuted EEG dataset
     ## ----------------------------------------------------
@@ -179,7 +175,10 @@ with_progress({
     TFCE_perm <- tfce_transform(t_perm)
     
     ## Maximum absolute TFCE statistic
-    TFCE_permMax[p] <- max(abs(TFCE_permInt), na.rm = TRUE)
+    perm_max <- max(abs(TFCE_perm), na.rm = TRUE)
+    
+    ## Update progress bar once per completed permutation
+    progress_update()
     
     ## Return the three permutation maxima
     perm_max
@@ -199,10 +198,9 @@ cat("Permutation testing completed.\n")
 cat("Step 4: Computing TFCE-corrected significance...\n")
 
 alpha <- 0.05
-nPerm <- length(TFCE_permMax)
 
 maxTFCE <- sort(c(TFCE_permMax, max(abs(TFCE_Obs), na.rm = TRUE)))
-maxTFCEcrit <- maxTFCE[round(nPerm * (1 - alpha))]
+maxTFCEcrit <- maxTFCE[round(n_perm * (1 - alpha))]
 
 Mask <- abs(TFCE_Obs) >= maxTFCEcrit
 
@@ -217,7 +215,7 @@ for (ch in seq_len(nChan)) {
   for (t in seq_len(nTime)) {
     P_Values[ch, t] <-
       (sum(TFCE_permMax >= abs(TFCE_Obs[ch, t]), na.rm = TRUE) + 1) /
-      (nPerm + 1)
+      (n_perm + 1)
   }
 }
 
@@ -239,10 +237,10 @@ Results <- list(
   P_Values     = P_Values,
   Mask         = Mask,
   alpha        = alpha,
-  nPerm        = nPerm,
+  n_perm        = n_perm,
   model        = "Amplitude ~ GroupCode",
   test         = "Group effect",
-  permutation  = "Unrestricted permutation",
+  permutation  = "Unrestricted permutation"
 )
 
 cat("Results stored.\n")
