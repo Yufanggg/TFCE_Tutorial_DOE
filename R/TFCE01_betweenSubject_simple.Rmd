@@ -22,9 +22,13 @@ output: html_document
 
 rm(list = ls())
 
+library(readr)
 library(dplyr)
 library(tidyr)
-library(permuco)
+library(future)
+library(future.apply)
+library(progressr)
+library(fields)
 
 source("../R/tfce_transform.R")
 
@@ -124,34 +128,71 @@ n_perm <- 999
 
 TFCE_permMax <- rep(NaN, n_perm)
 
-subject_info <- designTable %>%
-  select(Subject, CondCode)
+subject_info <- designTable %>% select(Subject, CondCode) %>% distinct()
 
-for (p in seq_len(n_perm)) {
-  perm_info <- subject_info %>%
-    mutate(CondCode = sample(CondCode))
-  
-  perm_dat <- EEGlong %>%
-    left_join(perm_info, by = "Subject") %>%
-    mutate(
-      Subject = factor(Subject),
-      Channel = factor(Channel),
-      CondCode = as.numeric(CondCode)
-    )
-  
-  t_perm <- compute_tmap(perm_dat)
-  TFCE_perm <- tfce_transform(t_perm)
-  TFCE_permMax[p] <- max(TFCE_perm)
-  
-  
-  if (p %% 50 == 0) {
-    cat("Permutation", p, "of", n_perm, "\n")
-  }
+## Confirm that each subject has only one condition code
+if (anyDuplicated(subject_info$Subject)) {
+  stop("Each subject must have exactly one CondCode.")
 }
 
-## ==========================================================
-## 4. TFCE-corrected p-values
-## ==========================================================
+n_workers <- max(1, parallel::detectCores() - 1)
+
+future::plan(future::multisession, workers = n_workers)
+
+progressr::handlers("txtprogressbar")
+
+cat("Step 3: Starting parallel permutation testing with ",
+    n_workers,
+    " workers...\n",
+    sep = "")
+
+with_progress({
+  progress_update <- progressor(along = seq_len(n_perm))
+  
+  TFCE_permMax <- future_lapply(seq_len(n_perm), function(p) {
+    ## Update progress bar once per completed permutation
+    progress_update()
+    
+    ## ----------------------------------------------------
+    ## Construct the permuted EEG dataset
+    ## ----------------------------------------------------
+    
+    perm_info <- subject_info %>%
+      mutate(CondCode = sample(CondCode))
+    
+    perm_dat <- EEGlong %>%
+      left_join(perm_info, by = "Subject") %>%
+      mutate(
+        Subject = factor(Subject),
+        Channel = factor(Channel),
+        CondCode = as.numeric(CondCode)
+      )
+    
+    ## ----------------------------------------------------
+    ## Compute the permuted t-map
+    ## ----------------------------------------------------
+    t_perm <- compute_tmap(perm_dat)
+    
+    ## ----------------------------------------------------
+    ## Apply the TFCE transformation
+    ## ----------------------------------------------------
+    TFCE_perm <- tfce_transform(t_perm)
+    
+    ## Maximum absolute TFCE statistic
+    TFCE_permMax[p] <- max(abs(TFCE_permInt), na.rm = TRUE)
+    
+    ## Return the three permutation maxima
+    perm_max
+  }, ## Reproducible parallel random-number generation
+  future.seed = 123, ## Packages required by the workers
+  future.packages = c("dplyr", "tidyr"))
+})
+
+# Return to normal single-session execution
+plan(sequential)
+
+cat("Permutation testing completed.\n")
+
 ## ==========================================================
 ## Step 4: TFCE-corrected significance
 ## ==========================================================

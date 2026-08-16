@@ -1,5 +1,7 @@
 tfce_transform <- function(x, E = 0.5, H = 2, dh = 0.1) {
   
+  sig = sign(x)
+  
   x = abs(x)
   
   if (!requireNamespace("permuco", quietly = TRUE)) {
@@ -46,7 +48,8 @@ tfce_transform <- function(x, E = 0.5, H = 2, dh = 0.1) {
     nrow = nrow(x),
     ncol = ncol(x),
     dimnames = dimnames(x)
-  )
+  ) * sig
+  
   
   return(tfce_map)
 }

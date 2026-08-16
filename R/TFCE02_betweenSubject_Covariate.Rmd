@@ -24,10 +24,12 @@ rm(list = ls())
 library(readr)
 library(dplyr)
 library(tidyr)
+library(future)
+library(future.apply)
+library(progressr)
 library(fields)
 
 source("../R/tfce_transform.R")
-
 
 cat("\nStarting TFCE covariate-adjusted analysis...\n")
 
@@ -118,10 +120,32 @@ cat("Observed TFCE map completed.\n")
 
 set.seed(123)
 
-nPerm <- 999
-TFCE_permMax <- rep(NA_real_, nPerm)
+n_perm <- 999
 
-cat("Step 3: Starting Freedman-Lane permutation testing...\n")
+subject_ids <- unique(FL_parts$Subject)
+
+## Confirm one observation per subject, channel, and time point
+duplicate_rows <- FL_parts %>%
+  count(Subject, Channel, Time) %>%
+  filter(n > 1)
+
+if (nrow(duplicate_rows) > 0) {
+  stop("FL_parts must contain one observation per ",
+       "Subject ¡Á Channel ¡Á Time combination.")
+}
+
+n_workers <- max(1, parallel::detectCores() - 1)
+
+plan(multisession, workers = n_workers)
+
+handlers("txtprogressbar")
+
+cat(
+  "Starting parallel Freedman-Lane permutation testing with ",
+  n_workers,
+  " workers...\n",
+  sep = ""
+)
 
 ## ==========================================================
 ## Precompute reduced-model fitted values and residuals
@@ -130,7 +154,7 @@ cat("Step 3: Starting Freedman-Lane permutation testing...\n")
 
 FL_parts <- dat %>%
   group_by(Channel, Time) %>%
-  group_modify( ~ {
+  group_modify(~ {
     df <- .x
     
     lm_red <- lm(Amplitude ~ Covariate, data = df)
@@ -142,29 +166,56 @@ FL_parts <- dat %>%
   }) %>%
   ungroup()
 
-for (p in seq_len(nPerm)) {
-  perm_dat <- FL_parts %>%
-    group_by(Channel, Time) %>%
-    group_modify( ~ {
-      df <- .x
-      perm_idx <- sample(seq_len(length(unique(dat$Subject))))
-      ## Freedman-Lane permuted response
-      df$Amplitude <- df$Y_hat_red + df$resid_red[perm_idx]
+## ----------------------------------------------------------
+## Set up parallel Freedman-Lane permutation testing
+## ----------------------------------------------------------
+
+with_progress({
+  progress_update <- progressor(along = seq_len(n_perm))
+  
+  TFCE_permMax <- future_lapply(seq_len(n_perm), function(p) {
+    ## ----------------------------------------------------
+    ## Construct the permuted EEG dataset
+    ## ----------------------------------------------------
+    
+    perm_info <- subject_info %>%
+      mutate(CondCode = sample(CondCode))
+    
+    perm_dat <- EEGlong %>%
+      select(-any_of("CondCode")) %>%
+      left_join(perm_info, by = "Subject") %>%
+      mutate(
+        Subject  = factor(Subject),
+        Channel  = factor(Channel),
+        CondCode = as.numeric(CondCode)
+      )
+    
+    ## ----------------------------------------------------
+    ## Compute the permuted t-map
+    ## ----------------------------------------------------
+    
+    t_perm <- compute_tmap(perm_dat)
+    
+    ## ----------------------------------------------------
+    ## Apply the TFCE transformation
+    ## ----------------------------------------------------
+    
+    TFCE_perm <- tfce_transform(t_perm,
+                                E  = 0.66,
+                                H  = 2,
+                                dh = 0.1)
+    
+    ## Maximum absolute TFCE statistic
+    TFCE_permMax[p] <- max(abs(TFCE_perm), na.rm = TRUE)
+    
+    ## Update after completing the permutation
+    progress_update()
+    
+  }, future.seed = 123, future.packages = c("dplyr", "tidyr"))
+})
       
-      df
-    }) %>%
-    ungroup()
-  
-  t_perm <- compute_tmap_covariate(perm_dat)
-  
-  TFCE_perm <- tfce_transform(t_perm, E  = 0.66, H  = 2, dh = 0.1)
-  
-  TFCE_permMax[p] <- max(abs(TFCE_perm), na.rm = TRUE)
-  
-  if (p %% 50 == 0) {
-    cat("Permutation", p, "of", nPerm, "\n")
-  }
-}
+# Return to normal single-session execution
+plan(sequential)
 
 cat("Permutation testing completed.\n")
 
@@ -178,7 +229,7 @@ alpha <- 0.05
 
 maxTFCE <- sort(c(TFCE_permMax, max(abs(TFCE_Obs), na.rm = TRUE)))
 
-maxTFCEcrit <- maxTFCE[round(nPerm * (1 - alpha))]
+maxTFCEcrit <- maxTFCE[round(n_perm * (1 - alpha))]
 
 Mask <- abs(TFCE_Obs) >= maxTFCEcrit
 
@@ -191,7 +242,7 @@ for (ch in seq_len(nChan)) {
   for (t in seq_len(nTime)) {
     P_Values[ch, t] <-
       (sum(TFCE_permMax >= abs(TFCE_Obs[ch, t]), na.rm = TRUE) + 1) /
-      (nPerm + 1)
+      (n_perm + 1)
   }
 }
 
@@ -212,7 +263,7 @@ Results <- list(
   P_Values     = P_Values,
   Mask         = Mask,
   alpha        = alpha,
-  nPerm        = nPerm,
+  n_perm        = n_perm,
   model        = "Amplitude ~ Covariate + GroupCode",
   test         = "Group effect adjusted for covariate",
   permutation  = "Freedman-Lane procedure"

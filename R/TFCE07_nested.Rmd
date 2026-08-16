@@ -242,8 +242,7 @@ with_progress({
                                     group_by(Class, Student) %>%
                                     mutate(ConditionCode_perm = sample(ConditionCode)) %>%
                                     ungroup() %>%
-                                    select(RowID,
-                                           ConditionCode = ConditionCode_perm)
+                                    select(RowID, ConditionCode = ConditionCode_perm)
                                   
                                   perm_dat <- dat %>%
                                     select(-ConditionCode) %>%
@@ -259,18 +258,14 @@ with_progress({
                                   
                                   t_perm <- compute_tmap(perm_dat)
                                   
-                                  TFCE_perm <- tfce_transform(t_perm,
-                                                              E = 0.66,
-                                                              H = 2,
-                                                              dh = 0.1)
+                                  TFCE_perm <- tfce_transform(t_perm, E = 0.66, H = 2, dh = 0.1)
                                   
-                                  perm_max <- max(abs(TFCE_perm),
-                                                  na.rm = TRUE)
+                                  perm_max <- max(abs(TFCE_perm), na.rm = TRUE)
                                   
                                   progress_update()
                                   
                                   perm_max
-                                },
+                                }, 
                                 future.seed = TRUE,
                                 future.packages = "dplyr")
 })
