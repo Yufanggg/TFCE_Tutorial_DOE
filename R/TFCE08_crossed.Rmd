@@ -246,46 +246,52 @@ cat("Observed TFCE map completed.\n")
 
 set.seed(123)
 
-nPerm <- 999
+n_perm <- 999
 
-TFCE_permMax <- rep(NaN, nPerm)
+cat("Step 3: Starting permutation test:", n_perm , "permutations...\n")
 
-cat("Step 3: Starting permutation test:", nPerm, "permutations...\n")
+## ------------------------------------------------------------
+## 3.1. Set up parallel processing
+## ------------------------------------------------------------
 
-design_info <- designTable %>%
-  select(RowID, ConditionCode)
+n_workers <- max(1, parallel::detectCores() - 1)
 
-for (p in seq_len(nPerm)) {
-  perm_info <- design_info %>%
-    mutate(ConditionCode = sample(ConditionCode))
+plan(multisession, workers = n_workers)
+
+handlers("txtprogressbar")
+
+design_info <- designTable %>% select(RowID, ConditionCode)
+
+## ------------------------------------------------------------
+## 3.2 Parallel permutation test
+## ------------------------------------------------------------
+
+with_progress({
+  progress_update <- progressor(along = seq_len(n_perm))
   
-  perm_marginal_dat <- marginal_dat %>%
-    select(-ConditionCode) %>%
-    left_join(perm_info, by = "RowID")
-  
-  ## ===========================================================
-  ## ----------------------------------------------------------
-  ## 3.1 Compute permutation t-map
-  ## ----------------------------------------------------------
-  
-  t_perm <- compute_tmap(perm_marginal_dat)
-  
-  ## ----------------------------------------------------------
-  ## 3.4 Compute permutation TFCE map
-  ## ----------------------------------------------------------
-  
-  TFCE_perm <- tfce_transform(t_perm, E = 0.66, H = 2, dh = 0.1)
-  
-  ## ----------------------------------------------------------
-  ## 3.5 Store maximum absolute TFCE statistic
-  ## ----------------------------------------------------------
-  
-  TFCE_permMax[p] <- max(abs(TFCE_perm), na.rm = TRUE)
-  
-  if (p %% 50 == 0) {
-    cat("Permutation", p, "of", nPerm, "\n")
-  }
-}
+  TFCE_permMax <- future_sapply(seq_len(n_perm), function(p) {
+    perm_info <- design_info %>%
+      mutate(ConditionCode = sample(ConditionCode))
+    
+    perm_marginal_dat <- marginal_dat %>%
+      select(-ConditionCode) %>%
+      left_join(perm_info, by = "RowID")
+    
+    ## ----------------------------------------------------------
+    ## 3.1 Compute permutation t-map
+    ## ----------------------------------------------------------
+    
+    t_perm <- compute_tmap(perm_marginal_dat)
+    
+    TFCE_perm <- tfce_transform(t_perm, E = 0.66, H = 2, dh = 0.1)
+    
+    perm_max <- max(abs(TFCE_perm), na.rm = TRUE)
+    
+    progress_update()
+    perm_max
+    
+  }, future.seed = TRUE, future.packages = c("dplyr", "tidyr", "lme4", "lmerTest"))
+})
 
 cat("Permutation testing completed.\n")
 
@@ -304,9 +310,7 @@ alpha <- 0.05
 
 maxTFCE <- sort(c(TFCE_permMax, max(abs(TFCE_Obs), na.rm = TRUE)))
 
-critical_index <- round((nPerm + 1) * (1 - alpha))
-
-maxTFCEcrit <- maxTFCE[critical_index]
+maxTFCEcrit <- maxTFCE[round(n_perm * (1 - alpha))]
 
 Mask <- abs(TFCE_Obs) >= maxTFCEcrit
 
@@ -323,7 +327,7 @@ for (ch in seq_len(nChan)) {
   for (t in seq_len(nTime)) {
     P_Values[ch, t] <-
       (sum(TFCE_permMax >= abs(TFCE_Obs[ch, t]), na.rm = TRUE) + 1) /
-      (nPerm + 1)
+      (n_perm  + 1)
   }
 }
 
@@ -345,7 +349,7 @@ Results <- list(
   P_Values     = P_Values,
   Mask         = Mask,
   alpha        = alpha,
-  nPerm        = nPerm,
+  n_perm         = n_perm ,
   mixed_model = paste0("Amplitude ~ ConditionCode + ", "(1 | Subject) + ", "(1 | Item)"),
   
   local_model = paste0("MarginalAmplitude ~ ConditionCode"),
@@ -367,7 +371,6 @@ cat("Results stored.\n")
 if (!dir.exists("../Results")) {
   dir.create("../Results")
 }
-
 
 save(
   Results,

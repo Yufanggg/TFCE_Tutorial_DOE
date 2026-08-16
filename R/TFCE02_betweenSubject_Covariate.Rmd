@@ -206,12 +206,14 @@ with_progress({
                                 dh = 0.1)
     
     ## Maximum absolute TFCE statistic
-    TFCE_permMax[p] <- max(abs(TFCE_perm), na.rm = TRUE)
+    perm_max <- max(abs(TFCE_perm), na.rm = TRUE)
     
     ## Update after completing the permutation
     progress_update()
     
-  }, future.seed = 123, future.packages = c("dplyr", "tidyr"))
+    perm_max
+    
+  }, future.seed = TRUE, future.packages = c("dplyr", "tidyr"))
 })
       
 # Return to normal single-session execution

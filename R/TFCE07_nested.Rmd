@@ -86,7 +86,6 @@ cat("Number of time points:", nTime, "\n")
 units <- designTable %>%
   distinct(Class, Student)
 
-
 for (u in seq_len(nrow(units))) {
   current_class <- units$Class[u]
   current_student <- units$Student[u]
@@ -194,8 +193,6 @@ set.seed(123)
 
 n_perm <- 999
 
-TFCE_permMax <- rep(NaN, n_perm)
-
 ## ------------------------------------------------------------
 ## 3.1. Prepare the observed long-format dataset once
 ## ------------------------------------------------------------
@@ -220,10 +217,7 @@ dat <- EEGlong %>%
 
 n_workers <- max(1, parallel::detectCores() - 1)
 
-plan(
-  multisession,
-  workers = n_workers
-)
+plan(multisession, workers = n_workers)
 
 handlers("txtprogressbar")
 
