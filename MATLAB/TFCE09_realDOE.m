@@ -95,8 +95,8 @@ JSD = zeros(nObs,1);
 
 tmpJSD = string(designTable.JSD);
 
-JSD(tmpJSD == "L") = -1;   % Low JSD
-JSD(tmpJSD == "H") =  1;   % High JSD
+JSD(tmpJSD == 'L') = -1;   % Low JSD
+JSD(tmpJSD == 'H') =  1;   % High JSD
 
 % Check coding
 fprintf('JSD Low  (L, -1): %d observations\n', sum(JSD == -1));
@@ -115,8 +115,8 @@ Classifier = zeros(nObs,1);
 
 tmp = string(designTable.ClassifierCongruency);
 
-Classifier(tmp == "Congruent")   =  1;
-Classifier(tmp == "Incongruent") = -1;
+Classifier(tmp == 'Congruent')   =  1;
+Classifier(tmp == 'Incongruent') = -1;
 
 % Check coding
 fprintf('Congruent (+1):   %d observations\n', sum(Classifier == 1));
@@ -184,18 +184,18 @@ for ch = 1:nChan
 
         tbl = table( ...
             Y,...
-            CongruencySemanticCategories,...
             Stroke,...
             Freq,...
+            CongruencySemanticCategories,...
             JSD,...
             Classifier,...
             Subj,...
             Item,...
             'VariableNames',...
             {'EEG',...
-             'CongruencySemanticCategories',...
              'Stroke',...
              'Freq',...
+             'CongruencySemanticCategories',...
              'JSD',...
              'Classifier',...
              'Subj',...
@@ -226,23 +226,21 @@ fprintf('Random effects removed.\n');
 %
 % Full model:
 %
-% EEG ~ CongruencySemanticCategories
-%       + Stroke + Freq + JSD * Classifier
+% EEG ~ Stroke + Freq + CongruencySemanticCategories + JSD * Classifier
 %
 % Null model:
 %
-% EEG ~ CongruencySemanticCategories
-%       + Stroke + Freq + JSD + JSD .* Classifier
+% EEG ~ Stroke + Freq + CongruencySemanticCategories + JSD + JSD .* Classifier
 %
 %% ==========================================================
 
 fprintf('\nPreparing target design matrices...\n');
 
-X_full = [CongruencySemanticCategories, Stroke,...
-    Freq, JSD, JSD.*Classifier, Classifier];
+X_full = [Stroke, Freq, CongruencySemanticCategories,...
+    JSD, JSD.*Classifier, Classifier];
 
-X_null = [CongruencySemanticCategories, Stroke,...
-    Freq, JSD, JSD.*Classifier];
+X_null = [Stroke, Freq, CongruencySemanticCategories,...
+    JSD, JSD.*Classifier];
 
 %% ==========================================================
 % Observed statistics from the full model
@@ -471,17 +469,17 @@ fprintf('Saved results.\n')
 % Plot corrected t-map
 %% ==========================================================
 
-% clear all; clc; close all
-% 
-% load('../Results/09_realDOE_results.mat')
+clear all; clc; close all
+
+load('../Results/09_realDOE_results.mat')
 
 figure;
 
-sigT = -Results.tObs;
+sigT = Results.tObs;
 
 sigT(~Results.Mask)=0;
 
-imagesc(time,1:nChan,sigT);
+imagesc(time,1:nChan,Results.tObs);
 
 axis xy;
 
