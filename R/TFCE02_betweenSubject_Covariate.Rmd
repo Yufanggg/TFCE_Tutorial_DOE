@@ -118,34 +118,6 @@ cat("Observed TFCE map completed.\n")
 ## Step 3: Freedman-Lane permutation
 ## ==========================================================
 
-set.seed(123)
-
-n_perm <- 999
-
-subject_ids <- unique(FL_parts$Subject)
-
-## Confirm one observation per subject, channel, and time point
-duplicate_rows <- FL_parts %>%
-  count(Subject, Channel, Time) %>%
-  filter(n > 1)
-
-if (nrow(duplicate_rows) > 0) {
-  stop("FL_parts must contain one observation per ",
-       "Subject ¡Á Channel ¡Á Time combination.")
-}
-
-n_workers <- max(1, parallel::detectCores() - 1)
-
-plan(multisession, workers = n_workers)
-
-handlers("txtprogressbar")
-
-cat(
-  "Starting parallel Freedman-Lane permutation testing with ",
-  n_workers,
-  " workers...\n",
-  sep = ""
-)
 
 ## ==========================================================
 ## Precompute reduced-model fitted values and residuals
@@ -166,6 +138,34 @@ FL_parts <- dat %>%
   }) %>%
   ungroup()
 
+set.seed(123)
+
+n_perm <- 999
+
+subject_ids <- unique(FL_parts$Subject)
+
+## Confirm one observation per subject, channel, and time point
+duplicate_rows <- FL_parts %>%
+  count(Subject, Channel, Time) %>%
+  filter(n > 1)
+
+if (nrow(duplicate_rows) > 0) {
+  stop("FL_parts must contain one observation per ",
+       "Subject ?? Channel ?? Time combination.")
+}
+
+n_workers <- max(1, parallel::detectCores() - 1)
+
+plan(multisession, workers = n_workers)
+
+handlers("txtprogressbar")
+
+cat(
+  "Starting parallel Freedman-Lane permutation testing with ",
+  n_workers,
+  " workers...\n",
+  sep = ""
+)
 ## ----------------------------------------------------------
 ## Set up parallel Freedman-Lane permutation testing
 ## ----------------------------------------------------------
@@ -173,28 +173,28 @@ FL_parts <- dat %>%
 with_progress({
   progress_update <- progressor(along = seq_len(n_perm))
   
-  TFCE_permMax <- future_lapply(seq_len(n_perm), function(p) {
+  TFCE_permMax <- future_sapply(seq_len(n_perm), function(p) {
     ## ----------------------------------------------------
     ## Construct the permuted EEG dataset
     ## ----------------------------------------------------
     
-    perm_info <- subject_info %>%
-      mutate(CondCode = sample(CondCode))
-    
-    perm_dat <- EEGlong %>%
-      select(-any_of("CondCode")) %>%
-      left_join(perm_info, by = "Subject") %>%
-      mutate(
-        Subject  = factor(Subject),
-        Channel  = factor(Channel),
-        CondCode = as.numeric(CondCode)
-      )
+    perm_dat <- FL_parts %>%
+      group_by(Channel, Time) %>%
+      group_modify( ~ {
+        df <- .x
+        perm_idx <- sample(seq_len(length(unique(dat$Subject))))
+        ## Freedman-Lane permuted response
+        df$Amplitude <- df$Y_hat_red + df$resid_red[perm_idx]
+        
+        df
+      }) %>%
+      ungroup()
     
     ## ----------------------------------------------------
     ## Compute the permuted t-map
     ## ----------------------------------------------------
     
-    t_perm <- compute_tmap(perm_dat)
+    t_perm <- compute_tmap_covariate(perm_dat)
     
     ## ----------------------------------------------------
     ## Apply the TFCE transformation

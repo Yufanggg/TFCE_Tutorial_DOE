@@ -183,7 +183,7 @@ with_progress({
     ## Return the three permutation maxima
     perm_max
   }, ## Reproducible parallel random-number generation
-  future.seed = 123, ## Packages required by the workers
+  future.seed = TRUE, ## Packages required by the workers
   future.packages = c("dplyr", "tidyr"))
 })
 
