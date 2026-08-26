@@ -181,7 +181,7 @@ fprintf('\nRemoving subject/item random effects...\n');
 mEEG = nan(size(EEGdata));
 
 lmeFormula = ...
-    'EEG ~ Stroke + Freq + CongruencySemanticCategories + LengthofDistrctor + JSD * Classifier + (1|Subj)+(1|Item)';
+    'EEG ~ CongruencySemanticCategories + JSD * Classifier + (1|Subj)+(1|Item)';
 
 for ch = 1:nChan
 
@@ -245,13 +245,13 @@ fprintf('Random effects removed.\n');
 
 fprintf('\nPreparing target design matrices...\n');
 
-X_full = [Stroke, Freq, CongruencySemanticCategories, LengthofDistrctor, JSD, Classifier, JSD .* Classifier];
+X_full = [CongruencySemanticCategories, JSD, Classifier, JSD .* Classifier];
 
-X_null_JSD = [Stroke, Freq, CongruencySemanticCategories, LengthofDistrctor, Classifier, JSD .* Classifier];
+X_null_JSD = [CongruencySemanticCategories, Classifier, JSD .* Classifier];
 
-X_null_Cla = [Stroke, Freq, CongruencySemanticCategories, LengthofDistrctor, JSD, JSD .* Classifier];
+X_null_Cla = [CongruencySemanticCategories, JSD, JSD .* Classifier];
 
-X_null_Int = [Stroke, Freq, CongruencySemanticCategories, LengthofDistrctor, JSD, Classifier];
+X_null_Int = [CongruencySemanticCategories, JSD, Classifier];
 
 %% ==========================================================
 % Observed statistics from the full model
@@ -274,11 +274,11 @@ for ch = 1:nChan
 
         coefNames = lm_full.Coefficients.Properties.RowNames;
 
-        idx_JSD = contains(coefNames,'x5');
+        idx_JSD = contains(coefNames,'x2');
 
-        idx_Cla = contains(coefNames,'x6');
+        idx_Cla = contains(coefNames,'x3');
 
-        idx_Int = contains(coefNames,'x7');
+        idx_Int = contains(coefNames,'x4');
 
 
         t_Obs_JSD(ch,t)= lm_full.Coefficients.tStat(idx_JSD);
@@ -307,7 +307,7 @@ Yhat_null_JSD = nan(nObs,nChan,nTime); Residual_null_JSD = nan(nObs,nChan,nTime)
 
 Yhat_null_Cla = nan(nObs,nChan,nTime); Residual_null_Cla = nan(nObs,nChan,nTime);
 
-Yhat_null_Int = nan(nObs,nChan,nTime); Residual_null_Int = nan(nObs,nChan,nTime);
+% Yhat_null_Int = nan(nObs,nChan,nTime); Residual_null_Int = nan(nObs,nChan,nTime);
 
 
 for ch = 1:nChan
@@ -370,12 +370,20 @@ TFCE_permMax_JSD = zeros(nPerm,1);
 
 TFCE_permMax_Cla = zeros(nPerm,1);
 
-% TFCE_permMax_Int = zeros(nPerm,1);
+TFCE_permMax_Int = zeros(nPerm,1);
 
 fprintf('\nStarting Freedman-Lane permutations...\n');
 
 delete(gcp('nocreate'));
-parpool('Processes', 4);
+
+mexFile = which('ept_mex_TFCE2D');
+
+if isempty(mexFile)
+    error('ept_mex_TFCE2D is not on the MATLAB path.');
+end
+
+pool = parpool('Processes',4, ...
+    'AttachedFiles',{mexFile});
 
 
 parfor p=1:nPerm
@@ -393,7 +401,7 @@ parfor p=1:nPerm
 
     perm_t_Cla = zeros(nChan,nTime);
 
-    % perm_t_Int = zeros(nChan,nTime);
+    perm_t_Int = zeros(nChan,nTime);
 
     for ch=1:nChan
 
@@ -417,7 +425,7 @@ parfor p=1:nPerm
 
             coefNames_JSD = lm_perm_JSD.Coefficients.Properties.RowNames;
 
-            idx_JSD = contains(coefNames_JSD,'x5');
+            idx_JSD = contains(coefNames_JSD,'x2');
 
             perm_t_JSD(ch,t)= lm_perm_JSD.Coefficients.tStat(idx_JSD);
 
@@ -440,7 +448,7 @@ parfor p=1:nPerm
 
             coefNames_Cla = lm_perm_Cla.Coefficients.Properties.RowNames;
 
-            idx_Cla = contains(coefNames_Cla,'x6');
+            idx_Cla = contains(coefNames_Cla,'x3');
 
             perm_t_Cla(ch,t)= lm_perm_Cla.Coefficients.tStat(idx_Cla);
 
@@ -451,7 +459,7 @@ parfor p=1:nPerm
 
             % permuted residuals
 
-            e_perm_Int = Residual_null_Int(perm_idx_Int,ch,t);
+            e_perm_Int =  Residual_null_Int(perm_idx,ch,t);
 
             % Freedman-Lane response
 
@@ -463,7 +471,7 @@ parfor p=1:nPerm
 
             coefNames_Int = lm_perm_Int.Coefficients.Properties.RowNames;
 
-            idx_Int = contains(coefNames,'x7');
+            idx_Int = contains(coefNames_Int,'x4');
 
             perm_t_Int(ch,t)= lm_perm_Int.Coefficients.tStat(idx_Int);
 
@@ -471,7 +479,7 @@ parfor p=1:nPerm
 
     end
 
-    TFCE on this permutation
+    % TFCE on this permutation
 
     TFCE_perm_JSD = ept_mex_TFCE2D(perm_t_JSD, ChN, E_H);
 
@@ -604,8 +612,7 @@ Results.alpha = alpha;
 Results.nPerm = nPerm;
 
 Results.model = ...
-    ['EEG ~ Stroke + ' ...
-     'Freq + CongruencySemanticCategories + LengthofDistrctor + JSD * Classifier'];
+    ['EEG ~ CongruencySemanticCategories + JSD * Classifier'];
 
 
 
@@ -624,7 +631,7 @@ if ~exist('../Results','dir')
 
 end
 
-save('../Results/09_realDOE_results_4.mat',...
+save('../Results/09_realDOE_results_6.mat',...
     'Results',...
     'nChan',...
     'time',...
@@ -636,17 +643,17 @@ fprintf('Saved results.\n')
 % Plot corrected t-map
 %% ==========================================================
 
-clear all; clc; close all
-
-load('../Results/09_realDOE_results_4.mat')
+% clear all; clc; close all
+% 
+% load('../Results/09_realDOE_results_4.mat')
 
 figure;
 
-sigT = Results.tObs;
+sigT = Results.t_Obs_Cla;
 
-sigT(~Results.Mask)=0;
+sigT(~Results.Mask_Cla)=0;
 
-imagesc(time,1:nChan,Results.P_Values<0.2);
+imagesc(time,1:nChan,Results.P_Values_Int < 0.05);
 
 axis xy;
 
@@ -678,7 +685,7 @@ ylabel(cb,'t-value',...
 
 figure;
 
-imagesc(time,1:nChan,Results.TFCE_Obs);
+imagesc(time,1:nChan,Results.TFCE_Obs_Int);
 
 axis xy;
 
