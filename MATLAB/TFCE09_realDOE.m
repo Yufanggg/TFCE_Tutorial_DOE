@@ -9,7 +9,7 @@
 %
 % Model:
 %
-% EEG ~ CongruencySemanticCategories + Stroke + Freq +
+% EEG ~ Stroke + Freq +
 %       SC + SH + (1|Subj) + (1|Item)
 %
 % Test:
@@ -27,7 +27,7 @@ fprintf('\nStarting lmeEEG Freedman-Lane analysis...\n');
 % Load data
 %% ==========================================================
 
-load('../Data/realDOE.mat');
+load('../Data/09_realDOE.mat');
 
 %% ==========================================================
 % Dimensions
@@ -90,8 +90,8 @@ SemanticCategory = zeros(nObs,1);
 
 tmpSemanticCategory = string(designTable.SemanticCategory);
 
-SemanticCategory(tmpSemanticCategory == 0) = -1;   % SC-
-SemanticCategory(tmpSemanticCategory == 1) =  1;   % SC+
+SemanticCategory(tmpSemanticCategory == "0") = -1;   % SC-
+SemanticCategory(tmpSemanticCategory == "1") =  1;   % SC+
 
 % Check coding
 fprintf('SC-, -1): %d observations\n', sum(SemanticCategory == -1));
@@ -108,10 +108,10 @@ end
 
 Shape = zeros(nObs,1);
 
-tmpShape = string(designTable.SemanticCategory);
+tmpShape = string(designTable.Shape);
 
-Shape(tmpShape == 0) = -1;   % SC-
-Shape(tmpShape == 1) =  1;   % SC+
+Shape(tmpShape == "0") = -1;   % SC-
+Shape(tmpShape == "1") =  1;   % SC+
 
 % Check coding
 fprintf('SH-, -1): %d observations\n', sum(Shape == -1));
@@ -259,7 +259,7 @@ for ch = 1:nChan
 
         t_Obs_SC(ch,t)= lm_full.Coefficients.tStat(idx_SC);
 
-        t_Obs_SH(ch,t)= lm_full.Coefficients.tStat(t_Obs_SH);
+        t_Obs_SH(ch,t)= lm_full.Coefficients.tStat(idx_SH);
 
         t_Obs_Int(ch,t)= lm_full.Coefficients.tStat(idx_Int);
 
@@ -449,7 +449,7 @@ parfor p=1:nPerm
 
             coefNames_Int = lm_perm_Int.Coefficients.Properties.RowNames;
 
-            idx_Int = contains(coefNames,'x5');
+            idx_Int = contains(coefNames_Int,'x5');
 
             perm_t_Int(ch,t)= lm_perm_Int.Coefficients.tStat(idx_Int);
 
