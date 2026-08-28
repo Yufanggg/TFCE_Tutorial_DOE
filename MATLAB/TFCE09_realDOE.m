@@ -124,16 +124,19 @@ fprintf('Incongruent (-1): %d observations\n', sum(Classifier == -1));
 %% ----------------------------
 % Frequency
 %% ----------------------------
-FreqRaw = log(double(designTable.Frequency));
+FreqOriginal = double(designTable.Frequency);
 
-if any(~isfinite(FreqRaw))
+FreqRaw = zeros(nObs,1);
 
+idxFreq = FreqOriginal > 0;
+
+FreqRaw(idxFreq) = log(FreqOriginal(idxFreq));
+
+if any(FreqOriginal < 0 | isnan(FreqOriginal))
     error('Frequency contains invalid values.');
-
 end
 
-Freq = (FreqRaw-mean(FreqRaw)) ./ std(FreqRaw);
-
+Freq = (FreqRaw - mean(FreqRaw)) ./ std(FreqRaw);
 %% ----------------------------
 % Stroke
 %% ----------------------------
@@ -144,25 +147,16 @@ Stroke = (StrokeRaw-mean(StrokeRaw)) ./ std(StrokeRaw);
 %% ----------------------------
 % Semantic category congruency
 %% ----------------------------
+CongruencySemanticCategories = ...
+    double(designTable.CongruencySemanticCategories);
 
-CongruencySemanticCategories = designTable.CongruencySemanticCategories;
-
-% lev = categories(tmp);
+if ~all(ismember(unique(CongruencySemanticCategories), [0 1]))
+    error('CongruencySemanticCategories must contain only 0 and 1.');
+end
 % 
-% if length(lev)~=2
-% 
-%     error('CongruencySemanticCategories must have two levels.');
-% 
-% end
-% 
-% CongruencySemanticCategories=zeros(nObs,1);
-% 
-% CongruencySemanticCategories(tmp==lev{1})=-1;
-% CongruencySemanticCategories(tmp==lev{2})=1;
-% 
-% %% ----------------------------
-% % Length of distractor
-% %% ----------------------------
+%% ----------------------------
+% Length of distractor
+%% ----------------------------
 % 
 LengthofDistrctorRaw = designTable.LengthofDistrctor;
 LengthofDistrctor = (LengthofDistrctorRaw - mean(LengthofDistrctorRaw)) ./ std(LengthofDistrctorRaw);
@@ -370,7 +364,7 @@ TFCE_permMax_JSD = zeros(nPerm,1);
 
 TFCE_permMax_Cla = zeros(nPerm,1);
 
-% TFCE_permMax_Int = zeros(nPerm,1);
+TFCE_permMax_Int = zeros(nPerm,1);
 
 fprintf('\nStarting Freedman-Lane permutations...\n');
 
@@ -393,7 +387,7 @@ parfor p=1:nPerm
 
     perm_t_Cla = zeros(nChan,nTime);
 
-    % perm_t_Int = zeros(nChan,nTime);
+    perm_t_Int = zeros(nChan,nTime);
 
     for ch=1:nChan
 
@@ -451,7 +445,7 @@ parfor p=1:nPerm
 
             % permuted residuals
 
-            e_perm_Int = Residual_null_Int(perm_idx_Int,ch,t);
+            e_perm_Int = Residual_null_Int(perm_idx,ch,t);
 
             % Freedman-Lane response
 
