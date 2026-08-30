@@ -348,6 +348,8 @@ TFCE_permMax_SH = zeros(nPerm,1);
 
 TFCE_permMax_Int = zeros(nPerm,1);
 
+[rperms] = lmeEEG_permutations2(nPerm, Subj, Item); % within subjects and items permutations of X (for fully-crossed designs)
+
 fprintf('\nStarting Freedman-Lane permutations...\n');
 
 delete(gcp('nocreate'));
@@ -370,7 +372,7 @@ parfor p=1:nPerm
     % One permutation for all EEG points
     % ------------------------------------
 
-    perm_idx = randperm(nObs);
+    perm_idx = rperms(:,p);
 
 
     perm_t_SC = zeros(nChan,nTime);
