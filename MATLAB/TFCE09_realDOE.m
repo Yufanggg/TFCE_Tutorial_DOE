@@ -348,7 +348,7 @@ TFCE_permMax_SH = zeros(nPerm,1);
 
 TFCE_permMax_Int = zeros(nPerm,1);
 
-[rperms] = lmeEEG_permutations2(nPerm, Subj, Item); % within subjects and items permutations of X (for fully-crossed designs)
+rperms = lmeEEG_permutations2(nPerm, Subj, Item); % within subjects and items permutations of X (for fully-crossed designs)
 
 fprintf('\nStarting Freedman-Lane permutations...\n');
 
