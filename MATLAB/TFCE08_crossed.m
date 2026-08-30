@@ -219,11 +219,12 @@ fprintf('Observed TFCE map completed.\n');
 TFCE_permMax = nan(nPerm,1);
 
 fprintf('Step 3: Starting permutation test: %d permutations...\n', nPerm);
+[rperms] = lmeEEG_permutations2(nPerm, SubjectLME, ItemLME); 
 
 for p =1:nPerm
     permT = nan(nChan, nTime);
     
-    permCondCode = CondCode(randperm(nRows),:);
+    permCondCode = CondCode(rperms(:,p),:);
     
     for ch = 1:nChan
         

@@ -90,8 +90,8 @@ SemanticCategory = zeros(nObs,1);
 
 tmpSemanticCategory = string(designTable.SemanticCategory);
 
-SemanticCategory(tmpSemanticCategory == "0") = -1;   % SC-
-SemanticCategory(tmpSemanticCategory == "1") =  1;   % SC+
+SemanticCategory(tmpSemanticCategory == '0') = -1;   % SC-
+SemanticCategory(tmpSemanticCategory == '1') =  1;   % SC+
 
 % Check coding
 fprintf('SC-, -1): %d observations\n', sum(SemanticCategory == -1));
@@ -110,8 +110,8 @@ Shape = zeros(nObs,1);
 
 tmpShape = string(designTable.Shape);
 
-Shape(tmpShape == "0") = -1;   % SC-
-Shape(tmpShape == "1") =  1;   % SC+
+Shape(tmpShape == '0') = -1;   % SC-
+Shape(tmpShape == '1') =  1;   % SC+
 
 % Check coding
 fprintf('SH-, -1): %d observations\n', sum(Shape == -1));
