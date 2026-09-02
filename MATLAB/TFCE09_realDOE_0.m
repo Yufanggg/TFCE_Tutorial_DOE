@@ -181,7 +181,7 @@ fprintf('\nRemoving subject/item random effects...\n');
 mEEG = nan(size(EEGdata));
 
 lmeFormula = ...
-    'EEG ~ CongruencySemanticCategories + JSD * Classifier + (1|Subj)+(1|Item)';
+    'EEG ~ Stroke + Freq + LengthofDistrctor + CongruencySemanticCategories + JSD * Classifier + (1|Subj)+(1|Item)';
 
 for ch = 1:nChan
 
@@ -245,13 +245,13 @@ fprintf('Random effects removed.\n');
 
 fprintf('\nPreparing target design matrices...\n');
 
-X_full = [CongruencySemanticCategories, JSD, Classifier, JSD .* Classifier];
+X_full = [Stroke, Freq, LengthofDistrctor, CongruencySemanticCategories, JSD, Classifier, JSD .* Classifier];
 
-X_null_JSD = [CongruencySemanticCategories, Classifier, JSD .* Classifier];
+X_null_JSD = [Stroke, Freq, LengthofDistrctor, CongruencySemanticCategories, Classifier, JSD .* Classifier];
 
-X_null_Cla = [CongruencySemanticCategories, JSD, JSD .* Classifier];
+X_null_Cla = [Stroke, Freq, LengthofDistrctor, CongruencySemanticCategories, JSD, JSD .* Classifier];
 
-X_null_Int = [CongruencySemanticCategories, JSD, Classifier];
+X_null_Int = [Stroke, Freq, LengthofDistrctor, CongruencySemanticCategories, JSD, Classifier];
 
 %% ==========================================================
 % Observed statistics from the full model
@@ -274,11 +274,11 @@ for ch = 1:nChan
 
         coefNames = lm_full.Coefficients.Properties.RowNames;
 
-        idx_JSD = contains(coefNames,'x2');
+        idx_JSD = contains(coefNames,'x5');
 
-        idx_Cla = contains(coefNames,'x3');
+        idx_Cla = contains(coefNames,'x6');
 
-        idx_Int = contains(coefNames,'x4');
+        idx_Int = contains(coefNames,'x7');
 
 
         t_Obs_JSD(ch,t)= lm_full.Coefficients.tStat(idx_JSD);
@@ -307,7 +307,7 @@ Yhat_null_JSD = nan(nObs,nChan,nTime); Residual_null_JSD = nan(nObs,nChan,nTime)
 
 Yhat_null_Cla = nan(nObs,nChan,nTime); Residual_null_Cla = nan(nObs,nChan,nTime);
 
-% Yhat_null_Int = nan(nObs,nChan,nTime); Residual_null_Int = nan(nObs,nChan,nTime);
+Yhat_null_Int = nan(nObs,nChan,nTime); Residual_null_Int = nan(nObs,nChan,nTime);
 
 
 for ch = 1:nChan
@@ -427,7 +427,7 @@ parfor p=1:nPerm
 
             coefNames_JSD = lm_perm_JSD.Coefficients.Properties.RowNames;
 
-            idx_JSD = contains(coefNames_JSD,'x2');
+            idx_JSD = contains(coefNames_JSD,'x5');
 
             perm_t_JSD(ch,t)= lm_perm_JSD.Coefficients.tStat(idx_JSD);
 
@@ -450,7 +450,7 @@ parfor p=1:nPerm
 
             coefNames_Cla = lm_perm_Cla.Coefficients.Properties.RowNames;
 
-            idx_Cla = contains(coefNames_Cla,'x3');
+            idx_Cla = contains(coefNames_Cla,'x6');
 
             perm_t_Cla(ch,t)= lm_perm_Cla.Coefficients.tStat(idx_Cla);
 
@@ -473,7 +473,7 @@ parfor p=1:nPerm
 
             coefNames_Int = lm_perm_Int.Coefficients.Properties.RowNames;
 
-            idx_Int = contains(coefNames_Int,'x4');
+            idx_Int = contains(coefNames_Int,'x7');
 
             perm_t_Int(ch,t)= lm_perm_Int.Coefficients.tStat(idx_Int);
 
@@ -655,7 +655,7 @@ sigT = Results.t_Obs_Cla;
 
 sigT(~Results.Mask_Cla)=0;
 
-imagesc(time,1:nChan,Results.P_Values_Int < 0.05);
+imagesc(time,1:nChan,Results.P_Values_Cla < 0.2);
 
 axis xy;
 

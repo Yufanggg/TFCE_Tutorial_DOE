@@ -36,6 +36,41 @@
 
 
 
+% function rperms = lmeEEG_permutations2(nperms, SS, Item)
+% 
+% subj = unique(SS);
+% it   = unique(Item);
+% 
+% nObs = length(SS);
+% rperms = nan(nObs, nperms);
+% 
+% for id = 1:length(subj)
+% 
+%     for itx = 1:length(it)
+% 
+%         idx = find(SS == subj(id) & Item == it(itx));
+% 
+%         nIdx = length(idx);
+% 
+%         if nIdx == 0
+%             continue
+%         elseif nIdx == 1
+%             rperms(idx,:) = repmat(idx, 1, nperms);
+%         else
+%             [~, permOrder] = sort(rand(nIdx, nperms), 1);
+%             rperms(idx,:) = idx(permOrder);
+%         end
+% 
+%     end
+% end
+% 
+% if any(isnan(rperms(:)))
+%     error('Some observations were not assigned a permutation index.');
+% end
+% 
+% end
+
+
 function rperms = lmeEEG_permutations2(nperms, SS, Item)
 
 subj = unique(SS);
@@ -43,6 +78,8 @@ it   = unique(Item);
 
 nObs = length(SS);
 rperms = nan(nObs, nperms);
+
+all_nIdx = [];
 
 for id = 1:length(subj)
 
@@ -54,15 +91,38 @@ for id = 1:length(subj)
 
         if nIdx == 0
             continue
-        elseif nIdx == 1
+        end
+
+        all_nIdx(end+1) = nIdx;
+
+        if nIdx == 1
+
             rperms(idx,:) = repmat(idx, 1, nperms);
+
         else
+
             [~, permOrder] = sort(rand(nIdx, nperms), 1);
+
             rperms(idx,:) = idx(permOrder);
+
         end
 
     end
 end
+
+fprintf('Minimum observations per Subject x Item cell: %d\n', min(all_nIdx));
+fprintf('Maximum observations per Subject x Item cell: %d\n', max(all_nIdx));
+fprintf('Mean observations per Subject x Item cell: %.2f\n', mean(all_nIdx));
+
+fprintf('Cells with n=1: %d/%d\n', ...
+    sum(all_nIdx == 1), length(all_nIdx));
+
+original_idx = (1:nObs)';
+
+changed_fraction = mean(rperms ~= original_idx, 1);
+
+fprintf('Mean proportion of observations moved: %.4f\n', ...
+    mean(changed_fraction));
 
 if any(isnan(rperms(:)))
     error('Some observations were not assigned a permutation index.');

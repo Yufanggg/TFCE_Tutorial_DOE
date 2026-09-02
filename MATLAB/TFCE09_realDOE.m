@@ -629,11 +629,11 @@ load('../Results/09_realDOE_results.mat')
 
 figure;
 
-sigT = Results.t_Obs_Cla;
+sigT = Results.t_Obs_SC;
 
-sigT(~Results.Mask_Cla)=0;
+sigT(~Results.Mask_SC)=0;
 
-imagesc(time,1:nChan,Results.P_Values_Int < 0.05);
+imagesc(time,1:nChan,abs(Results.t_Obs_SH));
 
 axis xy;
 
