@@ -1,16 +1,14 @@
 %% ==========================================================
-% lmeEEG TFCE analysis using Freedman-Lane procedure
+% TFCE analysis using Ordinary Freedman-Lane procedure
 %
 % Stage 1:
-%   Remove subject/item random intercepts using LME
+%  subject/item + other nuisance variables for a GLM
 %
 % Stage 2:
-%   Freedman-Lane permutation on adjusted EEG
+%   reduced GLM
 %
-% Model:
-%
-% EEG ~ CongruencySemanticCategories + Stroke + Freq +
-%       JSD + Classifier + (1|Subj) + (1|Item)
+% Stage 3:
+%   Freedman-lane residualization
 %
 % Test:
 %   Classifier effect
@@ -21,7 +19,7 @@ clear; clc; close all;
 
 rng(123);
 
-fprintf('\nStarting lmeEEG Freedman-Lane analysis...\n');
+fprintf('\nStarting Freedman-Lane analysis...\n');
 
 %% ==========================================================
 % Load data
@@ -147,234 +145,96 @@ Stroke = (StrokeRaw-mean(StrokeRaw)) ./ std(StrokeRaw);
 
 CongruencySemanticCategories = designTable.CongruencySemanticCategories;
 
-% lev = categories(tmp);
-% 
-% if length(lev)~=2
-% 
-%     error('CongruencySemanticCategories must have two levels.');
-% 
-% end
-% 
-% CongruencySemanticCategories=zeros(nObs,1);
-% 
-% CongruencySemanticCategories(tmp==lev{1})=-1;
-% CongruencySemanticCategories(tmp==lev{2})=1;
-% 
 % %% ----------------------------
 % % Length of distractor
 % %% ----------------------------
 % 
 LengthofDistrctorRaw = designTable.LengthofDistrctor;
 LengthofDistrctor = (LengthofDistrctorRaw - mean(LengthofDistrctorRaw)) ./ std(LengthofDistrctorRaw);
-%% ==========================================================
-% Create adjusted EEG
-%
-% Remove:
-%   Subject random intercept
-%   Item random intercept
-%
-% Keep:
-%   Fixed effects
-%% ==========================================================
-fprintf('\nRemoving subject/item random effects...\n');
 
-mEEG = nan(size(EEGdata));
+%% ==========================================================
+% Construct nuisance and full design matrices
+%
+% Subject + Item are treated as nuisance fixed effects.
+%
+% Test:
+% H0: t_Classifier = 0
+%% ==========================================================
+% Reduced model: nuisance only
+X_null = [ ...
+    ones(nObs,1), ...
+    SubjDummy, ...
+    ItemDummy, ...
+    Stroke, ...
+    Freq, ...
+    LengthofDistrctor, ...
+    CongruencySemanticCategories, ...
+    JSD];
 
-lmeFormula = ...
-    'EEG ~ Stroke + Freq + LengthofDistrctor + CongruencySemanticCategories + JSD * Classifier + (1|Subj)+(1|Item)';
+% Full model: nuisance + effect of interest
+X_full = [ ...
+    X_null, ...
+    Classifier];
+
+idx_Classifier = size(X_full,2);
+
+%% ==========================================================
+% Observed t-map
+%% ==========================================================
+
+t_Obs = nan(nChan,nTime);
 
 for ch = 1:nChan
-
     for t = 1:nTime
 
         Y = squeeze(double(EEGdata(:,ch,t)));
 
-        tbl = table( ...
-            Y,...
-            Stroke,...
-            Freq,...
-            CongruencySemanticCategories,...
-            LengthofDistrctor, ...
-            JSD,...
-            Classifier,...
-            Subj,...
-            Item,...
-            'VariableNames',...
-            {'EEG',...
-             'Stroke',...
-             'Freq',...
-             'CongruencySemanticCategories',...
-             'LengthofDistrctor',...
-             'JSD',...
-             'Classifier',...
-             'Subj',...
-             'Item'});
+        lm_full = fitlm(X_full(:,2:end),Y);
 
-        lme = fitlme(tbl,lmeFormula);
-
-        % random-effect contribution:
-        %
-        % (fixed + random) - fixed
-        %
-        randomContribution = fitted(lme,'Conditional',true) - ...
-            fitted(lme,'Conditional',false);
-
-        % remove only random effects
-
-        mEEG(:,ch,t)=Y-randomContribution;
-        
-    end
-end
-
-fprintf('Random effects removed.\n');
-
-%% ==========================================================
-% Part 2
-%
-% Construct target models
-%
-% Full model:
-%
-% EEG ~ Stroke + Freq + CongruencySemanticCategories + JSD * Classifier
-%
-% Null model:
-%
-% EEG ~ Stroke + Freq + CongruencySemanticCategories + JSD + JSD .* Classifier
-%
-%% ==========================================================
-
-fprintf('\nPreparing target design matrices...\n');
-
-X_full = [Stroke, Freq, LengthofDistrctor, CongruencySemanticCategories, JSD, Classifier, JSD .* Classifier];
-
-X_null_JSD = [Stroke, Freq, LengthofDistrctor, CongruencySemanticCategories, Classifier, JSD .* Classifier];
-
-X_null_Cla = [Stroke, Freq, LengthofDistrctor, CongruencySemanticCategories, JSD, JSD .* Classifier];
-
-X_null_Int = [Stroke, Freq, LengthofDistrctor, CongruencySemanticCategories, JSD, Classifier];
-
-%% ==========================================================
-% Observed statistics from the full model
-%% ==========================================================
-fprintf('\nComputing observed t-map...\n');
-
-t_Obs_JSD = nan(nChan,nTime);
-
-t_Obs_Cla = nan(nChan,nTime);
-
-t_Obs_Int = nan(nChan,nTime);
-
-for ch = 1:nChan
-
-    for t = 1:nTime
-
-        Y=squeeze(mEEG(:,ch,t));
-
-        lm_full = fitlm(X_full,Y);
-
-        coefNames = lm_full.Coefficients.Properties.RowNames;
-
-        idx_JSD = contains(coefNames,'x5');
-
-        idx_Cla = contains(coefNames,'x6');
-
-        idx_Int = contains(coefNames,'x7');
-
-
-        t_Obs_JSD(ch,t)= lm_full.Coefficients.tStat(idx_JSD);
-
-        t_Obs_Cla(ch,t)= lm_full.Coefficients.tStat(idx_Cla);
-
-        t_Obs_Int(ch,t)= lm_full.Coefficients.tStat(idx_Int);
-
-    end
-
-end
-
-fprintf('Observed t-map completed.\n');
-
-%% ==========================================================
-% Precompute reduced model
-%
-% Freedman-Lane:
-%
-% Y_perm = Y_hat_null + permuted residuals
-%
-%% ==========================================================
-fprintf('\nPrecomputing reduced models...\n');
-
-Yhat_null_JSD = nan(nObs,nChan,nTime); Residual_null_JSD = nan(nObs,nChan,nTime);
-
-Yhat_null_Cla = nan(nObs,nChan,nTime); Residual_null_Cla = nan(nObs,nChan,nTime);
-
-Yhat_null_Int = nan(nObs,nChan,nTime); Residual_null_Int = nan(nObs,nChan,nTime);
-
-
-for ch = 1:nChan
-
-    fprintf('Reduced model channel %d/%d\n',ch,nChan);
-
-    for t = 1:nTime
-
-        Y = squeeze(mEEG(:,ch,t));
-
-        lm_null_JSD = fitlm(X_null_JSD,Y);
-
-        Yhat_null_JSD(:,ch,t) = lm_null_JSD.Fitted;
-
-        Residual_null_JSD(:,ch,t) = lm_null_JSD.Residuals.Raw;
-
-        
-        lm_null_Cla = fitlm(X_null_Cla,Y);
-
-        Yhat_null_Cla(:,ch,t) = lm_null_Cla.Fitted;
-
-        Residual_null_Cla(:,ch,t) = lm_null_Cla.Residuals.Raw;
-
-                
-        lm_null_Int = fitlm(X_null_Int,Y);
-
-        Yhat_null_Int(:,ch,t) = lm_null_Int.Fitted;
-
-        Residual_null_Int(:,ch,t) = lm_null_Int.Residuals.Raw;
+        % last coefficient = Classifier
+        t_Obs(ch,t) = ...
+            lm_full.Coefficients.tStat(end);
 
     end
 end
 
-fprintf('Reduced models completed.\n');
-
 %% ==========================================================
-% TFCE observed map
+% Observed TFCE
 %% ==========================================================
-fprintf('\nComputing observed TFCE...\n');
 
 ChN = ept_ChN2(channelinfo);
-
 E_H = [0.66 2];
 
+TFCE_Obs = ept_mex_TFCE2D(t_Obs,ChN,E_H);
 
-TFCE_Obs_JSD = ept_mex_TFCE2D(t_Obs_JSD, ChN, E_H);
+%% ==========================================================
+% Reduced model
+%% ==========================================================
 
-TFCE_Obs_Cla = ept_mex_TFCE2D(t_Obs_Cla, ChN, E_H);
+Yhat_null = nan(nObs,nChan,nTime);
+Residual_null = nan(nObs,nChan,nTime);
 
-TFCE_Obs_Int = ept_mex_TFCE2D(t_Obs_Int, ChN, E_H);
+for ch = 1:nChan
+    for t = 1:nTime
 
-fprintf('Observed TFCE completed.\n');
+        Y = squeeze(double(EEGdata(:,ch,t)));
+
+        lm_null = fitlm(X_null(:,2:end),Y);
+
+        Yhat_null(:,ch,t) = lm_null.Fitted;
+
+        Residual_null(:,ch,t) = lm_null.Residuals.Raw;
+
+    end
+end
 
 %% ==========================================================
 % Freedman-Lane permutation
 %% ==========================================================
-nPerm=999;
 
-rperms = lmeEEG_permutations2(nPerm, Subj, Item);
+nPerm = 999;
 
-TFCE_permMax_JSD = zeros(nPerm,1);
-
-TFCE_permMax_Cla = zeros(nPerm,1);
-
-TFCE_permMax_Int = zeros(nPerm,1);
-
-fprintf('\nStarting Freedman-Lane permutations...\n');
+TFCE_permMax = zeros(nPerm,1);
 
 delete(gcp('nocreate'));
 
@@ -384,120 +244,32 @@ if isempty(mexFile)
     error('ept_mex_TFCE2D is not on the MATLAB path.');
 end
 
-pool = parpool('Processes',4, ...
-    'AttachedFiles',{mexFile});
+pool = parpool('Processes',6, 'AttachedFiles',{mexFile});
 
+parfor p = 1:nPerm
 
-parfor p=1:nPerm
-    
-    fprintf('At %d/%d permutation\n', p, nPerm);
+    % unrestricted residual permutation
+    perm_idx = randperm(nObs);
 
-    % ------------------------------------
-    % One permutation for all EEG points
-    % ------------------------------------
+    perm_t = nan(nChan,nTime);
 
-   perm_idx = rperms(:,p);
+    for ch = 1:nChan
+        for t = 1:nTime
 
+            Y_perm = Yhat_null(:,ch,t) + ...
+                Residual_null(perm_idx,ch,t);
 
-    perm_t_JSD = zeros(nChan,nTime);
+            lm_perm = fitlm(X_full(:,2:end),Y_perm);
 
-    perm_t_Cla = zeros(nChan,nTime);
-
-    perm_t_Int = zeros(nChan,nTime);
-
-    for ch=1:nChan
-
-        for t=1:nTime
-
-            % original reduced-model fitted values
-
-            Y0_JSD = Yhat_null_JSD(:,ch,t);
-
-            % permuted residuals
-
-            e_perm_JSD = Residual_null_JSD(perm_idx,ch,t);
-
-            % Freedman-Lane response
-
-            Y_perm_JSD = Y0_JSD + e_perm_JSD;
-
-            % full model
-
-            lm_perm_JSD = fitlm(X_full,Y_perm_JSD);
-
-            coefNames_JSD = lm_perm_JSD.Coefficients.Properties.RowNames;
-
-            idx_JSD = contains(coefNames_JSD,'x5');
-
-            perm_t_JSD(ch,t)= lm_perm_JSD.Coefficients.tStat(idx_JSD);
-
-
-            %--- original reduced-model fitted values
-
-            Y0_Cla = Yhat_null_Cla(:,ch,t);
-
-            % permuted residuals
-
-            e_perm_Cla = Residual_null_Cla(perm_idx,ch,t);
-
-            % Freedman-Lane response
-
-            Y_perm_Cla = Y0_Cla + e_perm_Cla;
-
-            % full model
-
-            lm_perm_Cla = fitlm(X_full,Y_perm_Cla);
-
-            coefNames_Cla = lm_perm_Cla.Coefficients.Properties.RowNames;
-
-            idx_Cla = contains(coefNames_Cla,'x6');
-
-            perm_t_Cla(ch,t)= lm_perm_Cla.Coefficients.tStat(idx_Cla);
-
-
-            % %--- original reduced-model fitted values
-
-            Y0_Int = Yhat_null_Int(:,ch,t);
-
-            % permuted residuals
-
-            e_perm_Int =  Residual_null_Int(perm_idx,ch,t);
-
-            % Freedman-Lane response
-
-            Y_perm_Int = Y0_Int + e_perm_Int;
-
-            % full model
-
-            lm_perm_Int = fitlm(X_full,Y_perm_Int);
-
-            coefNames_Int = lm_perm_Int.Coefficients.Properties.RowNames;
-
-            idx_Int = contains(coefNames_Int,'x7');
-
-            perm_t_Int(ch,t)= lm_perm_Int.Coefficients.tStat(idx_Int);
+            perm_t(ch,t) = lm_perm.Coefficients.tStat(end);
 
         end
-
     end
 
-    % TFCE on this permutation
+    TFCE_perm = ept_mex_TFCE2D(perm_t,ChN,E_H);
 
-    TFCE_perm_JSD = ept_mex_TFCE2D(perm_t_JSD, ChN, E_H);
+    TFCE_permMax(p) = max(abs(TFCE_perm(:)));
 
-    TFCE_permMax_JSD(p) = max(abs(TFCE_perm_JSD(:)));
-
-
-
-    TFCE_perm_Cla = ept_mex_TFCE2D(perm_t_Cla, ChN, E_H);
-
-    TFCE_permMax_Cla(p) = max(abs(TFCE_perm_Cla(:)));
-    % 
-
-
-    TFCE_perm_Int = ept_mex_TFCE2D(perm_t_Int, ChN, E_H);
-
-    TFCE_permMax_Int(p) = max(abs(TFCE_perm_Int(:)));
 end
 
 fprintf('Permutation completed.\n');
@@ -514,47 +286,22 @@ fprintf('\nComputing TFCE corrected significance...\n');
 alpha = 0.05;
 
 
-maxTFCE_JSD = sort([TFCE_permMax_JSD;max(abs(TFCE_Obs_JSD(:)))]);
+maxTFCE = sort([TFCE_permMax;max(abs(TFCE_Obs(:)))]);
 
-maxTFCEcrit_JSD = maxTFCE_JSD(round(nPerm*(1-alpha)));
+maxTFCEcrit = maxTFCE(round(nPerm*(1-alpha)));
 
-fprintf('Critical TFCE value = %.4f\n',maxTFCEcrit_JSD);
+fprintf('Critical TFCE value = %.4f\n',maxTFCEcrit);
 
-Mask_JSD = abs(TFCE_Obs_JSD) >= maxTFCEcrit_JSD;
+Mask = abs(TFCE_Obs) >= TFCEcrit;
 
-
-maxTFCE_Cla = sort([TFCE_permMax_Cla;max(abs(TFCE_Obs_Cla(:)))]);
-
-maxTFCEcrit_Cla = maxTFCE_Cla(round(nPerm*(1-alpha)));
-
-fprintf('Critical TFCE value = %.4f\n',maxTFCEcrit_Cla);
-
-Mask_Cla = abs(TFCE_Obs_Cla) >= maxTFCEcrit_Cla;
-
-
-maxTFCE_Int = sort([TFCE_permMax_Int;max(abs(TFCE_Obs_Int(:)))]);
-
-maxTFCEcrit_Int = maxTFCE_Int(round(nPerm*(1-alpha)));
-
-fprintf('Critical TFCE value = %.4f\n',maxTFCEcrit_Int);
-
-Mask_Int = abs(TFCE_Obs_Int) >= maxTFCEcrit_Int;
-
-
-P_Values_JSD = nan(nChan,nTime); P_Values_Cla = nan(nChan,nTime); P_Values_Int = nan(nChan,nTime);
+P_Values = nan(nChan,nTime); 
 
 for ch=1:nChan
 
     for tp=1:nTime
 
-        P_Values_JSD(ch,tp)= ...
-            (sum(TFCE_permMax_JSD >= abs(TFCE_Obs_JSD(ch,tp)))+1) /(nPerm+1);
-
-        P_Values_Cla(ch,tp)= ...
-            (sum(TFCE_permMax_Cla >= abs(TFCE_Obs_Cla(ch,tp)))+1) /(nPerm+1);
-
-        P_Values_Int(ch,tp)= ...
-            (sum(TFCE_permMax_Int >= abs(TFCE_Obs_Int(ch,tp)))+1) /(nPerm+1);
+        P_Values(ch,tp)= ...
+            (sum(TFCE_permMax >= abs(TFCE_Obs(ch,tp)))+1) /(nPerm+1);
 
     end
     
@@ -568,58 +315,18 @@ fprintf('TFCE correction completed.\n');
 
 Results=struct();
 
-Results.t_Obs_JSD = t_Obs_JSD;
+Results.t_Obs = t_Obs;
 
-Results.TFCE_Obs_JSD = TFCE_Obs_JSD;
+Results.TFCE_Obs = TFCE_Obs;
 
-Results.TFCE_Null_JSD = TFCE_permMax_JSD;
+Results.TFCE_Null = TFCE_permMax;
 
-Results.maxTFCEcrit_JSD = maxTFCEcrit_JSD;
+Results.maxTFCEcrit = maxTFCEcrit;
 
-Results.Mask_JSD = Mask_JSD;
+Results.Mask = Mask;
 
-Results.P_Values_JSD = P_Values_JSD;
+Results.P_Values = P_Values;
 
-
-
-Results.t_Obs_Cla = t_Obs_Cla;
-
-Results.TFCE_Obs_Cla = TFCE_Obs_Cla;
-
-Results.TFCE_Null_Cla = TFCE_permMax_Cla;
-
-Results.maxTFCEcrit_Cla = maxTFCEcrit_Cla;
-
-Results.Mask_Cla = Mask_Cla;
-
-Results.P_Values_Cla = P_Values_Cla;
-
-
-
-Results.t_Obs_Int = t_Obs_Int;
-
-Results.TFCE_Obs_Int = TFCE_Obs_Int;
-
-Results.TFCE_Null_Int = TFCE_permMax_Int;
-
-Results.maxTFCEcrit_Int = maxTFCEcrit_Int;
-
-Results.Mask_Int = Mask_Int;
-
-Results.P_Values_Int = P_Values_Int;
-
-
-Results.alpha = alpha;
-
-Results.nPerm = nPerm;
-
-Results.model = ...
-    ['EEG ~ CongruencySemanticCategories + JSD * Classifier'];
-
-
-
-Results.test = ...
-    'Classifier effect after removing subject/item random intercepts';
 
 fprintf('Results stored.\n');
 
@@ -633,7 +340,7 @@ if ~exist('../Results','dir')
 
 end
 
-save('../Results/09_realDOE_results_6.mat',...
+save('../Results/09_realDOE_results_0.mat',...
     'Results',...
     'nChan',...
     'time',...
@@ -651,11 +358,11 @@ fprintf('Saved results.\n')
 
 figure;
 
-sigT = Results.t_Obs_Cla;
+sigT = Results.t_Obs;
 
-sigT(~Results.Mask_Cla)=0;
+sigT(~Results.Mask)=0;
 
-imagesc(time,1:nChan,Results.P_Values_Cla < 0.2);
+imagesc(time,1:nChan,Results.P_Values < 0.2);
 
 axis xy;
 
