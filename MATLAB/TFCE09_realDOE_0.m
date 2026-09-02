@@ -161,15 +161,22 @@ LengthofDistrctor = (LengthofDistrctorRaw - mean(LengthofDistrctorRaw)) ./ std(L
 % H0: t_Classifier = 0
 %% ==========================================================
 % Reduced model: nuisance only
+
+Subj = dummyvar(Subj);
+Item = dummyvar(Item);
+
+Subj = Subj(:,2:end);
+Item = Item(:,2:end);
+
 X_null = [ ...
     ones(nObs,1), ...
-    SubjDummy, ...
-    ItemDummy, ...
+    Subj, ...
+    Item, ...
     Stroke, ...
     Freq, ...
     LengthofDistrctor, ...
     CongruencySemanticCategories, ...
-    JSD];
+    JSD, JSD .* Classifier];
 
 % Full model: nuisance + effect of interest
 X_full = [ ...
@@ -195,8 +202,12 @@ for ch = 1:nChan
         t_Obs(ch,t) = ...
             lm_full.Coefficients.tStat(end);
 
+        fprintf("%d channel %d timepoints is done for t_obs\n", ch, t);
+
     end
 end
+
+fprintf("t_Obs is done\n")
 
 %% ==========================================================
 % Observed TFCE
@@ -206,6 +217,8 @@ ChN = ept_ChN2(channelinfo);
 E_H = [0.66 2];
 
 TFCE_Obs = ept_mex_TFCE2D(t_Obs,ChN,E_H);
+
+disp("TFCE_Obs is done\n");
 
 %% ==========================================================
 % Reduced model
@@ -225,9 +238,12 @@ for ch = 1:nChan
 
         Residual_null(:,ch,t) = lm_null.Residuals.Raw;
 
+         fprintf("%d channel %d timepoints is residualization\n", ch, t);
+
     end
 end
 
+disp("RESIDUALIZATION is done");
 %% ==========================================================
 % Freedman-Lane permutation
 %% ==========================================================
@@ -269,6 +285,7 @@ parfor p = 1:nPerm
     TFCE_perm = ept_mex_TFCE2D(perm_t,ChN,E_H);
 
     TFCE_permMax(p) = max(abs(TFCE_perm(:)));
+    fprintf("%d/%d permutation is done\n", p, nPerm);
 
 end
 
