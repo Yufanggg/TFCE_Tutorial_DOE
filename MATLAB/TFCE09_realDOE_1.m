@@ -1,17 +1,19 @@
 %% ==========================================================
-% TFCE analysis using Ordinary Freedman-Lane procedure
+% TFCE analysis using the Freedman-Lane permutation procedure
 %
 % Stage 1:
-%  subject/item + other nuisance variables for a GLM
+%   Fit a linear mixed-effects model and remove the estimated
+%   subject and item random-intercept contributions from the EEG data.
 %
 % Stage 2:
-%   reduced GLM
+%   Fit fixed-effects full and reduced GLMs to the marginalized EEG data.
 %
 % Stage 3:
-%   Freedman-lane residualization
+%   Apply restricted Freedman-Lane residual permutation and TFCE correction.
 %
-% Test:
-%   Classifier effect
+% Effect tested:
+%   Main effect of Classifier, while retaining the JSD-by-Classifier
+%   interaction in both the full and reduced models.
 %
 %% ==========================================================
 
@@ -78,11 +80,10 @@ if ~ismember('Target',varNames)
 
 end
 
-
 Item = categorical(designTable.Target);
 
 %% ==========================================================
-% Binary predictors
+% Prepare effect-coded predictors
 %% ==========================================================
 %----------------------------
 % JSD
@@ -95,11 +96,11 @@ tmpJSD = string(designTable.JSD);
 JSD(tmpJSD == 'L') = -1;   % Low JSD
 JSD(tmpJSD == 'H') =  1;   % High JSD
 
-% Check coding
+% Report the number of observations at each JSD level
 fprintf('JSD Low  (L, -1): %d observations\n', sum(JSD == -1));
 fprintf('JSD High (H, +1): %d observations\n', sum(JSD ==  1));
 
-% Check for unexpected/unmatched values
+% Ensure that every JSD observation received a valid code
 if any(JSD == 0)
     error('Some JSD observations were not coded. Check the JSD labels.');
 end
@@ -115,7 +116,7 @@ tmp = string(designTable.ClassifierCongruency);
 Classifier(tmp == 'Congruent')   =  1;
 Classifier(tmp == 'Incongruent') = -1;
 
-% Check coding
+% Report the number of observations in each Classifier condition
 fprintf('Congruent (+1):   %d observations\n', sum(Classifier == 1));
 fprintf('Incongruent (-1): %d observations\n', sum(Classifier == -1));
 
@@ -145,16 +146,16 @@ Stroke = (StrokeRaw-mean(StrokeRaw)) ./ std(StrokeRaw);
 
 CongruencySemanticCategories = designTable.CongruencySemanticCategories;
 
-% %% ----------------------------
-% % Length of distractor
-% %% ----------------------------
+%% ----------------------------
+% Length of distractor
+%% ----------------------------
 % 
 LengthofDistrctorRaw = designTable.LengthofDistrctor;
 LengthofDistrctor = (LengthofDistrctorRaw - mean(LengthofDistrctorRaw)) ./ std(LengthofDistrctorRaw);
 
 %%
 %% ==========================================================
-% Stage 1: lmeEEG with Subject-specific Classifier slope
+% Stage 1: LME-based removal of random-intercept contributions
 %
 % Model:
 %
@@ -165,13 +166,12 @@ LengthofDistrctor = (LengthofDistrctorRaw - mean(LengthofDistrctorRaw)) ./ std(L
 %       (1 | Item)
 %
 % NOTE:
-% This extends the usual random-intercept lmeEEG formulation.
+% Subject and item are modeled as crossed random intercepts.
 %% ==========================================================
 
 fprintf('\nStarting Stage 1: LME marginalization...\n');
 
 mEEG = nan(nObs,nChan,nTime);
-
 
 %% ==========================================================
 % Construct LME table
@@ -211,18 +211,15 @@ for ch = 1:nChan
 
         LMEtable.EEG = Y;
 
-
         %% --------------------------------------------------
         % Mixed-effects model
         %% --------------------------------------------------
-
         lme = fitlme( ...
             LMEtable, ...
             ['EEG ~ Stroke + Freq + LengthofDistrctor + ' ...
              'CongruencySemanticCategories + ' ...
              'JSD * Classifier + ' ...
              '(1 | Subj) + (1 | Item)']);
-
 
         %% --------------------------------------------------
         % Conditional fitted values
@@ -233,22 +230,18 @@ for ch = 1:nChan
         % +
         % Item random intercept
         %% --------------------------------------------------
-
         fittedConditional = fitted(lme,'Conditional',true);
-
 
         %% --------------------------------------------------
         % Marginal fitted values
         %
         % Fixed effects only
         %% --------------------------------------------------
-
         fittedMarginal = fitted(lme,'Conditional',false);
 
         %% --------------------------------------------------
         % Total random-effect contribution
         %% --------------------------------------------------
-
         randomContribution = fittedConditional - fittedMarginal;
 
         %% --------------------------------------------------
@@ -257,8 +250,7 @@ for ch = 1:nChan
         % Removes:
         %
         %   subject random intercept
-        %   subject-specific Classifier slope
-        %   item random intercept
+%   item random intercept
         %
         % Retains:
         %
@@ -267,7 +259,6 @@ for ch = 1:nChan
         %   nuisance fixed effects
         %   residual error
         %% --------------------------------------------------
-
         mEEG(:,ch,t) = Y - randomContribution;
 
     end
@@ -276,14 +267,12 @@ end
 
 fprintf('\nStage 1 marginalization completed.\n');
 
-
 %% ==========================================================
-% Stage 2: Fixed-effect GLM
+% Stage 2: Fixed-effects GLM
 %
 % Subject and Item are NOT included here because their
 % modeled random contributions were handled in Stage 1.
 %% ==========================================================
-
 X_full = [ ...
     Stroke, ...
     Freq, ...
@@ -292,19 +281,15 @@ X_full = [ ...
     JSD, ...
     Classifier, JSD .* Classifier];
 
-
 X_null_Cla = [ ...
     Stroke, ...
     Freq, ...
     LengthofDistrctor, ...
     CongruencySemanticCategories, ...
     JSD, JSD .* Classifier];
-
-
 %% ==========================================================
 % Observed Classifier t-map
 %% ==========================================================
-
 fprintf('\nComputing observed Classifier t-map...\n');
 
 t_Obs_Cla = nan(nChan,nTime);
@@ -319,19 +304,17 @@ for ch = 1:nChan
 
         lm_full = fitlm(X_full,Y);
 
-        % Classifier is the last predictor
-        t_Obs_Cla(ch,t) = ...
-            lm_full.Coefficients.tStat(end-1);
-
+        % Classifier is the second-to-last predictor; the final predictor
+        % is the JSD-by-Classifier interaction.
+        t_Obs_Cla(ch,t) = lm_full.Coefficients.tStat(end-1);
+        
     end
 
 end
 
-
 %% ==========================================================
 % Reduced model for Classifier Freedman-Lane test
 %% ==========================================================
-
 fprintf('\nPrecomputing reduced Classifier models...\n');
 
 Yhat_null_Cla = nan(nObs,nChan,nTime);
@@ -355,11 +338,9 @@ for ch = 1:nChan
 
 end
 
-
 %% ==========================================================
 % Observed TFCE
 %% ==========================================================
-
 ChN = ept_ChN2(channelinfo);
 
 E_H = [0.66 2];
@@ -367,9 +348,8 @@ E_H = [0.66 2];
 TFCE_Obs_Cla = ept_mex_TFCE2D(t_Obs_Cla, ChN, E_H);
 
 %% ==========================================================
-% Restricted lmeEEG permutations
+% Generate restricted permutations that respect the subject-item structure
 %% ==========================================================
-
 nPerm = 999;
 
 rperms = lmeEEG_permutations2(nPerm, Subj, Item);
@@ -377,9 +357,8 @@ rperms = lmeEEG_permutations2(nPerm, Subj, Item);
 TFCE_permMax_Cla = zeros(nPerm,1);
 
 %% ==========================================================
-% Freedman-Lane permutation loop
+% Freedman-Lane permutation loop for the Classifier main effect
 %% ==========================================================
-
 fprintf('\nStarting %d permutations...\n',nPerm);
 
 for p = 1:nPerm
@@ -391,12 +370,9 @@ for p = 1:nPerm
     for ch = 1:nChan
 
         for t = 1:nTime
-
-
             %% ------------------------------------------
             % Freedman-Lane pseudo-response
             %% ------------------------------------------
-
             Y_perm = Yhat_null_Cla(:,ch,t) + Residual_null_Cla(perm_idx,ch,t);
 
             %% ------------------------------------------
@@ -426,30 +402,27 @@ for p = 1:nPerm
 end
 
 %% ==========================================================
-
-fprintf('\nComputing TFCE corrected significance...\n');
+fprintf('\nComputing TFCE-corrected significance...\n');
 
 alpha = 0.05;
 
-maxTFCE = sort([TFCE_permMax_Cla;max(abs(TFCE_Obs_Cla(:)))]);
+% Critical value from the permutation distribution
+maxTFCEcrit = quantile(TFCE_permMax_Cla, 1-alpha);
 
-maxTFCEcrit = maxTFCE(round(nPerm*(1-alpha)));
+fprintf('Critical TFCE value = %.4f\n', maxTFCEcrit);
 
-fprintf('Critical TFCE value = %.4f\n',maxTFCEcrit);
+% Two-sided TFCE significance mask
+Mask_Cla = abs(TFCE_Obs_Cla) >= maxTFCEcrit;
 
-Mask = abs(TFCE_Obs) >= TFCEcrit;
+% Permutation-corrected p-values
+P_Values_Cla = nan(nChan,nTime);
 
-P_Values = nan(nChan,nTime); 
-
-for ch=1:nChan
-
-    for tp=1:nTime
-
-        P_Values(ch,tp)= ...
-            (sum(TFCE_permMax >= abs(TFCE_Obs(ch,tp)))+1) /(nPerm+1);
-
+for ch = 1:nChan
+    for tp = 1:nTime
+        P_Values_Cla(ch,tp) = ...
+            (sum(TFCE_permMax_Cla >= abs(TFCE_Obs_Cla(ch,tp))) + 1) ...
+            / (nPerm + 1);
     end
-    
 end
 
 fprintf('TFCE correction completed.\n');
@@ -457,28 +430,23 @@ fprintf('TFCE correction completed.\n');
 %% ==========================================================
 % Store results
 %% ==========================================================
+Results = struct();
 
-Results=struct();
+Results.t_Obs_Cla = t_Obs_Cla;
 
-Results.t_Obs = t_Obs;
+Results.TFCE_Obs_Cla = TFCE_Obs_Cla;
 
-Results.TFCE_Obs = TFCE_Obs;
-
-Results.TFCE_Null = TFCE_permMax;
+Results.TFCE_permMax_Cla = TFCE_permMax_Cla;
 
 Results.maxTFCEcrit = maxTFCEcrit;
 
-Results.Mask = Mask;
+Results.Mask_Cla = Mask_Cla;
 
-Results.P_Values = P_Values;
-
-
-fprintf('Results stored.\n');
+Results.P_Values_Cla = P_Values_Cla;
 
 %% ==========================================================
 % Save
 %% ==========================================================
-
 if ~exist('../Results','dir')
 
     mkdir('../Results');
@@ -494,20 +462,20 @@ save('../Results/09_realDOE_results_1.mat',...
 fprintf('Saved results.\n')
 
 %% ==========================================================
-% Plot corrected t-map
+% Plot the pointwise significance mask using the selected display threshold
 %% ==========================================================
 
 % clear all; clc; close all
 % 
-% load('../Results/09_realDOE_results_4.mat')
+% load('../Results/09_realDOE_results_1.mat')
 
 figure;
 
-sigT = Results.t_Obs;
+sigT = Results.t_Obs_Cla;
 
-sigT(~Results.Mask)=0;
+sigT(~Results.Mask_Cla) = 0;
 
-imagesc(time,1:nChan,Results.P_Values < 0.2);
+imagesc(time, 1:nChan, sigT);
 
 axis xy;
 
@@ -534,12 +502,11 @@ ylabel(cb,'t-value',...
     'FontName','Arial');
 
 %% ==========================================================
-% Plot observed TFCE map
+% Plot the observed TFCE map
 %% ==========================================================
-
 figure;
 
-imagesc(time,1:nChan,Results.TFCE_Obs_Int);
+imagesc(time,1:nChan,Results.TFCE_Obs_Cla);
 
 axis xy;
 
