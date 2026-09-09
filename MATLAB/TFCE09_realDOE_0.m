@@ -263,6 +263,7 @@ end
 pool = parpool('Processes',6, 'AttachedFiles',{mexFile});
 
 parfor p = 1:nPerm
+    fprintf('%d/%d permutation is done\n', p, nPerm');
 
     % unrestricted residual permutation
     perm_idx = randperm(nObs);
@@ -285,8 +286,7 @@ parfor p = 1:nPerm
     TFCE_perm = ept_mex_TFCE2D(perm_t,ChN,E_H);
 
     TFCE_permMax(p) = max(abs(TFCE_perm(:)));
-    fprintf('%d/%d permutation is done\n", p, nPerm');
-
+    
 end
 
 fprintf('Permutation completed.\n');
@@ -309,7 +309,7 @@ maxTFCEcrit = maxTFCE(round(nPerm*(1-alpha)));
 
 fprintf('Critical TFCE value = %.4f\n',maxTFCEcrit);
 
-Mask = abs(TFCE_Obs) >= TFCEcrit;
+Mask = abs(TFCE_Obs) >= maxTFCEcrit;
 
 P_Values = nan(nChan,nTime); 
 
@@ -371,7 +371,7 @@ fprintf('Saved results.\n')
 
 % clear all; clc; close all
 % 
-% load('../Results/09_realDOE_results_4.mat')
+% load('../Results/09_realDOE_results_0.mat')
 
 figure;
 
@@ -379,7 +379,7 @@ sigT = Results.t_Obs;
 
 sigT(~Results.Mask)=0;
 
-imagesc(time,1:nChan,Results.P_Values < 0.2);
+imagesc(time,1:nChan,Results.P_Values);
 
 axis xy;
 
@@ -411,7 +411,7 @@ ylabel(cb,'t-value',...
 
 figure;
 
-imagesc(time,1:nChan,Results.TFCE_Obs_Int);
+imagesc(time,1:nChan,Results.TFCE_Obs);
 
 axis xy;
 
