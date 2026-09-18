@@ -277,7 +277,8 @@ fprintf('\nComputing TFCE-corrected significance...\n');
 alpha = 0.05;
 
 % Critical value from the permutation distribution
-maxTFCEcrit = quantile(TFCE_permMax_Cla, 1-alpha);
+maxTFCE = sort([maxTFCE_Cla;max(abs(TFCE_Obs_Cla(:)))]);
+maxTFCEcrit = maxTFCE(round(nPerm*(1-alpha)));
 
 fprintf('Critical TFCE value = %.4f\n', maxTFCEcrit);
 
@@ -290,7 +291,7 @@ P_Values_Cla = nan(nChan,nTime);
 for ch = 1:nChan
     for tp = 1:nTime
         P_Values_Cla(ch,tp) = ...
-            (sum(TFCE_permMax_Cla >= abs(TFCE_Obs_Cla(ch,tp))) + 1) ...
+            (sum(maxTFCE_Cla >= abs(TFCE_Obs_Cla(ch,tp))) + 1) ...
             / (nPerm + 1);
     end
 end
@@ -306,7 +307,7 @@ Results.t_Obs_Cla = t_Obs_Cla;
 
 Results.TFCE_Obs_Cla = TFCE_Obs_Cla;
 
-Results.TFCE_permMax_Cla = TFCE_permMax_Cla;
+Results.TFCE_permMax_Cla = maxTFCE_Cla;
 
 Results.maxTFCEcrit = maxTFCEcrit;
 
@@ -345,7 +346,7 @@ sigT = Results.t_Obs_Cla;
 
 sigT(~Results.Mask_Cla) = 0;
 
-imagesc(time, 1:nChan, Results.P_Values_Cla);
+imagesc(time, 1:nChan, Results.P_Values_Cla < 0.3);
 
 axis xy;
 
