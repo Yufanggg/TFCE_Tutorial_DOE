@@ -465,15 +465,15 @@ fprintf('Saved results.\n')
 % Plot the pointwise significance mask using the selected display threshold
 %% ==========================================================
 
-% clear all; clc; close all
-% 
-% load('../Results/09_realDOE_results_1.mat')
+clear all; clc; close all
+
+load('../Results/09_realDOE_results_1.mat')
 
 figure;
 
 sigT = Results.t_Obs_Cla;
 
-sigT(~Results.Mask_Cla) = 0;
+sigT(Results.P_Values_Cla > 0.2) = 0;
 
 imagesc(time, 1:nChan, sigT);
 
@@ -493,7 +493,7 @@ xlabel('Time (ms)');
 
 ylabel('Channel');
 
-title('TFCE-corrected Classifier Effect');
+title('FWER-corrected Classifier Effect');
 
 cb=colorbar;
 
