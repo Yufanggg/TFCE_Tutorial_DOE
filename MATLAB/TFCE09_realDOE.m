@@ -278,8 +278,8 @@ X_full = [ ...
     Freq, ...
     LengthofDistrctor, ...
     CongruencySemanticCategories, ...
-    JSD, ...
-    Classifier, JSD .* Classifier];
+    Classifier, ...
+    JSD, JSD .* Classifier];
 
 X_null_Cla = [ ...
     Stroke, ...
@@ -287,12 +287,28 @@ X_null_Cla = [ ...
     LengthofDistrctor, ...
     CongruencySemanticCategories, ...
     JSD, JSD .* Classifier];
+
+X_null_JSD = [ ...
+    Stroke, ...
+    Freq, ...
+    LengthofDistrctor, ...
+    CongruencySemanticCategories, ...
+    Classifier, JSD .* Classifier];
+
+X_null_Int = [ ...
+    Stroke, ...
+    Freq, ...
+    LengthofDistrctor, ...
+    CongruencySemanticCategories, ...
+    Classifier, JSD];
 %% ==========================================================
 % Observed Classifier t-map
 %% ==========================================================
 fprintf('\nComputing observed Classifier t-map...\n');
 
 t_Obs_Cla = nan(nChan,nTime);
+t_Obs_JSD = nan(nChan,nTime);
+t_Obs_Int = nan(nChan,nTime);
 
 for ch = 1:nChan
 
@@ -306,7 +322,11 @@ for ch = 1:nChan
 
         % Classifier is the second-to-last predictor; the final predictor
         % is the JSD-by-Classifier interaction.
-        t_Obs_Cla(ch,t) = lm_full.Coefficients.tStat(end-1);
+        t_Obs_Cla(ch,t) = lm_full.Coefficients.tStat(end-2);
+
+        t_Obs_JSD(ch,t) = lm_full.Coefficients.tStat(end-1);
+
+        t_Obs_Int(ch,t) = lm_full.Coefficients.tStat(end);
         
     end
 
@@ -320,6 +340,12 @@ fprintf('\nPrecomputing reduced Classifier models...\n');
 Yhat_null_Cla = nan(nObs,nChan,nTime);
 Residual_null_Cla = nan(nObs,nChan,nTime);
 
+Yhat_null_JSD = nan(nObs,nChan,nTime);
+Residual_null_JSD = nan(nObs,nChan,nTime);
+
+Yhat_null_Int = nan(nObs,nChan,nTime);
+Residual_null_Int = nan(nObs,nChan,nTime);
+
 for ch = 1:nChan
 
     fprintf('Reduced GLM channel %d/%d\n',ch,nChan);
@@ -328,11 +354,25 @@ for ch = 1:nChan
 
         Y = squeeze(mEEG(:,ch,t));
 
-        lm_null = fitlm(X_null_Cla,Y);
+        lm_null_Cla = fitlm(X_null_Cla,Y);
 
-        Yhat_null_Cla(:,ch,t) = lm_null.Fitted;
+        Yhat_null_Cla(:,ch,t) = lm_null_Cla.Fitted;
 
-        Residual_null_Cla(:,ch,t) = lm_null.Residuals.Raw;
+        Residual_null_Cla(:,ch,t) = lm_null_Cla.Residuals.Raw;
+
+       
+        lm_null_JSD = fitlm(X_null_JSD,Y);
+
+        Yhat_null_JSD(:,ch,t) = lm_null_JSD.Fitted;
+
+        Residual_null_JSD(:,ch,t) = lm_null_JSD.Residuals.Raw;
+
+
+        lm_null_Int = fitlm(X_null_Int,Y);
+
+        Yhat_null_Int(:,ch,t) = lm_null_Int.Fitted;
+
+        Residual_null_Int(:,ch,t) = lm_null_Int.Residuals.Raw;
 
     end
 
@@ -346,26 +386,38 @@ ChN = ept_ChN2(channelinfo);
 E_H = [0.66 2];
 
 TFCE_Obs_Cla = ept_mex_TFCE2D(t_Obs_Cla, ChN, E_H);
+TFCE_Obs_JSD = ept_mex_TFCE2D(t_Obs_JSD, ChN, E_H);
+TFCE_Obs_Int = ept_mex_TFCE2D(t_Obs_Int, ChN, E_H);
 
 %% ==========================================================
 % Generate restricted permutations that respect the subject-item structure
 %% ==========================================================
+
 nPerm = 999;
 
-rperms = lmeEEG_permutations2(nPerm, Subj, Item);
+[rperms] = lmeEEG_permutations2(nPerm, Subj, Item);
 
-TFCE_permMax_Cla = zeros(nPerm,1);
+TFCE_permMinNeg_Cla = zeros(nPerm,1);
+TFCE_permMaxPos_Cla = zeros(nPerm,1);
+
+TFCE_permMinNeg_JSD = zeros(nPerm,1);
+TFCE_permMaxPos_JSD = zeros(nPerm,1);
+
+TFCE_permMinNeg_Int = zeros(nPerm,1);
+TFCE_permMaxPos_Int = zeros(nPerm,1);
 
 %% ==========================================================
 % Freedman-Lane permutation loop for the Classifier main effect
 %% ==========================================================
 fprintf('\nStarting %d permutations...\n',nPerm);
 
-for p = 1:nPerm
+parfor p = 1:nPerm
 
     perm_idx = rperms(:,p);
 
     t_perm_Cla = nan(nChan,nTime);
+    t_perm_JSD= nan(nChan,nTime);
+    t_perm_Int = nan(nChan,nTime);
 
     for ch = 1:nChan
 
@@ -373,17 +425,29 @@ for p = 1:nPerm
             %% ------------------------------------------
             % Freedman-Lane pseudo-response
             %% ------------------------------------------
-            Y_perm = Yhat_null_Cla(:,ch,t) + Residual_null_Cla(perm_idx,ch,t);
+            Y_perm_Cla = Yhat_null_Cla(:,ch,t) + Residual_null_Cla(perm_idx,ch,t);
+
+            Y_perm_JSD = Yhat_null_JSD(:,ch,t) + Residual_null_JSD(perm_idx,ch,t);
+
+            Y_perm_Int = Yhat_null_Int(:,ch,t) + Residual_null_Int(perm_idx,ch,t);
 
             %% ------------------------------------------
             % Full GLM
             %% ------------------------------------------
-            lm_perm = fitlm(X_full,Y_perm);
+            lm_perm_Cla = fitlm(X_full,Y_perm_Cla);
+
+            lm_perm_JSD = fitlm(X_full,Y_perm_JSD);
+
+            lm_perm_Int = fitlm(X_full,Y_perm_Int);
 
             %% ------------------------------------------
             % Classifier t-statistic
             %% ------------------------------------------
-            t_perm_Cla(ch,t) = lm_perm.Coefficients.tStat(end-1);
+            t_perm_Cla(ch,t) = lm_perm_Cla.Coefficients.tStat(end-2);
+
+            t_perm_JSD(ch,t) = lm_perm_JSD.Coefficients.tStat(end-1);
+
+            t_perm_Int(ch,t) = lm_perm_Int.Coefficients.tStat(end);
 
         end
 
@@ -391,11 +455,32 @@ for p = 1:nPerm
     %% ----------------------------------------------
     % TFCE
     %% ----------------------------------------------
-    TFCE_perm = ept_mex_TFCE2D(t_perm_Cla, ChN, E_H);
+    TFCE_perm_Cla = ept_mex_TFCE2D(t_perm_Cla, ChN, E_H);
+
+    TFCE_perm_JSD = ept_mex_TFCE2D(t_perm_JSD, ChN, E_H);
+
+    TFCE_perm_Int = ept_mex_TFCE2D(t_perm_Int, ChN, E_H);
     %% ----------------------------------------------
     % Maximum absolute TFCE
     %% ----------------------------------------------
-    TFCE_permMax_Cla(p) = max(abs(TFCE_perm(:, 1:168)), [], 'all');%max(abs(TFCE_perm(:)));
+    TFCE_permMaxPos_Cla(p) = max(TFCE_perm_Cla(:,52:168), [], 'all');
+    
+    TFCE_permMinNeg_Cla(p) = min(TFCE_perm_Cla(:,52:168), [], 'all');
+
+
+    TFCE_permMaxPos_JSD(p) = max(TFCE_perm_JSD(:,52:168), [], 'all');
+    
+    TFCE_permMinNeg_JSD(p) = min(TFCE_perm_JSD(:,52:168), [], 'all');
+    
+
+    TFCE_permMaxPos_Int(p) = max(TFCE_perm_Int(:,52:168), [], 'all');
+    
+    TFCE_permMinNeg_Int(p) = min(TFCE_perm_Int(:,52:168), [], 'all');
+
+
+    % TFCE_permMax_Cla(p) = max(abs(TFCE_perm(:, 52:168)), [], 'all');%max(abs(TFCE_perm(:)));
+
+    progressbar(p/nPerm)
     
     fprintf('Permutation %d/%d\n',p,nPerm);
 
@@ -406,22 +491,48 @@ fprintf('\nComputing TFCE-corrected significance...\n');
 
 alpha = 0.05;
 
-% Critical value from the permutation distribution
-maxTFCEcrit = quantile(TFCE_permMax_Cla, 1-alpha);
+maxTFCEPos_Cla = sort([TFCE_permMaxPos_Cla; max(TFCE_Obs_Cla(:))]);
+minTFCENeg_Cla = sort([TFCE_permMinNeg_Cla; min(TFCE_Obs_Cla(:))]);
 
-fprintf('Critical TFCE value = %.4f\n', maxTFCEcrit);
+maxTFCEPos_JSD = sort([TFCE_permMaxPos_JSD; max(TFCE_Obs_JSD(:))]);
+minTFCENeg_JSD = sort([TFCE_permMinNeg_JSD; min(TFCE_Obs_JSD(:))]);
 
-% Two-sided TFCE significance mask
-Mask_Cla = abs(TFCE_Obs_Cla) >= maxTFCEcrit;
+maxTFCEPos_Int = sort([TFCE_permMaxPos_Int; max(TFCE_Obs_Int(:))]);
+minTFCENeg_Int = sort([TFCE_permMinNeg_Int; min(TFCE_Obs_Int(:))]);
+
+% % Critical value from the permutation distribution
+% maxTFCEcrit = maxTFCE(round(nPerm*(1-alpha)));
+% fprintf('Critical TFCE value = %.4f\n', maxTFCEcrit);
+% 
+% % Two-sided TFCE significance mask
+% Mask_Cla = abs(TFCE_Obs_Cla) >= maxTFCEcrit;
 
 % Permutation-corrected p-values
 P_Values_Cla = nan(nChan,nTime);
+P_Values_JSD = nan(nChan,nTime);
+P_Values_Int = nan(nChan,nTime);
 
 for ch = 1:nChan
     for tp = 1:nTime
-        P_Values_Cla(ch,tp) = ...
-            (sum(TFCE_permMax_Cla >= abs(TFCE_Obs_Cla(ch,tp))) + 1) ...
-            / (nPerm + 1);
+        pr_Cla = (1 + sum(maxTFCEPos_Cla >= TFCE_Obs_Cla(ch,tp))) / (nPerm + 1);
+        
+        pl_Cla = (1 + sum(minTFCENeg_Cla <= TFCE_Obs_Cla(ch,tp))) / (nPerm + 1);
+        
+        P_Values_Cla(ch,tp) = min(1, 2 * min(pr_Cla, pl_Cla));
+
+
+        pr_JSD = (1 + sum(maxTFCEPos_JSD >= TFCE_Obs_JSD(ch,tp))) / (nPerm + 1);
+        
+        pl_JSD = (1 + sum(minTFCENeg_JSD <= TFCE_Obs_JSD(ch,tp))) / (nPerm + 1);
+        
+        P_Values_JSD(ch,tp) = min(1, 2 * min(pr_JSD, pl_JSD));
+
+
+        pr_Int = (1 + sum(maxTFCEPos_Int >= TFCE_Obs_Int(ch,tp))) / (nPerm + 1);
+        
+        pl_Int = (1 + sum(minTFCENeg_Int <= TFCE_Obs_Int(ch,tp))) / (nPerm + 1);
+        
+        P_Values_Int(ch,tp) = min(1, 2 * min(pr_Int, pl_Int));
     end
 end
 
@@ -436,13 +547,38 @@ Results.t_Obs_Cla = t_Obs_Cla;
 
 Results.TFCE_Obs_Cla = TFCE_Obs_Cla;
 
-Results.TFCE_permMax_Cla = TFCE_permMax_Cla;
+Results.maxTFCEPos_Cla = maxTFCEPos_Cla;
 
-Results.maxTFCEcrit = maxTFCEcrit;
+Results.minTFCENeg_Cla = minTFCENeg_Cla;
 
-Results.Mask_Cla = Mask_Cla;
+
+Results.t_Obs_JSD = t_Obs_JSD;
+
+Results.TFCE_Obs_JSD = TFCE_Obs_JSD;
+
+Results.maxTFCEPos_JSD = maxTFCEPos_JSD;
+
+Results.minTFCENeg_JSD = minTFCENeg_JSD;
+
+
+Results.t_Obs_Int = t_Obs_Int;
+
+Results.TFCE_Obs_Int = TFCE_Obs_Int;
+
+Results.maxTFCEPos_Int = maxTFCEPos_Int;
+
+Results.minTFCENeg_Int = minTFCENeg_Int;
+
+
+%Results.maxTFCEcrit = maxTFCEcrit;
+
+%Results.Mask_Cla = Mask_Cla;
 
 Results.P_Values_Cla = P_Values_Cla;
+
+Results.P_Values_JSD = P_Values_JSD;
+
+Results.P_Values_Int = P_Values_Int;
 
 %% ==========================================================
 % Save
@@ -453,7 +589,7 @@ if ~exist('../Results','dir')
 
 end
 
-save('../Results/09_realDOE_results_1.mat',...
+save('../Results/09_realDOE_results.mat',...
     'Results',...
     'nChan',...
     'time',...
@@ -465,15 +601,15 @@ fprintf('Saved results.\n')
 % Plot the pointwise significance mask using the selected display threshold
 %% ==========================================================
 
-clear all; clc; close all
-
+% clear all; clc; close all
+% 
 load('../Results/09_realDOE_results.mat')
 
 figure;
 
 sigT = Results.t_Obs_Cla;
 
-sigT(Results.P_Values_Cla > 0.2) = 0;
+sigT(Results.P_Values_Cla > 0.05) = 0;
 
 imagesc(time, 1:nChan, sigT);
 
@@ -493,7 +629,7 @@ xlabel('Time (ms)');
 
 ylabel('Channel');
 
-title('FWER-corrected Classifier Effect');
+title('FWER-corrected Dominant Classifier Congruency Effect');
 
 cb=colorbar;
 
