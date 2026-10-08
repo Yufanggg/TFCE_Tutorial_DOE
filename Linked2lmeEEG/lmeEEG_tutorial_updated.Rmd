@@ -1,0 +1,802 @@
+---
+title: "lmeEEG_tutorial_updated"
+author: "Yufang Wang"
+date: "2026-10-08"
+output: html_document
+---
+
+```{r}
+
+# ================================================================
+# lmeEEG TUTORIAL — R IMPLEMENTATION
+#
+# Reference:
+# https://doi.org/10.1016/j.jneumeth.2023.109991
+#
+# Pipeline:
+# 1. Load EEG and experimental design
+# 2. Fit LMMs and extract marginal EEG
+# 3. Perform mass-univariate OLS
+# 4. Generate observed TFCE maps
+# 5. Perform constrained permutations
+# 6. Calculate FWER-corrected p-values
+# 7. Visualize and save results
+#
+# IMPORTANT:
+# This is an R adaptation, not a numerically validated
+# replacement for the original MATLAB MEX TFCE function.
+# ================================================================
+
+
+# ================================================================
+# STEP 0: PACKAGES AND DATA
+# ================================================================
+
+packages <- c(
+  "lme4",
+  "R.matlab",
+  "ggplot2"
+)
+
+missing_packages <- packages[
+  !vapply(packages, requireNamespace,
+          logical(1), quietly = TRUE)
+]
+
+if (length(missing_packages) > 0) {
+  install.packages(missing_packages)
+}
+
+library(lme4)
+library(R.matlab)
+library(ggplot2)
+
+set.seed(123)
+
+# -------- Load data --------
+
+mat <- readMat("sEEG_all.mat")
+
+sEEG_all <- mat$sEEG_all
+
+# If times are stored in another MAT file,
+# adjust this section.
+if (!is.null(mat$sEEG_times)) {
+  sEEG_times <- as.numeric(mat$sEEG_times)
+} else {
+  stop("sEEG_times not found. Load the time vector.")
+}
+
+sEEG_table <- read.csv("sEEG_table.csv")
+
+sEEG_table$ID <- factor(sEEG_table$ID)
+sEEG_table$Item <- factor(sEEG_table$Item)
+
+sEEG_table$CON <- factor(
+  sEEG_table$Condition,
+  levels = c("A", "B")
+)
+
+n_chan <- dim(sEEG_all)[1]
+n_time <- dim(sEEG_all)[2]
+n_trials <- dim(sEEG_all)[3]
+
+stopifnot(
+  length(dim(sEEG_all)) == 3,
+  nrow(sEEG_table) == n_trials,
+  length(sEEG_times) == n_time,
+  !anyNA(sEEG_all),
+  !anyNA(sEEG_table[, c("ID", "Item", "CON")])
+)
+
+X <- model.matrix(
+  ~ CON,
+  data = sEEG_table
+)
+
+coef_names <- colnames(X)
+n_coef <- ncol(X)
+
+cat("Channels:", n_chan, "\n")
+cat("Timepoints:", n_time, "\n")
+cat("Trials:", n_trials, "\n")
+
+
+# ================================================================
+# STEP 1: MIXED-EFFECTS MODELS
+# ================================================================
+
+# MATLAB:
+# EEG ~ CON + (1|ID) + (1|Item)
+#
+# Marginal EEG:
+# fixed-effect prediction + conditional residuals
+
+fit_marginal <- function(y, events) {
+
+  dat <- data.frame(
+    EEG = as.numeric(y),
+    CON = events$CON,
+    ID = events$ID,
+    Item = events$Item
+  )
+
+  model <- lmer(
+    EEG ~ CON + (1 | ID) + (1 | Item),
+    data = dat,
+    REML = TRUE,
+    control = lmerControl(
+      check.conv.singular = "ignore"
+    )
+  )
+
+  fixed_prediction <- predict(
+    model,
+    re.form = NA
+  )
+
+  marginal <- fixed_prediction +
+    residuals(model)
+
+  return(as.numeric(marginal))
+}
+
+mEEG <- array(
+  NA_real_,
+  dim = dim(sEEG_all)
+)
+
+cat("Fitting mixed-effects models...\n")
+
+for (ch in seq_len(n_chan)) {
+
+  for (tp in seq_len(n_time)) {
+
+    y <- sEEG_all[ch, tp, ]
+
+    mEEG[ch, tp, ] <- fit_marginal(
+      y,
+      sEEG_table
+    )
+  }
+
+  cat("Completed channel", ch, "/", n_chan, "\n")
+}
+
+cat("Marginal EEG extraction completed.\n")
+
+
+# ================================================================
+# STEP 2: MASS-UNIVARIATE LINEAR REGRESSION
+# ================================================================
+
+mass_ols <- function(Y, X) {
+
+  Y <- as.matrix(Y)
+  X <- as.matrix(X)
+
+  if (nrow(Y) != nrow(X)) {
+    stop("Y and X must have the same number of rows.")
+  }
+
+  if (anyNA(Y) || anyNA(X)) {
+    stop("Missing values are not supported.")
+  }
+
+  n <- nrow(X)
+  p <- ncol(X)
+
+  qrX <- qr(X)
+
+  if (qrX$rank != p || n <= p) {
+    stop("Invalid or rank-deficient design matrix.")
+  }
+
+  beta <- qr.coef(qrX, Y)
+
+  residual <- Y - X %*% beta
+
+  sigma2 <- colSums(residual^2) / (n - p)
+
+  XtX_inv <- chol2inv(chol(crossprod(X)))
+
+  se <- sqrt(
+    outer(diag(XtX_inv), sigma2)
+  )
+
+  tval <- beta / se
+
+  list(
+    t = tval,
+    beta = beta,
+    se = se
+  )
+}
+
+# Trials x channel-timepoint matrix
+Y <- t(matrix(
+  mEEG,
+  nrow = n_chan * n_time,
+  ncol = n_trials
+))
+
+fit <- mass_ols(Y, X)
+
+t_obs <- array(
+  t(fit$t),
+  dim = c(n_chan, n_time, n_coef)
+)
+
+betas <- array(
+  t(fit$beta),
+  dim = c(n_chan, n_time, n_coef)
+)
+
+se <- array(
+  t(fit$se),
+  dim = c(n_chan, n_time, n_coef)
+)
+
+dimnames(t_obs)[[3]] <- coef_names
+dimnames(betas)[[3]] <- coef_names
+dimnames(se)[[3]] <- coef_names
+
+cat("Mass-univariate regression completed.\n")
+
+
+# ================================================================
+# STEP 3: CHANNEL NEIGHBORHOODS
+# ================================================================
+
+# Export ChN from MATLAB:
+#
+# ChN = ept_ChN2(chanlocs);
+# writematrix(ChN, "channel_neighbors.csv");
+#
+# This script assumes ChN is a symmetric binary
+# channel x channel adjacency matrix.
+
+ChN <- as.matrix(
+  read.csv(
+    "channel_neighbors.csv",
+    header = FALSE
+  )
+)
+
+storage.mode(ChN) <- "numeric"
+
+stopifnot(
+  nrow(ChN) == n_chan,
+  ncol(ChN) == n_chan,
+  all(is.finite(ChN)),
+  all(ChN == t(ChN)),
+  all(ChN %in% c(0, 1))
+)
+
+diag(ChN) <- 0
+
+
+# ================================================================
+# STEP 4: CONNECTED COMPONENTS FOR TFCE
+# ================================================================
+
+find_components <- function(mask, adjacency) {
+
+  nc <- nrow(mask)
+  nt <- ncol(mask)
+
+  visited <- matrix(FALSE, nc, nt)
+  components <- list()
+
+  for (ch in seq_len(nc)) {
+    for (tp in seq_len(nt)) {
+
+      if (!mask[ch, tp] || visited[ch, tp]) {
+        next
+      }
+
+      start <- (tp - 1L) * nc + ch
+
+      queue <- start
+      visited[ch, tp] <- TRUE
+
+      component <- integer(0)
+      head <- 1L
+
+      while (head <= length(queue)) {
+
+        idx <- queue[head]
+        head <- head + 1L
+
+        component <- c(component, idx)
+
+        c0 <- ((idx - 1L) %% nc) + 1L
+        t0 <- ((idx - 1L) %/% nc) + 1L
+
+        spatial <- which(
+          adjacency[c0, ] != 0
+        )
+
+        neighbors <- (
+          (t0 - 1L) * nc + spatial
+        )
+
+        if (t0 > 1L) {
+          neighbors <- c(
+            neighbors,
+            idx - nc
+          )
+        }
+
+        if (t0 < nt) {
+          neighbors <- c(
+            neighbors,
+            idx + nc
+          )
+        }
+
+        for (nb in neighbors) {
+
+          cn <- ((nb - 1L) %% nc) + 1L
+          tn <- ((nb - 1L) %/% nc) + 1L
+
+          if (
+            mask[cn, tn] &&
+            !visited[cn, tn]
+          ) {
+
+            visited[cn, tn] <- TRUE
+            queue <- c(queue, nb)
+          }
+        }
+      }
+
+      components[[length(components) + 1L]] <-
+        component
+    }
+  }
+
+  return(components)
+}
+
+
+# ================================================================
+# STEP 5: TFCE TRANSFORMATION
+# ================================================================
+
+# TFCE parameters:
+# E = 0.66
+# H = 2
+#
+# Positive and negative clusters are treated separately.
+#
+# This is a numerical approximation and has not been
+# validated against ept_mex_TFCE2D.
+
+tfce_2d <- function(
+    stat,
+    adjacency,
+    E = 0.66,
+    H = 2,
+    dh = 0.1
+) {
+
+  stopifnot(
+    is.matrix(stat),
+    all(is.finite(stat)),
+    nrow(adjacency) == nrow(stat),
+    ncol(adjacency) == nrow(stat),
+    dh > 0
+  )
+
+  transform_side <- function(x) {
+
+    output <- matrix(
+      0,
+      nrow(x),
+      ncol(x)
+    )
+
+    max_h <- max(x)
+
+    if (max_h <= 0) {
+      return(output)
+    }
+
+    # Midpoint numerical integration with
+    # a potentially shorter final interval.
+    edges <- seq(0, max_h, by = dh)
+
+    if (tail(edges, 1) < max_h) {
+      edges <- c(edges, max_h)
+    }
+
+    for (k in seq_len(length(edges) - 1L)) {
+
+      width <- edges[k + 1L] - edges[k]
+      h <- (edges[k] + edges[k + 1L]) / 2
+
+      mask <- x >= h
+
+      components <- find_components(
+        mask,
+        adjacency
+      )
+
+      for (component in components) {
+
+        extent <- length(component)
+
+        output[component] <-
+          output[component] +
+          extent^E * h^H * width
+      }
+    }
+
+    output
+  }
+
+  positive <- transform_side(
+    pmax(stat, 0)
+  )
+
+  negative <- transform_side(
+    pmax(-stat, 0)
+  )
+
+  return(positive - negative)
+}
+
+
+# ================================================================
+# STEP 6: OBSERVED TFCE MAPS
+# ================================================================
+
+tfce_obs <- array(
+  NA_real_,
+  dim = dim(t_obs),
+  dimnames = dimnames(t_obs)
+)
+
+for (j in 2:n_coef) {
+
+  tfce_obs[, , j] <- tfce_2d(
+    t_obs[, , j],
+    adjacency = ChN,
+    E = 0.66,
+    H = 2,
+    dh = 0.1
+  )
+}
+
+cat("Observed TFCE maps computed.\n")
+
+
+# ================================================================
+# STEP 7: PERMUTATION MATRIX
+# ================================================================
+
+# For a fully crossed subject-item design,
+# use the original lmeEEG permutation indices.
+#
+# MATLAB:
+#
+# rperms = lmeEEG_permutations2(nperms, ID, Item);
+# writematrix(rperms, "rperms.csv");
+#
+# This avoids substituting unrestricted permutations.
+
+rperms <- as.matrix(
+  read.csv(
+    "rperms.csv",
+    header = FALSE
+  )
+)
+
+storage.mode(rperms) <- "integer"
+
+nperms <- ncol(rperms)
+
+stopifnot(
+  nrow(rperms) == n_trials,
+  all(rperms >= 1L),
+  all(rperms <= n_trials)
+)
+
+valid_perms <- apply(
+  rperms,
+  2,
+  function(idx) {
+    identical(
+      sort(idx),
+      seq_len(n_trials)
+    )
+  }
+)
+
+stopifnot(all(valid_perms))
+
+
+# ================================================================
+# STEP 8: PERMUTATION TESTING
+# ================================================================
+
+maxTFCE <- matrix(
+  NA_real_,
+  nrow = nperms,
+  ncol = n_coef
+)
+
+colnames(maxTFCE) <- coef_names
+
+cat("Starting permutation testing...\n")
+
+for (p in seq_len(nperms)) {
+
+  # Permute design matrix as in MATLAB
+  XX <- X[
+    rperms[, p],
+    ,
+    drop = FALSE
+  ]
+
+  perm_fit <- mass_ols(
+    Y,
+    XX
+  )
+
+  t_perm <- array(
+    t(perm_fit$t),
+    dim = c(
+      n_chan,
+      n_time,
+      n_coef
+    )
+  )
+
+  for (j in 2:n_coef) {
+
+    tfce_perm <- tfce_2d(
+      t_perm[, , j],
+      adjacency = ChN,
+      E = 0.66,
+      H = 2,
+      dh = 0.1
+    )
+
+    maxTFCE[p, j] <- max(
+      abs(tfce_perm)
+    )
+  }
+
+  if (p %% 100 == 0) {
+    cat(
+      "Permutation",
+      p,
+      "of",
+      nperms,
+      "\n"
+    )
+  }
+}
+
+cat("Permutation testing completed.\n")
+
+
+# ================================================================
+# STEP 9: FWER-CORRECTED P-VALUES
+# ================================================================
+
+alpha <- 0.05
+
+Results <- list()
+
+for (j in 2:n_coef) {
+
+  observed <- tfce_obs[, , j]
+
+  null_max <- maxTFCE[, j]
+
+  p_values <- matrix(
+    NA_real_,
+    nrow = n_chan,
+    ncol = n_time
+  )
+
+  for (ch in seq_len(n_chan)) {
+
+    for (tp in seq_len(n_time)) {
+
+      p_values[ch, tp] <- (
+        1 +
+          sum(
+            null_max >= abs(
+              observed[ch, tp]
+            )
+          )
+      ) / (nperms + 1)
+    }
+  }
+
+  Results[[coef_names[j]]] <- list(
+    Obs = observed,
+    P_Values = p_values,
+    Mask = p_values <= alpha
+  )
+}
+
+cat("FWER-corrected inference completed.\n")
+
+
+# ================================================================
+# STEP 10: RASTER PLOT
+# ================================================================
+
+effect_name <- coef_names[2]
+
+res <- Results[[effect_name]]
+
+time_idx <- which(
+  sEEG_times >= 0
+)
+
+plot_data <- expand.grid(
+  Channel = seq_len(n_chan),
+  Time = sEEG_times[time_idx]
+)
+
+plot_data$TFCE <- as.vector(
+  res$Obs[, time_idx]
+)
+
+plot_data$Significant <- as.vector(
+  res$Mask[, time_idx]
+)
+
+plot_data$TFCE_sig <- ifelse(
+  plot_data$Significant,
+  plot_data$TFCE,
+  NA_real_
+)
+
+p_raster <- ggplot(
+  plot_data,
+  aes(
+    x = Time,
+    y = Channel
+  )
+) +
+  geom_tile(
+    aes(fill = TFCE_sig)
+  ) +
+  scale_fill_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0,
+    na.value = "grey85"
+  ) +
+  scale_y_reverse() +
+  labs(
+    title = "TFCE-corrected EEG effects",
+    x = "Time (ms)",
+    y = "Channel",
+    fill = "TFCE"
+  ) +
+  theme_classic()
+
+print(p_raster)
+
+
+# ================================================================
+# STEP 11: TRACE PLOT
+# ================================================================
+
+# Replace with actual Fz, F3, F4, Cz indices
+# after importing channel labels.
+
+chm <- c(1, 2, 3, 4)
+
+intercept <- betas[, , 1]
+beta <- betas[, , 2]
+
+trace_data <- data.frame(
+  Time = rep(
+    sEEG_times,
+    3
+  ),
+  Value = c(
+    colMeans(
+      intercept[chm, , drop = FALSE]
+    ),
+    colMeans(
+      beta[chm, , drop = FALSE]
+    ),
+    colMeans(
+      intercept[chm, , drop = FALSE] +
+        beta[chm, , drop = FALSE]
+    )
+  ),
+  Effect = rep(
+    c(
+      "Intercept",
+      "Condition B - A",
+      "Condition B"
+    ),
+    each = n_time
+  )
+)
+
+p_trace <- ggplot(
+  trace_data,
+  aes(
+    x = Time,
+    y = Value,
+    color = Effect
+  )
+) +
+  geom_line(linewidth = 1) +
+  geom_hline(
+    yintercept = 0,
+    linewidth = 0.3
+  ) +
+  geom_vline(
+    xintercept = 0,
+    linewidth = 0.3
+  ) +
+  coord_cartesian(
+    xlim = c(-100, 1000)
+  ) +
+  labs(
+    title = "Estimated EEG coefficients",
+    x = "Time (ms)",
+    y = "Beta value (microvolts)",
+    color = NULL
+  ) +
+  theme_classic()
+
+print(p_trace)
+
+
+# ================================================================
+# STEP 12: SAVE RESULTS
+# ================================================================
+
+dir.create(
+  "Results",
+  showWarnings = FALSE
+)
+
+saveRDS(
+  list(
+    t_obs = t_obs,
+    betas = betas,
+    se = se,
+    tfce_obs = tfce_obs,
+    maxTFCE = maxTFCE,
+    Results = Results,
+    X = X,
+    sEEG_times = sEEG_times
+  ),
+  file = "Results/lmeEEG_tutorialResult.rds"
+)
+
+ggsave(
+  "Results/TFCE_raster.png",
+  p_raster,
+  width = 10,
+  height = 6,
+  dpi = 300
+)
+
+ggsave(
+  "Results/EEG_trace.png",
+  p_trace,
+  width = 10,
+  height = 6,
+  dpi = 300
+)
+
+cat("lmeEEG analysis completed and saved.\n")
+
+```
