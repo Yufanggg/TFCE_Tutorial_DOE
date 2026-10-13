@@ -34,7 +34,7 @@ library(lme4)
 library(lmerTest)
 
 
-source("../R/tfce_transform.R")
+source("../R/TFCE_transform.R")
 source("../R/plot_eeg_map.R")
 
 cat("\nStarting TFCE split-plot analysis...\n")
@@ -43,8 +43,8 @@ cat("\nStarting TFCE split-plot analysis...\n")
 ## -1. Load EEG long-format data
 ## ==========================================================
 
-designTable <- read.csv("../data/06_designTable.csv")
-EEGlong <- read.csv("../data/06_EEGdata_long.csv")
+designTable <- read.csv("../Data/06_designTable.csv")
+EEGlong <- read.csv("../Data/06_EEGdata_long.csv")
 
 print(names(designTable))
 print(names(EEGlong))
@@ -459,7 +459,7 @@ mT_Int[!Results$Mask_Int] <- 0
 
 plot_eeg_map(
   mT_Int,
-  "TFCE-corrected Group ¡Á Condition Interaction",
+  "TFCE-corrected Group ?? Condition Interaction",
   times,
   nChan,
   channels
@@ -483,7 +483,7 @@ plot_eeg_map(Results$TFCE_Obs_Cond,
 
 plot_eeg_map(
   Results$TFCE_Obs_Int,
-  "Observed TFCE Map: Group ¡Á Condition Interaction",
+  "Observed TFCE Map: Group ?? Condition Interaction",
   times,
   nChan,
   channels

@@ -1,2 +1,4 @@
 *.asv
 *.Rdata
+/Linked2lmeEEG/sEEG_all.mat
+/Linked2lmeEEG/EEGdata_long.csv

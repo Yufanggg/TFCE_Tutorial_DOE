@@ -64,6 +64,8 @@ designTable = table( ...
     'VariableNames', {'ID', 'Item', 'Condition', 'CON', 'CondCode'});
 
 writetable(designTable, 'sEEG_table.csv');
+clear timeValues chanlocs k sEEG_table sEEG_times timeValues
+
 
 %% Create long-format EEG data
 % These indices follow MATLAB's column-major ordering, matching sEEG_all(:).

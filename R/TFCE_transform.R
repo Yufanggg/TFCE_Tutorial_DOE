@@ -1,29 +1,25 @@
 tfce_transform <- function(x, E = 0.5, H = 2, dh = 0.1) {
   
-  sig = sign(x)
-  
-  x = abs(x)
-  
   if (!requireNamespace("permuco", quietly = TRUE)) {
     stop("Package 'permuco' is required.")
   }
   
-  if (!is.matrix(x)) {
-    x <- as.matrix(x)
+  
+  if (!is.numeric(x) || !is.matrix(x) || length(x) == 0L || any(!is.finite(x))) {
+    stop("x must be a nonempty numeric matrix with finite values.")
   }
   
-  if (!is.numeric(x)) {
-    stop("Input x must be numeric.")
+  if (length(E) != 1L || !is.finite(E) || E < 0 ||
+      length(H) != 1L || !is.finite(H) || H < 0 ||
+      length(dh) != 1L || !is.finite(dh) || dh <= 0) {
+    stop("E and H must be nonnegative scalars; dh must be positive.")
   }
   
-  distribution <- matrix(
-    as.vector(x),
-    nrow = 1
-  )
+  distribution <- matrix(as.vector(x), nrow = 1)
   
   max_h <- max(abs(distribution), na.rm = TRUE)
   
-  if (!is.finite(max_h) || max_h == 0) {
+  if (max_h == 0) {
     return(matrix(
       0,
       nrow = nrow(x),
@@ -32,30 +28,19 @@ tfce_transform <- function(x, E = 0.5, H = 2, dh = 0.1) {
     ))
   }
   
-  n_h <- ceiling(max_h / dh)
+  n_h <- floor(max_h / dh)
+  dhi <- seq_len(n_h)
   
-  actual_dh <- max_h / n_h
   
-  dhi <- (seq_len(n_h) - 0.5) * actual_dh
-  # 
-  # n_h <- floor(max_h / dh)
-  # dhi <- seq_len(n_h)
-  
-  tfce_out <- permuco:::tfce_distribution(
-    distribution,
-    E,
-    H,
-    dh,
-    dhi
-  )
+  tfce_out <- permuco:::tfce_distribution(pmax(distribution, 0), E, H, dh, dhi) -
+    permuco:::tfce_distribution(pmax(-distribution, 0), E, H, dh, dhi)
   
   tfce_map <- matrix(
-    tfce_out[1, ],
-    nrow = nrow(x),
-    ncol = ncol(x),
-    dimnames = dimnames(x)
-  ) * sig
-  
+    tfce_out,            # Values from the first row
+    nrow = nrow(x),           # Same number of rows as x
+    ncol = ncol(x),           # Same number of columns as x
+    dimnames = dimnames(x)   # Same row and column names as x
+  )
   
   return(tfce_map)
 }

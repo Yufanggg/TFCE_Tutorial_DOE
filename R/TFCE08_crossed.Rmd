@@ -45,7 +45,7 @@ library(tidyr)
 library(lme4)
 library(lmerTest)
 
-source("../R/tfce_transform.R")
+source("../R/TFCE_transform.R")
 
 cat("\nStarting fully crossed subject-item TFCE analysis...\n")
 
@@ -53,9 +53,9 @@ cat("\nStarting fully crossed subject-item TFCE analysis...\n")
 ## -1. Load EEG long-format data
 ## ==========================================================
 
-designTable <- read.csv("../data/08_designTable.csv")
+designTable <- read.csv("../Data/08_designTable.csv")
 
-EEGlong <- read.csv("../data/08_EEGdata_long.csv")
+EEGlong <- read.csv("../Data/08_EEGdata_long.csv")
 
 print(names(designTable))
 print(names(EEGlong))

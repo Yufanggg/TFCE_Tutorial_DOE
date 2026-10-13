@@ -1,5 +1,5 @@
 library(permuco)
-source("../R/tfce_transform.R")
+source("../R/TFCE_transform.R")
 
 ## Test data
 ch_names <- c(

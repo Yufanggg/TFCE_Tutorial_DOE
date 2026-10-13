@@ -8,7 +8,7 @@ output: html_document
 ```{r}
 
 # ================================================================
-# lmeEEG TUTORIAL â€? R IMPLEMENTATION
+# lmeEEG TUTORIAL ??? R IMPLEMENTATION
 #
 # Reference:
 # https://doi.org/10.1016/j.jneumeth.2023.109991
@@ -66,35 +66,20 @@ library(future.apply)
 library(progressr)
 library(fields)
 
-source("../R/tfce_transform.R")
+source("../R/TFCE_transform.R")
 set.seed(123)
 
 # -------- Load data --------
 EEGlong <- read.csv("EEGdata_long.csv")
+designTable <- read_csv("../data/04_designTable.csv")
 
-designTable <- read.csv("designTable.csv")
-
-## Check column names
-print(names(designTable))
 print(names(EEGlong))
+print(names(designTable))
 
 ## ==========================================================
 ## 0. Prepare data
 ## ==========================================================
-
-designTable <- designTable %>%
-  mutate(RowID = row_number())
-
-dat <- EEGlong %>%
-  left_join(designTable, by = c("Subject", "Item", "ConditionCode")) %>%
-  mutate(
-    Subject = factor(Subject),
-    Item = factor(Item),
-    Channel = factor(Channel),
-    ConditionCode = as.numeric(ConditionCode),
-    Time = as.numeric(Time),
-    Amplitude = as.numeric(Amplitude)
-  )
+dat <- EEGlong
 
 channels <- unique(dat$Channel)
 times <- sort(unique(dat$Time))
@@ -102,8 +87,8 @@ times <- sort(unique(dat$Time))
 nChan <- length(channels)
 nTime <- length(times)
 
-cat("Number of observations in designTable:",
-    nrow(designTable),
+cat("Number of observations in EEGlong:",
+    nrow(dat),
     "\n")
 
 cat("Number of channels:", nChan, "\n")
@@ -123,22 +108,22 @@ if (any(is.na(dat$RowID))) {
   )
 }
 
-subject_item_units <- designTable %>%
+ID_item_units <- designTable %>%
   distinct(Subject, Item)
 
-for (u in seq_len(nrow(subject_item_units))) {
-  current_subject <- subject_item_units$Subject[u]
-  current_item <- subject_item_units$Item[u]
+for (u in seq_len(nrow(ID_item_units))) {
+  current_ID <- ID_item_units$Subject[u]
+  current_item <- ID_item_units$Item[u]
   
   tmp <- designTable %>%
-    filter(Subject == current_subject, Item == current_item)
+    filter(Subject == current_ID, Item == current_item)
   
-  if (nrow(tmp) != 2) {
+  if (nrow(tmp)%%2 != 0) {
     stop(
       paste0(
         "Each Subject-Item combination must have exactly ",
-        "two rows. Problematic combination: Subject ",
-        current_subject,
+        "two \times n rows. Problematic combination: Subject ",
+        current_ID,
         ", Item ",
         current_item
       )
@@ -151,7 +136,7 @@ for (u in seq_len(nrow(subject_item_units))) {
         "Each Subject-Item combination must contain one ",
         "Control observation (-1) and one Treatment ",
         "observation (1). Problematic combination: Subject ",
-        current_subject,
+        current_ID,
         ", Item ",
         current_item
       )
@@ -162,7 +147,7 @@ for (u in seq_len(nrow(subject_item_units))) {
 cat("Basic design checks completed.\n")
 
 ## ==========================================================
-## Step 0: Remove subject and item random effects
+## Step 0: Remove Subject and item random effects
 ##
 ## For each channel-time point, fit:
 ##
@@ -174,12 +159,12 @@ cat("Basic design checks completed.\n")
 ##
 ##   fixed-effect fitted values + conditional residuals
 ##
-## This removes the estimated subject- and item-specific
+## This removes the estimated Subject- and item-specific
 ## random intercepts while preserving the condition effect
 ## and unexplained residual variation.
 ## ==========================================================
 
-cat("Step 0: Removing subject and item random effects...\n")
+cat("Step 0: Removing Subject and item random effects...\n")
 
 marginal_dat <- dat %>%
   group_by(Channel, Time) %>%
@@ -403,7 +388,7 @@ save(
 )
 
 cat(paste0(
-  "Fully crossed subject-item TFCE analysis ",
+  "Fully crossed Subject-item TFCE analysis ",
   "completed and results saved.\n"
 ))
 ```

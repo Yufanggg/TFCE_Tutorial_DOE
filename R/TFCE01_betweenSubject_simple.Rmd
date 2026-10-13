@@ -30,7 +30,7 @@ library(future.apply)
 library(progressr)
 library(fields)
 
-source("../R/tfce_transform.R")
+source("../R/TFCE_transform.R")
 
 cat("\nStarting TFCE simple between-subject analysis...\n")
 
@@ -38,8 +38,8 @@ cat("\nStarting TFCE simple between-subject analysis...\n")
 ## -1. Load CSV files
 ## ==========================================================
 
-designTable <- read.csv("../data/01_designTable.csv")
-EEGlong     <- read.csv("../data/01_EEGdata_long.csv")
+designTable <- read.csv("../Data/01_designTable.csv")
+EEGlong     <- read.csv("../Data/01_EEGdata_long.csv")
 
 ## Check column names
 print(names(designTable))
@@ -133,7 +133,7 @@ if (anyDuplicated(subject_info$Subject)) {
   stop("Each subject must have exactly one CondCode.")
 }
 
-n_workers <- max(1, parallel::detectCores() - 1)
+n_workers <- max(1L, parallelly::availableCores() - 1L)
 
 future::plan(future::multisession, workers = n_workers)
 
