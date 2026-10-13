@@ -109,7 +109,7 @@ disp(EEGlong(1:20,:));
 
 %% Save EEG long table
 
-writetable(EEGlong,'EEGlong.csv');
+writetable(EEGlong,'EEGdata_long.csv');
 
 %% Finished
 
