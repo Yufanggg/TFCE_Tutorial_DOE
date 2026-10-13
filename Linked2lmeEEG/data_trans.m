@@ -63,7 +63,7 @@ designTable = table( ...
     CondCode, ...
     'VariableNames', {'Subject', 'Item', 'Condition', 'CON', 'CondCode'});
 
-writetable(designTable, 'sEEG_table.csv');
+writetable(designTable, 'designTable.csv');
 clear timeValues chanlocs k sEEG_table sEEG_times timeValues
 
 
@@ -84,7 +84,7 @@ row = 1
 for obs = 1:nObs
     for ch = 1:nChan
         for t = 1:nTime
-            Subject{row}       = designTable.ID(obs);
+            Subject{row}       = designTable.Subject(obs);
             Item{row}          = designTable.Item(obs);
             Condition{row}     = designTable.Condition(obs);
             ConditionCode(row) = designTable.CondCode(obs);
@@ -109,7 +109,7 @@ disp(EEGlong(1:20,:));
 
 %% Save EEG long table
 
-writetable(EEGlong,'EEGdata_long.csv');
+writetable(EEGlong,'EEGlong.csv');
 
 %% Finished
 
