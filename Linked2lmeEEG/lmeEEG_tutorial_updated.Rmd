@@ -71,7 +71,7 @@ set.seed(123)
 
 # -------- Load data --------
 EEGlong <- read.csv("EEGdata_long.csv")
-designTable <- read_csv("../data/04_designTable.csv")
+designTable <- read_csv("designTable.csv")
 
 print(names(EEGlong))
 print(names(designTable))
