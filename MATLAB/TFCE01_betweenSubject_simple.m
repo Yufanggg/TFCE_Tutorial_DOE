@@ -115,7 +115,8 @@ fprintf('Observed TFCE map completed.\n');
 %% ==========================================================
 
 nPerm = 999;
-TFCE_permMax = zeros(nPerm, 1);
+TFCE_permMaxPos = zeros(nPerm, 1);
+TFCE_permMinNeg = zeros(nPerm, 1);
 
 fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
 
@@ -143,7 +144,12 @@ parfor p = 1:nPerm
 
     TFCE_perm = ept_mex_TFCE2D(permT, ChN, E_H);
 
-    TFCE_permMax(p) = max(abs(TFCE_perm(:)));
+    TFCE_permMaxPos(p) = max(TFCE_perm(:));
+    TFCE_permMinNeg(p) = max(TFCE_perm(:));
+    
+    progressbar(p/nPerm)
+    
+    fprintf('Permutation %d/%d\n',p,nPerm);
 
 end
 
@@ -157,25 +163,24 @@ fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
 alpha = 0.05;
 nPerm = length(TFCE_permMax);
-maxTFCE = sort([TFCE_permMax;max(abs(TFCE_Obs(:)))]);
-maxTFCEcrit = maxTFCE(round(nPerm*(1-alpha)));
-
-Mask = abs(TFCE_Obs) >= maxTFCEcrit;
+maxTFCEPos = sort([TFCE_permMaxPos; max(TFCE_Obs(:))]);
+minTFCENeg = sort([TFCE_permMinNeg; min(TFCE_Obs(:))]);
 
 P_Values = zeros(nChan, nTime);
 
 for ch = 1:nChan
     for t = 1:nTime
 
-        P_Values(ch,t) = ...
-            (sum(TFCE_permMax >= abs(TFCE_Obs(ch,t))) + 1) / ...
-            (nPerm + 1);
+        pr = (1 + sum(maxTFCEPos >= TFCE_Obs(ch,tp))) / (nPerm + 1);
+        
+        pl = (1 + sum(minTFCENeg <= TFCE_Obs(ch,tp))) / (nPerm + 1);
+        
+        P_Values(ch,tp) = min(1, 2 * min(pr, pl));
 
     end
 end
 
 fprintf('TFCE-corrected significance completed.\n');
-fprintf('Critical TFCE value = %.4f\n', maxTFCEcrit);
 %% ==========================================================
 % Step 5: Store results
 %% ==========================================================
@@ -185,10 +190,9 @@ Results = struct();
 
 Results.tObs         = tObs;
 Results.TFCE_Obs     = TFCE_Obs;
-Results.TFCE_Null    = TFCE_permMax;
-Results.maxTFCEcrit     = maxTFCEcrit;
+Results.maxTFCEPos   = maxTFCEPos;
+Results.minTFCENeg   = minTFCENeg;
 Results.P_Values     = P_Values;
-Results.Mask         = Mask;
 Results.alpha        = alpha;
 Results.nPerm        = nPerm;
 
@@ -216,7 +220,7 @@ clear all; close all; clc
 
 load('../Results/01_TFCE_between_subject_results.mat')
 sigT = Results.tObs;
-sigT(~Results.Mask) = 0;
+sigT(~Results.P_Values > 0.05) = 0;
 
 figure;
 
