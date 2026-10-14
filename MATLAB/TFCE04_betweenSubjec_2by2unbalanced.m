@@ -254,10 +254,13 @@ fprintf('Observed TFCE maps completed.\n');
 %% ==========================================================
 % Step 3: Freedman-Lane permutation testing
 %% ==========================================================
+TFCE_permMaxPos_var1 = nan(nPerm, 1);
+TFCE_permMaxPos_var2 = nan(nPerm, 1);
+TFCE_permMaxPos_Int  = nan(nPerm, 1);
 
-TFCE_permMax_var1 = nan(nPerm, 1);
-TFCE_permMax_var2 = nan(nPerm, 1);
-TFCE_permMax_Int  = nan(nPerm, 1);
+TFCE_permMinNeg_var1 = nan(nPerm, 1);
+TFCE_permMinNeg_var2 = nan(nPerm, 1);
+TFCE_permMinNeg_Int  = nan(nPerm, 1);
 
 fprintf( ...
     ['Step 3: Starting Freedman-Lane permutation testing: ' ...
@@ -356,8 +359,7 @@ parfor p = 1:nPerm
             Y_hat_red_Int = lm_red_Int.Fitted;
             resid_red_Int = lm_red_Int.Residuals.Raw;
 
-            Y_perm_Int = ...
-                Y_hat_red_Int + ...
+            Y_perm_Int = Y_hat_red_Int + ...
                 resid_red_Int(perm_idx_Int);
 
             lm_perm_Int = fitlm(X_full, Y_perm_Int);
@@ -374,36 +376,21 @@ parfor p = 1:nPerm
     % Apply TFCE
     %% ------------------------------------------------------
 
-    TFCE_perm_var1 = ept_mex_TFCE2D( ...
-        perm_t_var1, ...
-        ChN, ...
-        E_H ...
-    );
-
-    TFCE_perm_var2 = ept_mex_TFCE2D( ...
-        perm_t_var2, ...
-        ChN, ...
-        E_H ...
-    );
-
-    TFCE_perm_Int = ept_mex_TFCE2D( ...
-        perm_t_Int, ...
-        ChN, ...
-        E_H ...
-    );
+    TFCE_perm_var1 = ept_mex_TFCE2D(perm_t_var1, ChN, E_H);
+    TFCE_perm_var2 = ept_mex_TFCE2D(perm_t_var2, ChN, E_H);
+    TFCE_perm_Int = ept_mex_TFCE2D(perm_t_Int, ChN, E_H);
 
     %% ------------------------------------------------------
-    % Store maximum absolute TFCE values
+    % Store maximum and minmum TFCE values
     %% ------------------------------------------------------
 
-    TFCE_permMax_var1(p) = ...
-        max(abs(TFCE_perm_var1(:)));
-
-    TFCE_permMax_var2(p) = ...
-        max(abs(TFCE_perm_var2(:)));
-
-    TFCE_permMax_Int(p) = ...
-        max(abs(TFCE_perm_Int(:)));
+    TFCE_permMaxPos_var1(p) = max(TFCE_perm_var1(:));
+    TFCE_permMaxPos_var2(p) = max(TFCE_perm_var2(:));
+    TFCE_permMaxPos_Int(p)  = max(TFCE_perm_Int(:));
+    
+    TFCE_permMinNeg_var1(p) = min(TFCE_perm_var1(:));    
+    TFCE_permMinNeg_var2(p) = min(TFCE_perm_var2(:));
+    TFCE_permMinNeg_Int(p)  = min(TFCE_perm_Int(:));
 
 end
 
@@ -418,50 +405,13 @@ fprintf('Step 4: Computing TFCE-corrected significance...\n');
 %% ----------------------------------------------------------
 % Add the observed maximum to each permutation distribution
 %% ----------------------------------------------------------
+maxTFCEPos_var1 = sort([TFCE_permMaxPos_var1; max(TFCE_Obs_var1(:))]);
+maxTFCEPos_var2 = sort([TFCE_permMaxPos_var2; max(TFCE_Obs_var2(:))]);
+maxTFCEPos_Int = sort([TFCE_permMaxPos_Int; max(TFCE_Obs_Int(:))]);
 
-maxTFCE_var1 = sort([
-    TFCE_permMax_var1;
-    max(abs(TFCE_Obs_var1(:)))
-]);
-
-maxTFCE_var2 = sort([
-    TFCE_permMax_var2;
-    max(abs(TFCE_Obs_var2(:)))
-]);
-
-maxTFCE_Int = sort([
-    TFCE_permMax_Int;
-    max(abs(TFCE_Obs_Int(:)))
-]);
-
-%% ----------------------------------------------------------
-% Determine the upper alpha-level critical value
-%% ----------------------------------------------------------
-
-criticalIndex = ceil((nPerm + 1) * (1 - alpha));
-
-criticalIndex = min( ...
-    criticalIndex, ...
-    nPerm + 1 ...
-);
-
-maxTFCEcrit_var1 = maxTFCE_var1(criticalIndex);
-maxTFCEcrit_var2 = maxTFCE_var2(criticalIndex);
-maxTFCEcrit_Int  = maxTFCE_Int(criticalIndex);
-
-%% ----------------------------------------------------------
-% Corrected significance masks
-%% ----------------------------------------------------------
-
-Mask_var1 = ...
-    abs(TFCE_Obs_var1) >= maxTFCEcrit_var1;
-
-Mask_var2 = ...
-    abs(TFCE_Obs_var2) >= maxTFCEcrit_var2;
-
-Mask_Int = ...
-    abs(TFCE_Obs_Int) >= maxTFCEcrit_Int;
-
+minTFCENeg_var1 = sort([TFCE_permMinNeg_var1; max(TFCE_Obs_var1(:))]);
+minTFCENeg_var2 = sort([TFCE_permMinNeg_var2; max(TFCE_Obs_var2(:))]);
+minTFCENeg_Int  = sort([TFCE_permMinNeg_Int; max(TFCE_Obs_Int(:))]);
 %% ----------------------------------------------------------
 % TFCE-corrected p-values
 %% ----------------------------------------------------------
@@ -469,54 +419,26 @@ Mask_Int = ...
 P_Values_var1 = nan(nChan, nTime);
 P_Values_var2 = nan(nChan, nTime);
 P_Values_Int  = nan(nChan, nTime);
-
+             
 for ch = 1:nChan
     for tpoint = 1:nTime
-
-        P_Values_var1(ch, tpoint) = ...
-            ( ...
-                sum( ...
-                    TFCE_permMax_var1 >= ...
-                    abs(TFCE_Obs_var1(ch, tpoint)) ...
-                ) + 1 ...
-            ) / (nPerm + 1);
-
-        P_Values_var2(ch, tpoint) = ...
-            ( ...
-                sum( ...
-                    TFCE_permMax_var2 >= ...
-                    abs(TFCE_Obs_var2(ch, tpoint)) ...
-                ) + 1 ...
-            ) / (nPerm + 1);
-
-        P_Values_Int(ch, tpoint) = ...
-            ( ...
-                sum( ...
-                    TFCE_permMax_Int >= ...
-                    abs(TFCE_Obs_Int(ch, tpoint)) ...
-                ) + 1 ...
-            ) / (nPerm + 1);
+        
+        pr_var1 = (1 + sum(maxTFCEPos_var1 >= TFCE_Obs_var1(ch,tp))) / (nPerm + 1);
+        pl_var1 = (1 + sum(minTFCENeg_var1 <= TFCE_Obs_var1(ch,tp))) / (nPerm + 1);        
+        P_Values_var1(ch,tp) = min(1, 2 * min(pr_var1, pl_var1));
+        
+        pr_var2 = (1 + sum(maxTFCEPos_var2 >= TFCE_Obs_var2(ch,tp))) / (nPerm + 1);
+        pl_var2 = (1 + sum(minTFCENeg_var2 <= TFCE_Obs_var2(ch,tp))) / (nPerm + 1);        
+        P_Values_var2(ch,tp) = min(1, 2 * min(pr_var2, pl_var2));
+        
+        pr_Int = (1 + sum(maxTFCEPos_Int >= TFCE_Obs_Int(ch,tp))) / (nPerm + 1);
+        pl_Int = (1 + sum(minTFCENeg_Int <= TFCE_Obs_Int(ch,tp))) / (nPerm + 1);        
+        P_Values_Int(ch,tp) = min(1, 2 * min(pr_Int, pl_Int));
 
     end
 end
 
 fprintf('TFCE-corrected significance completed.\n');
-
-fprintf( ...
-    'Critical TFCE value for FactorA = %.4f\n', ...
-    maxTFCEcrit_var1 ...
-);
-
-fprintf( ...
-    'Critical TFCE value for FactorB = %.4f\n', ...
-    maxTFCEcrit_var2 ...
-);
-
-fprintf( ...
-    'Critical TFCE value for interaction = %.4f\n', ...
-    maxTFCEcrit_Int ...
-);
-
 %% ==========================================================
 % Step 5: Store results
 %% ==========================================================
@@ -529,29 +451,23 @@ Results = struct();
 
 Results.tObs_var1 = t_Obs_var1;
 Results.TFCE_Obs_var1 = TFCE_Obs_var1;
-Results.TFCE_Null_var1 = TFCE_permMax_var1;
-Results.maxTFCEcrit_var1 = maxTFCEcrit_var1;
+Results.maxTFCEPos_var1 = maxTFCEPos_var1;
+Results.minTFCENeg_var1 = minTFCENeg_var1;
 Results.P_Values_var1 = P_Values_var1;
-Results.Mask_var1 = Mask_var1;
-
 %% FactorB main effect
 
 Results.tObs_var2 = t_Obs_var2;
 Results.TFCE_Obs_var2 = TFCE_Obs_var2;
-Results.TFCE_Null_var2 = TFCE_permMax_var2;
-Results.maxTFCEcrit_var2 = maxTFCEcrit_var2;
+Results.maxTFCEPos_var2 = maxTFCEPos_var2;
+Results.minTFCENeg_var2 = minTFCENeg_var2;
 Results.P_Values_var2 = P_Values_var2;
-Results.Mask_var2 = Mask_var2;
-
 %% FactorA x FactorB interaction
 
 Results.tObs_Int = t_Obs_Int;
 Results.TFCE_Obs_Int = TFCE_Obs_Int;
-Results.TFCE_Null_Int = TFCE_permMax_Int;
-Results.maxTFCEcrit_Int = maxTFCEcrit_Int;
+Results.maxTFCEPos_Int = maxTFCEPos_Int;
+Results.minTFCENeg_Int = minTFCENeg_Int;
 Results.P_Values_Int = P_Values_Int;
-Results.Mask_Int = Mask_Int;
-
 %% Analysis information
 
 Results.alpha = alpha;
