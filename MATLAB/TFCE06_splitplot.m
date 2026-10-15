@@ -24,7 +24,7 @@
 %   Condition main effect
 %% ==========================================================
 
-clear; clc; close all;
+clear; clc; close all; rng(123);
 fprintf('\nStarting split-plot TFCE analysis...\n');
 
 %% Load data
@@ -99,6 +99,10 @@ for s = 1:nSubj
     end
 
 end
+assert(size(Y1,2) == 2 && size(Y2,2) == 2, ...
+    'Each group must have two within-subject conditions.');
+assert(all(isfinite(Y1(:))) && all(isfinite(Y2(:))), ...
+    'Inputs must be finite with no missing cells.');
 
 %% Variables for LME
 
@@ -163,99 +167,99 @@ fprintf('Observed TFCE maps completed.\n');
 % Step 3: Permutation testing
 %
 % Group main effect:
-%   shuffle GroupCode between subjects, keeping both rows together
+%   symmetry permutation test
 %
 % Condition main effect:
-%   flip CondCode within subjects
+%   synchronized permutation test
 %
 % Interaction:
-%   flip CondCode within subjects
+%   symmetry permutation
 %% ==========================================================
+TFCE_permMaxPos_Group = nan(nPerm,1);
+TFCE_permMaxPos_Cond  = nan(nPerm,1);
+TFCE_permMaxPos_Int   = nan(nPerm,1);
 
-TFCE_permMax_Group = nan(nPerm,1);
-TFCE_permMax_Cond  = nan(nPerm,1);
-TFCE_permMax_Int   = nan(nPerm,1);
+TFCE_permMinNeg_Group = nan(nPerm,1);
+TFCE_permMinNeg_Cond  = nan(nPerm,1);
+TFCE_permMinNeg_Int   = nan(nPerm,1);
 
 fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
+
+% ---------------------------------------------------------
+% Step 3.1(SPY for testing Group effects): 
+% Centre all observations using the pooled median
+% ---------------------------------------------------------
+Y1_idx = designTable.GroupCode == -1;
+Y2_idx = designTable.GroupCode == 1;
+idx_Group1 = find(designTable.GroupCode == designTable.GroupCode(1));
+
+Cond = designTable.CondCode;
+
+% [~, ~, subjectIndex1] = designTable.Subject(Y1_idx);
+% nSubjects1 = length(unique(subjectIndex1));
+% 
+% [~, ~, subjectIndex2] =  designTable.Subject(Y2_idx);
+% nSubjects2 = length(unique(subjectIndex2));
 
 parfor p = 1:nPerm
 
     perm_t_Group = nan(nChan, nTime);
     perm_t_Cond  = nan(nChan, nTime);
     perm_t_Int   = nan(nChan, nTime);
-
-    %% Permute Group between subjects
-
-    subjGroup = zeros(nSubj,1);
-
-    for s = 1:nSubj
-        idxSubj = Subject == subjects(s);
-        subjGroup(s) = unique(GroupCode(idxSubj));
-    end
-
-    subjGroup_perm = subjGroup(randperm(nSubj));
-
-    Group_perm = GroupCode;
-
-    for s = 1:nSubj
-        idxSubj = Subject == subjects(s);
-        Group_perm(idxSubj) = subjGroup_perm(s);
-    end
-
-
-    %% Flip condition labels within subjects
-
-    Cond_perm = CondCode;
-
-    for s = 1:nSubj
-
-        idxSubj = find(Subject == subjects(s));
-
-        if rand > 0.5
-            Cond_perm(idxSubj) = flipud(Cond_perm(idxSubj));
-        end
-
-    end
+    
+    Signs = 2 * randi([0, 1], nRows, 1) - 1;
+    permOrder = randperm(numel(idx_Group1));
 
     %% Mass-univariate LME
 
     for ch = 1:nChan
         for tp = 1:nTime
-
-            EEG = double(squeeze(EEGdata(:, ch, tp)));
-
+            
             % Group effect permutation
-            tbl_G = table(EEG, Group_perm, Cond, SubjectLME, ...
+            EEG = double(squeeze(EEGdata(:, ch, tp)));
+            pooledMedian = median(EEG(:), 'omitnan');
+            Y = EEG - pooledMedian; Y_perm = Y .* Signs;
+            Y1_perm = Y_perm(Y1_idx); Y2_perm = Y_perm(Y2_idx);
+            
+            tbl = table(Y1_perm, Group, Cond_perm, SubjectLME, ...
                 'VariableNames', {'EEG','Group','Cond','Subject'});
+            lme = fitlme(tbl, 'EEG ~ Group * Cond + (1|Subject)');
 
-            lme_G = fitlme(tbl_G, ...
-                'EEG ~ Group * Cond + (1|Subject)');
+            perm_t_Group(ch,tp) = lme.Coefficients.tStat(2);
+            
+            perm_t_Int(ch,tp)= lme_C.Coefficients.tStat(4);
+            
+            % Interaction effect between Group and within-subject variables
+            
+            perm_t_Int(ch,tp)  = lme_C.Coefficients.tStat(4);
+            
 
-            perm_t_Group(ch,tp) = lme_G.Coefficients.tStat(2);
-
-            % Condition effect permutation
+            % within-subject effect
+            Cond_perm(Y1_idx) = Cond(Y1_idx(permOrder));
+            Cond_perm(Y1_idx) = Cond(Y1_idx(permOrder));
             tbl_C = table(EEG, Group, Cond_perm, SubjectLME, ...
                 'VariableNames', {'EEG','Group','Cond','Subject'});
 
-            lme_C = fitlme(tbl_C, ...
-                'EEG ~ Group * Cond + (1|Subject)');
+            lme_C = fitlme(tbl_C, 'EEG ~ Group * Cond + (1|Subject)');
 
             perm_t_Cond(ch,tp) = lme_C.Coefficients.tStat(3);
-            perm_t_Int(ch,tp)  = lme_C.Coefficients.tStat(4);
-
+            
         end
     end
-
-    fprintf('At the %dth permutation\n', p);
-
+    
     TFCE_perm_Group = ept_mex_TFCE2D(perm_t_Group, ChN, E_H);
     TFCE_perm_Cond  = ept_mex_TFCE2D(perm_t_Cond,  ChN, E_H);
     TFCE_perm_Int   = ept_mex_TFCE2D(perm_t_Int,  ChN, E_H);
     
-
-    TFCE_permMax_Group(p) = max(abs(TFCE_perm_Group(:)));
-    TFCE_permMax_Cond(p)  = max(abs(TFCE_perm_Cond(:)));
-    TFCE_permMax_Int(p)   = max(abs(TFCE_perm_Int(:)));
+    TFCE_permMaxPos_Group(p) = max(TFCE_perm_Group(:));
+    TFCE_permMaxPos_Cond(p)  = max(TFCE_perm_Cond(:));
+    TFCE_permMaxPos_Int(p)   = max(TFCE_perm_Int(:));
+    
+    TFCE_permMinNeg_Group(p) = min(TFCE_perm_Group(:));
+    TFCE_permMinNeg_Cond(p)  = min(TFCE_perm_Cond(:));
+    TFCE_permMinNeg_Int(p)   = min(TFCE_perm_Int(:));
+    
+    progressbar(p/nPerm)
 
 end
 
@@ -265,20 +269,14 @@ fprintf('\nPermutation testing completed.\n');
 
 fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
-nPerm = length(TFCE_permMax_Group);
-maxTFCE_Group = sort([TFCE_permMax_Group;max(abs(TFCE_Obs_Group(:)))]);
-maxTFCEcrit_Group = maxTFCE_Group(round(nPerm*(1-alpha)));
+maxTFCEPos_Group = sort([TFCE_permMaxPos_Group;max(TFCE_Obs_Group(:))]);
+maxTFCEPos_Cond = sort([TFCE_permMaxPos_Cond;max(TFCE_Obs_Cond(:))]);
+maxTFCEPos_Int = sort([TFCE_permMaxPos_Int;max(TFCE_Obs_Int(:))]);
 
-maxTFCE_Cond = sort([TFCE_permMax_Cond;max(abs(TFCE_Obs_Cond(:)))]);
-maxTFCEcrit_Cond = maxTFCE_Cond(round(nPerm*(1-alpha)));
+minTFCENeg_Group = sort([TFCE_permMinNeg_Group;min(TFCE_Obs_Group(:))]);
+minTFCENeg_Cond = sort([TFCE_permMinNeg_Group;min(TFCE_Obs_Group(:))]);
+minTFCENeg_Int = sort([TFCE_permMinNeg_Group;min(TFCE_Obs_Group(:))]);
 
-maxTFCE_Int = sort([TFCE_permMax_Int;max(abs(TFCE_Obs_Int(:)))]);
-maxTFCEcrit_Int = maxTFCE_Int(round(nPerm*(1-alpha)));
-
-
-Mask_Group = abs(TFCE_Obs_Group) >= maxTFCEcrit_Group;
-Mask_Cond  = abs(TFCE_Obs_Cond)  >= maxTFCEcrit_Cond;
-Mask_Int   = abs(TFCE_Obs_Int)   >= maxTFCEcrit_Int;
 
 P_Values_Group = nan(nChan, nTime);
 P_Values_Cond  = nan(nChan, nTime);
@@ -287,17 +285,18 @@ P_Values_Int  = nan(nChan, nTime);
 
 for ch = 1:nChan
     for tpoint = 1:nTime
-        P_Values_Group(ch, tpoint) = ...
-            (sum(TFCE_permMax_Group >= abs(TFCE_Obs_Group(ch, tpoint))) + 1) / ...
-            (nPerm + 1);
         
-        P_Values_Cond(ch, tpoint) = ...
-            (sum(TFCE_permMax_Cond >= abs(TFCE_Obs_Cond(ch, tpoint))) + 1) / ...
-            (nPerm + 1);
+        pr_Group = (1 + sum(maxTFCEPos_Group >= TFCE_Obs_Group(ch,tp))) / (nPerm + 1);
+        pl_Group = (1 + sum(minTFCENeg_Group <= TFCE_Obs_Group(ch,tp))) / (nPerm + 1);        
+        P_Values_Group(ch,tp) = min(1, 2 * min(pr_Group, pl_Group));
         
-        P_Values_Int(ch, tpoint) = ...
-            (sum(TFCE_permMax_Int >= abs(TFCE_Obs_Int(ch, tpoint))) + 1) / ...
-            (nPerm + 1);
+        pr_Cond = (1 + sum(maxTFCEPos_Cond >= TFCE_Obs_Cond(ch,tp))) / (nPerm + 1);
+        pl_Cond = (1 + sum(minTFCENeg_Cond <= TFCE_Obs_Cond(ch,tp))) / (nPerm + 1);        
+        P_Values_Cond(ch,tp) = min(1, 2 * min(pr_Cond, pl_Cond));
+        
+        pr_Int = (1 + sum(maxTFCEPos_Int >= TFCE_Obs_Int(ch,tp))) / (nPerm + 1);
+        pl_Int = (1 + sum(minTFCENeg_Int <= TFCE_Obs_Int(ch,tp))) / (nPerm + 1);        
+        P_Values_Int(ch,tp) = min(1, 2 * min(pr_Int, pl_Int));
         
     end
 end
@@ -307,25 +306,22 @@ end
 Results = struct();
 
 Results.tObs_Group       = t_Obs_Group;
-Results.TFCE_Obs_Group  = TFCE_Obs_Group;
-Results.TFCE_Null_Group = TFCE_permMax_Group;
-Results.maxTFCEcrit_Group  = maxTFCEcrit_Group;
+Results.TFCE_Obs_Group   = TFCE_Obs_Group;
+Results.maxTFCEPos_Group = maxTFCEPos_Group;
+Results.minTFCENeg_Group = minTFCENeg_Group;
 Results.P_Values_Group  = P_Values_Group;
-Results.Mask_Group      = Mask_Group;
 
 Results.tObs_Cond       = t_Obs_Cond;
-Results.TFCE_Obs_Cond  = TFCE_Obs_Cond;
-Results.TFCE_Null_Cond = TFCE_permMax_Cond;
-Results.maxTFCEcrit_Cond  = maxTFCEcrit_Cond;
-Results.P_Values_Cond  = P_Values_Cond;
-Results.Mask_Cond      = Mask_Cond;
+Results.TFCE_Obs_Cond   = TFCE_Obs_Cond;
+Results.maxTFCEPos_Cond = maxTFCEPos_Cond;
+Results.minTFCENeg_Cond = minTFCENeg_Cond;
+Results.P_Values_Cond   = P_Values_Cond;
 
 Results.tObs_Int       = t_Obs_Int;
-Results.TFCE_Obs_Int  = TFCE_Obs_Int;
-Results.TFCE_Null_Int = TFCE_permMax_Int;
-Results.maxTFCEcrit_Int = maxTFCEcrit_Int;
+Results.TFCE_Obs_Int   = TFCE_Obs_Int;
+Results.maxTFCEPos_Int = maxTFCEPos_Int;
+Results.minTFCENeg_Int = minTFCENeg_Int;
 Results.P_Values_Int  = P_Values_Int;
-Results.Mask_Int      = Mask_Int;
 
 Results.alpha = alpha;
 Results.nPerm = nPerm;

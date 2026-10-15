@@ -370,8 +370,6 @@ parfor p = 1:nPerm
         end
     end
 
-    fprintf('Permutation %d of %d completed.\n', p, nPerm);
-
     %% ------------------------------------------------------
     % Apply TFCE
     %% ------------------------------------------------------
@@ -391,6 +389,8 @@ parfor p = 1:nPerm
     TFCE_permMinNeg_var1(p) = min(TFCE_perm_var1(:));    
     TFCE_permMinNeg_var2(p) = min(TFCE_perm_var2(:));
     TFCE_permMinNeg_Int(p)  = min(TFCE_perm_Int(:));
+    
+    progressbar(p/nPerm)
 
 end
 

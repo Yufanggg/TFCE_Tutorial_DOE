@@ -12,7 +12,7 @@
 %   Subjects x Channels x Time
 %% ==========================================================
 
-clear; clc; close all;
+clear; clc; close all; rng(123);
 fprintf('\nStarting TFCE analysis...\n');
 
 %% ==========================================================
@@ -148,8 +148,6 @@ parfor p = 1:nPerm
     TFCE_permMinNeg(p) = max(TFCE_perm(:));
     
     progressbar(p/nPerm)
-    
-    fprintf('Permutation %d/%d\n',p,nPerm);
 
 end
 

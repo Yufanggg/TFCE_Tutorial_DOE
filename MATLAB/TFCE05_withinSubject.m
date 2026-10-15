@@ -19,7 +19,7 @@
 %   EEGdata itself is never permuted
 %% ==========================================================
 
-clear; clc; close all;
+clear; clc; close all; rng(123);
 fprintf('\nStarting TFCE analysis...\n');
 
 %% Load data
@@ -127,7 +127,8 @@ fprintf('Observed TFCE map completed.\n');
 %% Step 3: Permutation by rearranging labels within subject
 
 nPerm = 999;
-TFCE_permMax = nan(nPerm,1);
+TFCE_permMaxPos = nan(nPerm,1);
+TFCE_permMinNeg = nan(nPerm,1);
 
 fprintf('Step 3: Starting within-subject label permutation: %d permutations...\n', nPerm);
 
@@ -163,10 +164,11 @@ parfor p = 1:nPerm
     end
 
     TFCE_perm = ept_mex_TFCE2D(perm_t, ChN, E_H);
-
-    TFCE_permMax(p) = max(abs(TFCE_perm(:)));
-
-    fprintf('Permutation %d / %d completed\n', p, nPerm);
+    
+    TFCE_permMaxPos(p) = max(TFCE_perm(:));
+    TFCE_permMinNeg(p) = max(TFCE_perm(:));
+    
+    progressbar(p/nPerm)
 end
 
 fprintf('\nPermutation testing completed.\n');
@@ -177,38 +179,31 @@ fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
 alpha = 0.05;
 
-maxTFCE = sort([TFCE_permMax;max(abs(TFCE_Obs(:)))]);
-
-maxTFCEcrit = maxTFCE(round(nPerm*(1-alpha)));
-
-
-Mask = abs(TFCE_Obs) >= maxTFCEcrit;
+maxTFCEPos = sort([TFCE_permMaxPos; max(TFCE_Obs(:))]);
+minTFCENeg = sort([TFCE_permMinNeg; min(TFCE_Obs(:))]);
 
 P_Values = nan(nChan, nTime);
 
 for ch = 1:nChan
     for tpoint = 1:nTime
-
-        P_Values(ch, tpoint) = ...
-            (sum(TFCE_permMax >= abs(TFCE_Obs(ch, tpoint))) + 1) / ...
-            (nPerm + 1);
-
+        
+        pr = (1 + sum(maxTFCEPos >= TFCE_Obs(ch,tp))) / (nPerm + 1);
+        pl = (1 + sum(minTFCENeg <= TFCE_Obs(ch,tp))) / (nPerm + 1);        
+        P_Values(ch,tp) = min(1, 2 * min(pr, pl));
     end
 end
 
 fprintf('TFCE-corrected significance completed.\n');
-fprintf('Critical TFCE value = %.4f\n', maxTFCEcrit);
 
 %% Step 5: Store results
 
 Results = struct();
 
-Results.tObs          = t_Obs;
+Results.tObs         = t_Obs;
 Results.TFCE_Obs     = TFCE_Obs;
-Results.TFCE_Null    = TFCE_permMax;
-Results.maxTFCEcrit  = maxTFCEcrit;
+Results.maxTFCEPos   = maxTFCEPos;
+Results.minTFCENeg   = minTFCENeg;
 Results.P_Values     = P_Values;
-Results.Mask         = Mask;
 Results.alpha        = alpha;
 Results.nPerm        = nPerm;
 Results.model        = 'EEG ~ Condition + (1|Subject)';
