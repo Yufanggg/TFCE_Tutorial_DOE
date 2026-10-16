@@ -83,7 +83,7 @@ end
 fprintf('Step 1: Computing observed t-statistic map...\n');
 
 X = group;
-tObs = zeros(nChan, nTime);
+tObs = nan(nChan, nTime);
 
 for ch = 1:nChan
     for t = 1:nTime
@@ -115,8 +115,8 @@ fprintf('Observed TFCE map completed.\n');
 %% ==========================================================
 
 nPerm = 999;
-TFCE_permMaxPos = zeros(nPerm, 1);
-TFCE_permMinNeg = zeros(nPerm, 1);
+TFCE_permMaxPos = nan(nPerm, 1);
+TFCE_permMinNeg = nan(nPerm, 1);
 
 fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
 
@@ -124,7 +124,7 @@ parfor p = 1:nPerm
 
     permX = X(randperm(nSub));
 
-    permT = zeros(nChan, nTime);
+    permT = nan(nChan, nTime);
 
     for ch = 1:nChan
 
@@ -136,6 +136,9 @@ parfor p = 1:nPerm
 
             % Coefficient 2 = permuted Group effect
             permT(ch, t) = lm_perm.Coefficients.tStat(2);
+            % if permT(ch, t) < 0
+            %     fprintf('%d ch, %d t, %d permT\n', ch, t, permT(ch, t));
+            % end
 
         end
     end
@@ -143,9 +146,12 @@ parfor p = 1:nPerm
     fprintf('At the %dth permutation\n', p);
 
     TFCE_perm = ept_mex_TFCE2D(permT, ChN, E_H);
+    % if min(TFCE_perm(:)) < 0
+    %     fprintf('min(TFCE_perm(:)): %d', min(TFCE_perm(:)));
+    % end
 
     TFCE_permMaxPos(p) = max(TFCE_perm(:));
-    TFCE_permMinNeg(p) = max(TFCE_perm(:));
+    TFCE_permMinNeg(p) = min(TFCE_perm(:));
     
     progressbar(p/nPerm)
 
@@ -163,16 +169,17 @@ alpha = 0.05;
 maxTFCEPos = sort([TFCE_permMaxPos; max(TFCE_Obs(:))]);
 minTFCENeg = sort([TFCE_permMinNeg; min(TFCE_Obs(:))]);
 
-P_Values = zeros(nChan, nTime);
+P_Values = nan(nChan, nTime);
+pr = nan(nChan, nTime); pl = nan(nChan, nTime);
 
 for ch = 1:nChan
     for tp = 1:nTime
 
-        pr = (1 + sum(maxTFCEPos >= TFCE_Obs(ch,tp))) / (nPerm + 1);
+        pr(ch,tp) = (sum(maxTFCEPos > TFCE_Obs(ch,tp))) / (nPerm + 1);
         
-        pl = (1 + sum(minTFCENeg <= TFCE_Obs(ch,tp))) / (nPerm + 1);
+        pl(ch,tp) = (sum(minTFCENeg < TFCE_Obs(ch,tp))) / (nPerm + 1);
         
-        P_Values(ch,tp) = min(1, 2 * min(pr, pl));
+        P_Values(ch,tp) = min(1, 2 * min(pr(ch,tp), pl(ch,tp)));
 
     end
 end
@@ -217,7 +224,7 @@ clear all; close all; clc
 
 load('../Results/01_TFCE_between_subject_results.mat')
 sigT = Results.tObs;
-sigT(~Results.P_Values > 0.05) = 0;
+sigT(~Results.P_Values < 0.05) = 0;
 
 figure;
 

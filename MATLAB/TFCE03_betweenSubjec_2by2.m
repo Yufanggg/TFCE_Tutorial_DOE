@@ -144,9 +144,9 @@ for ch = 1:nChan
 
         lm_full = fitlm(X_full, Y);
 
-        t_Obs_A(ch, tp) = lm_full.Coefficients.tStat(coefRow_var1);
-        t_Obs_B(ch, tp) = lm_full.Coefficients.tStat(coefRow_var2);
-        t_Obs_AB(ch,tp)  = lm_full.Coefficients.tStat(4);
+        t_Obs_A(ch, tp) = lm_full.Coefficients.tStat(coefRow_A);
+        t_Obs_B(ch, tp) = lm_full.Coefficients.tStat(coefRow_B);
+        t_Obs_AB(ch,tp)  = lm_full.Coefficients.tStat(coefRow_AB);
 
     end
 end
@@ -171,7 +171,7 @@ fprintf('Observed TFCE maps completed.\n');
 %% ====================================
 %% Step 3: SPT permutations
 %% ====================================
-nPerm = 999;
+nPerm = 5;
 
 TFCE_permMaxPos_A = nan(nPerm, 1);
 TFCE_permMaxPos_B = nan(nPerm, 1);
@@ -210,6 +210,7 @@ fprintf('Starting %d synchronized permutations...\n', nPerm);
 parfor p = 1:nPerm
 
     %% FactorA: synchronized permutation across FactorB strata
+    fprintf('Starting %dth synchronized permutations...\n', p);
 
     FactorA_perm = FactorA;
 
@@ -248,6 +249,9 @@ parfor p = 1:nPerm
     ];
 
     %% Mass-univariate regression
+    tPermA = nan(nChan, nTime);
+    tPermB = nan(nChan, nTime);
+    tPermAB = nan(nChan, nTime);
 
     for ch = 1:nChan
         for tp = 1:nTime
@@ -255,12 +259,12 @@ parfor p = 1:nPerm
             Y = double(EEGdata(:, ch, tp));
 
             lm_perm_A = fitlm(X_perm_A, Y);
-            tPermA(ch, tp) = lm_perm_A.Coefficients.tStat(coefRow_var1);
+            tPermA(ch, tp) = lm_perm_A.Coefficients.tStat(coefRow_A);
             
-            tPermAB(ch,tp) = lm_perm_A.Coefficients.tStat(coefRow_varInt);
+            tPermAB(ch,tp) = lm_perm_A.Coefficients.tStat(coefRow_AB);
             
             lm_perm_B = fitlm(X_perm_B, Y);
-            tPermB(ch, tp) = lm_perm_B.Coefficients.tStat(coefRow_var1);        
+            tPermB(ch, tp) = lm_perm_B.Coefficients.tStat(coefRow_B);        
 
         end
     end
@@ -352,8 +356,6 @@ Results.model        = 'EEG ~ FactorA * FactorB';
 Results.factorCoding = '-1 / +1';
 Results.levelsA      = levelsA;
 Results.levelsB      = levelsB;
-Results.cellCounts   = cellCounts;
-Results.randomSeed   = randomSeed;
 
 Results.permutation_var1 = ...
     'Shared A-label permutation within aligned B strata';
@@ -394,7 +396,7 @@ sigT = Results.t_Obs_A;
 
 sigT(Results.P_Values_A > 0.05) = 0;
 
-imagesc(time, 1:nChan, sigT);
+imagesc(times, 1:nChan, sigT);
 
 axis xy;
 
@@ -402,7 +404,7 @@ xlim([-200 700]);
 
 set(gca,...
     'YTick',1:nChan,...
-    'YTickLabel',{channelinfo.labels},...
+    'YTickLabel',{e_loc.labels},...
     'XTick',-200:150:700,...
     'TickLength',[0 0],...
     'FontSize',15,...
@@ -425,7 +427,7 @@ sigTB = Results.t_Obs_B;
 
 sigTB(Results.P_Values_B > 0.05) = 0;
 
-imagesc(time, 1:nChan, sigTB);
+imagesc(times, 1:nChan, sigTB);
 
 axis xy;
 
@@ -433,7 +435,7 @@ xlim([-200 700]);
 
 set(gca,...
     'YTick',1:nChan,...
-    'YTickLabel',{channelinfo.labels},...
+    'YTickLabel',{e_loc.labels},...
     'XTick',-200:150:700,...
     'TickLength',[0 0],...
     'FontSize',15,...
@@ -454,11 +456,11 @@ ylabel(cb,'t value',...
 
 figure;
 
-sigTB = Results.t_Obs_AB;
+sigTAB = Results.t_Obs_AB;
 
-sigTB(Results.P_Values_AB > 0.05) = 0;
+sigTAB(Results.P_Values_AB > 0.05) = 0;
 
-imagesc(time, 1:nChan, sigTB);
+imagesc(times, 1:nChan, sigTAB);
 
 axis xy;
 
@@ -466,7 +468,7 @@ xlim([-200 700]);
 
 set(gca,...
     'YTick',1:nChan,...
-    'YTickLabel',{channelinfo.labels},...
+    'YTickLabel',{e_loc.labels},...
     'XTick',-200:150:700,...
     'TickLength',[0 0],...
     'FontSize',15,...
