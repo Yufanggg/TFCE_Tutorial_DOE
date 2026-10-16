@@ -136,8 +136,8 @@ fprintf('Observed TFCE map completed.\n');
 %% ==========================================================
 
 nPerm = 999;
-TFCE_permMaxPos = nan(nPerms, 1);
-TFCE_permMinNeg = nan(nPerms, 1);
+TFCE_permMaxPos = nan(nPerm, 1);
+TFCE_permMinNeg = nan(nPerm, 1);
 
 
 fprintf('Step 3: Starting permutation testing: %d permutations...\n', nPerm);
@@ -191,15 +191,13 @@ fprintf('\nPermutation testing completed.\n');
 %% ==========================================================
 
 fprintf('Step 4: Computing TFCE-corrected significance...\n');
-
-nPerm = length(TFCE_permMax);
 maxTFCEPos = sort([TFCE_permMaxPos; max(TFCE_Obs(:))]);
 minTFCENeg = sort([TFCE_permMinNeg; min(TFCE_Obs(:))]);
 
 P_Values = zeros(nChan, nTime);
 
 for ch = 1:nChan
-    for t = 1:nTime
+    for tp = 1:nTime
 
         pr = (1 + sum(maxTFCEPos >= TFCE_Obs(ch,tp))) / (nPerm + 1);
         
@@ -224,7 +222,6 @@ Results.TFCE_Obs  = TFCE_Obs;
 Results.maxTFCEPos = maxTFCEPos;
 Results.minTFCENeg  = minTFCENeg;
 Results.P_Values  = P_Values;
-Results.alpha     = alpha;
 Results.nPerm     = nPerm;
 Results.model     = 'EEG ~ Covariate + Group';
 Results.test      = 'Group effect adjusted for covariate';
@@ -256,7 +253,7 @@ clear all; close all; clc
 
 load('../Results/02_TFCE_between_subject_covariate_results.mat')
 sigT = Results.tObs;
-sigT(~Results.Mask) = 0;
+sigT(~Results.P_Values >0.05) = 0;
 
 figure;
 

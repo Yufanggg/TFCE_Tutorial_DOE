@@ -162,14 +162,13 @@ fprintf('\nPermutation testing completed.\n');
 fprintf('Step 4: Computing TFCE-corrected significance...\n');
 
 alpha = 0.05;
-nPerm = length(TFCE_permMax);
 maxTFCEPos = sort([TFCE_permMaxPos; max(TFCE_Obs(:))]);
 minTFCENeg = sort([TFCE_permMinNeg; min(TFCE_Obs(:))]);
 
 P_Values = zeros(nChan, nTime);
 
 for ch = 1:nChan
-    for t = 1:nTime
+    for tp = 1:nTime
 
         pr = (1 + sum(maxTFCEPos >= TFCE_Obs(ch,tp))) / (nPerm + 1);
         
