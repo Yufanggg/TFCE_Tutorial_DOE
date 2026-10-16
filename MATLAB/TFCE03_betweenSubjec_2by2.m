@@ -35,7 +35,7 @@
 %   plot_tfce_results, and Parallel Computing Toolbox.
 %% ==========================================================
 
-clear; clc; close all;
+clear; clc; close all; rng(123);
 
 fprintf('\nStarting TFCE analysis...\n');
 %% ====================================
@@ -171,17 +171,17 @@ fprintf('Observed TFCE maps completed.\n');
 %% ====================================
 %% Step 3: SPT permutations
 %% ====================================
-nPerms = 999;
+nPerm = 999;
 
-TFCE_permMaxPos_A = nan(nPerms, 1);
-TFCE_permMaxPos_B = nan(nPerms, 1);
-TFCE_permMaxPos_AB= nan(nPerms,1);
+TFCE_permMaxPos_A = nan(nPerm, 1);
+TFCE_permMaxPos_B = nan(nPerm, 1);
+TFCE_permMaxPos_AB= nan(nPerm,1);
 
-TFCE_permMinNeg_A = nan(nPerms, 1);
-TFCE_permMinNeg_B = nan(nPerms, 1);
-TFCE_permMinNeg_AB= nan(nPerms,1);
+TFCE_permMinNeg_A = nan(nPerm, 1);
+TFCE_permMinNeg_B = nan(nPerm, 1);
+TFCE_permMinNeg_AB= nan(nPerm,1);
 
-fprintf('Step 3: Starting SPT: %d permutations...\n', nPerms);
+fprintf('Step 3: Starting SPT: %d permutations...\n', nPerm);
 
 
 %% FactorB strata for synchronized FactorA permutations.
@@ -205,9 +205,9 @@ assert(isequal(FactorB(idx_A1), FactorB(idx_A2)), ...
     'FactorB-label sequences must align across FactorA strata.');
 
 
-fprintf('Starting %d synchronized permutations...\n', nPerms);
+fprintf('Starting %d synchronized permutations...\n', nPerm);
 
-parfor p = 1:nPerms
+parfor p = 1:nPerm
 
     %% FactorA: synchronized permutation across FactorB strata
 
@@ -277,6 +277,8 @@ parfor p = 1:nPerms
     TFCE_permMinNeg_A(p) = min(TFCEperm_A(:));
     TFCE_permMinNeg_B(p) = min(TFCEperm_B(:));
     TFCE_permMinNeg_AB(p)= min(TFCEperm_AB(:));
+    
+    progressbar(p/nPerm)
 end
 
 fprintf('Permutation testing completed.\n');
@@ -344,7 +346,7 @@ Results.P_Values_AB    = P_Values_AB;
 
 
 Results.alpha        = alpha;
-Results.nPerm        = nPerms;
+Results.nPerm        = nPerm;
 Results.E_H          = E_H;
 Results.model        = 'EEG ~ FactorA * FactorB';
 Results.factorCoding = '-1 / +1';
