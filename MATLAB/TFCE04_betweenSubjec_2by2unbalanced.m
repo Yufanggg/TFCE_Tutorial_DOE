@@ -27,7 +27,7 @@
 %   for each tested effect
 %% ==========================================================
 
-clear all; clc; close all;
+clear all; clc; close all; rng(123)
 
 fprintf('\nStarting TFCE factorial analysis...\n');
 
@@ -254,6 +254,8 @@ fprintf('Observed TFCE maps completed.\n');
 %% ==========================================================
 % Step 3: Freedman-Lane permutation testing
 %% ==========================================================
+nPerm = 999;
+
 TFCE_permMaxPos_var1 = nan(nPerm, 1);
 TFCE_permMaxPos_var2 = nan(nPerm, 1);
 TFCE_permMaxPos_Int  = nan(nPerm, 1);
@@ -421,18 +423,18 @@ P_Values_var2 = nan(nChan, nTime);
 P_Values_Int  = nan(nChan, nTime);
              
 for ch = 1:nChan
-    for tpoint = 1:nTime
+    for tp = 1:nTime
         
-        pr_var1 = (1 + sum(maxTFCEPos_var1 >= TFCE_Obs_var1(ch,tp))) / (nPerm + 1);
-        pl_var1 = (1 + sum(minTFCENeg_var1 <= TFCE_Obs_var1(ch,tp))) / (nPerm + 1);        
+        pr_var1 = (sum(maxTFCEPos_var1 > TFCE_Obs_var1(ch,tp))) / (nPerm + 1);
+        pl_var1 = (sum(minTFCENeg_var1 < TFCE_Obs_var1(ch,tp))) / (nPerm + 1);        
         P_Values_var1(ch,tp) = min(1, 2 * min(pr_var1, pl_var1));
         
-        pr_var2 = (1 + sum(maxTFCEPos_var2 >= TFCE_Obs_var2(ch,tp))) / (nPerm + 1);
-        pl_var2 = (1 + sum(minTFCENeg_var2 <= TFCE_Obs_var2(ch,tp))) / (nPerm + 1);        
+        pr_var2 = (sum(maxTFCEPos_var2 > TFCE_Obs_var2(ch,tp))) / (nPerm + 1);
+        pl_var2 = (sum(minTFCENeg_var2 < TFCE_Obs_var2(ch,tp))) / (nPerm + 1);        
         P_Values_var2(ch,tp) = min(1, 2 * min(pr_var2, pl_var2));
         
-        pr_Int = (1 + sum(maxTFCEPos_Int >= TFCE_Obs_Int(ch,tp))) / (nPerm + 1);
-        pl_Int = (1 + sum(minTFCENeg_Int <= TFCE_Obs_Int(ch,tp))) / (nPerm + 1);        
+        pr_Int = (sum(maxTFCEPos_Int > TFCE_Obs_Int(ch,tp))) / (nPerm + 1);
+        pl_Int = (sum(minTFCENeg_Int < TFCE_Obs_Int(ch,tp))) / (nPerm + 1);        
         P_Values_Int(ch,tp) = min(1, 2 * min(pr_Int, pl_Int));
 
     end
@@ -539,7 +541,7 @@ load( ...
 %% ----------------------------------------------------------
 
 mT_var1 = Results.tObs_var1;
-mT_var1(~Results.Mask_var1) = 0;
+mT_var1(Results.P_Values_var1 > 0.05) = 0;
 
 figure;
 
@@ -577,7 +579,7 @@ set( ...
 %% ----------------------------------------------------------
 
 mT_var2 = Results.tObs_var2;
-mT_var2(~Results.Mask_var2) = 0;
+mT_var2(Results.P_Values_var2 > 0.05) = 0;
 
 figure;
 
@@ -615,7 +617,7 @@ set( ...
 %% ----------------------------------------------------------
 
 mT_Int = Results.tObs_Int;
-mT_Int(~Results.Mask_Int) = 0;
+mT_Int(Results.P_Values_Int > 0.05) = 0;
 
 figure;
 

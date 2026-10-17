@@ -171,7 +171,7 @@ fprintf('Observed TFCE maps completed.\n');
 %% ====================================
 %% Step 3: SPT permutations
 %% ====================================
-nPerm = 5;
+nPerm = 999;
 
 TFCE_permMaxPos_A = nan(nPerm, 1);
 TFCE_permMaxPos_B = nan(nPerm, 1);
@@ -309,16 +309,16 @@ P_Values_AB = nan(nChan,nTime);
 
 for ch = 1:nChan
     for tp = 1:nTime
-        pr_A = (1 + sum(maxTFCEPos_A >= TFCE_Obs_A(ch,tp))) / (nPerm + 1);
-        pl_A = (1 + sum(minTFCENeg_A <= TFCE_Obs_A(ch,tp))) / (nPerm + 1);        
+        pr_A = (sum(maxTFCEPos_A > TFCE_Obs_A(ch,tp))) / (nPerm + 1);
+        pl_A = (sum(minTFCENeg_A < TFCE_Obs_A(ch,tp))) / (nPerm + 1);        
         P_Values_A(ch,tp) = min(1, 2 * min(pr_A, pl_A));
         
-        pr_B = (1 + sum(maxTFCEPos_B >= TFCE_Obs_B(ch,tp))) / (nPerm + 1);
-        pl_B = (1 + sum(minTFCENeg_B <= TFCE_Obs_B(ch,tp))) / (nPerm + 1);        
+        pr_B = (sum(maxTFCEPos_B > TFCE_Obs_B(ch,tp))) / (nPerm + 1);
+        pl_B = (sum(minTFCENeg_B < TFCE_Obs_B(ch,tp))) / (nPerm + 1);        
         P_Values_B(ch,tp) = min(1, 2 * min(pr_B, pl_B));
         
-        pr_AB = (1 + sum(maxTFCEPos_AB >= TFCE_Obs_AB(ch,tp))) / (nPerm + 1);
-        pl_AB = (1 + sum(minTFCENeg_AB <= TFCE_Obs_AB(ch,tp))) / (nPerm + 1);        
+        pr_AB = (sum(maxTFCEPos_AB > TFCE_Obs_AB(ch,tp))) / (nPerm + 1);
+        pl_AB = (sum(minTFCENeg_AB < TFCE_Obs_AB(ch,tp))) / (nPerm + 1);        
         P_Values_AB(ch,tp) = min(1, 2 * min(pr_AB, pl_AB));
     end
 end

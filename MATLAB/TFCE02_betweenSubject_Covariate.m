@@ -197,11 +197,11 @@ P_Values = zeros(nChan, nTime);
 for ch = 1:nChan
     for tp = 1:nTime
 
-        pr = (1 + sum(maxTFCEPos >= TFCE_Obs(ch,tp))) / (nPerm + 1);
+        pr(ch,tp) = (sum(maxTFCEPos > TFCE_Obs(ch,tp))) / (nPerm + 1);
         
-        pl = (1 + sum(minTFCENeg <= TFCE_Obs(ch,tp))) / (nPerm + 1);
+        pl(ch,tp) = (sum(minTFCENeg < TFCE_Obs(ch,tp))) / (nPerm + 1);
         
-        P_Values(ch,tp) = min(1, 2 * min(pr, pl));
+        P_Values(ch,tp) = min(1, 2 * min(pr(ch,tp), pl(ch,tp)));
 
     end
 end
@@ -216,13 +216,13 @@ fprintf('Step 5: Storing results...\n');
 Results = struct();
 
 Results.tObs       = t_Obs;
-Results.TFCE_Obs  = TFCE_Obs;
+Results.TFCE_Obs   = TFCE_Obs;
 Results.maxTFCEPos = maxTFCEPos;
-Results.minTFCENeg  = minTFCENeg;
-Results.P_Values  = P_Values;
-Results.nPerm     = nPerm;
-Results.model     = 'EEG ~ Covariate + Group';
-Results.test      = 'Group effect adjusted for covariate';
+Results.minTFCENeg = minTFCENeg;
+Results.P_Values   = P_Values;
+Results.nPerm      = nPerm;
+Results.model      = 'EEG ~ Covariate + Group';
+Results.test       = 'Group effect adjusted for covariate';
 
 fprintf('Results stored.\n');
 
@@ -251,7 +251,7 @@ clear all; close all; clc
 
 load('../Results/02_TFCE_between_subject_covariate_results.mat')
 sigT = Results.tObs;
-sigT(~Results.P_Values >0.05) = 0;
+sigT(Results.P_Values >0.05) = 0;
 
 figure;
 
