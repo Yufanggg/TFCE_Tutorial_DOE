@@ -19,7 +19,7 @@
 %   EEGdata itself is never permuted
 %% ==========================================================
 
-clear; clc; close all;
+clear; clc; close all; rng(123);
 fprintf('\nStarting TFCE analysis...\n');
 
 %% Load data
@@ -97,35 +97,26 @@ fprintf('Step 1: Computing observed t-statistic map...\n');
 
 t_Obs = nan(nChan, nTime);
 
-beta_subject = nan(nSubj, 1);
-var_beta = nan(nSubj, 1);
-beta_standardizeds = nan(nChan, nTime, nSubj);
+subjDiffs = nan(nChan, nTime, nSubj);
 
 tPerm = nan(nChan, nTime);
 for ch = 1:nChan
     for tpoint = 1:nTime
         EEG = double(squeeze(EEGdata(:, ch, tpoint)));
+        % Subject-specific paired differences
+        subjDiff = nan(nSubj, 1);
         for s = 1:nSubj
             idxSubj = Subject == subjects(s);
-            lm_subject = fitlm(CondCode(idxSubj), EEG(idxSubj));  
-            beta_subject(s) = lm_subject.Coefficients.Estimate(2);
-            var_beta(s) = lm_subject.Coefficients.SE(2)^2;
-            
-            % Method-of-moments estimate under H0
-            sigma2_between = max(0, mean(beta_subject.^2 - var_beta));
-            % Standardized participant coefficients
-            beta_standardized = beta_subject ./sqrt(sigma2_between + var_beta);
-            % Observed statistic
-            t_Obs(ch, tpoint) = mean(beta_standardized);
-            
-            % save for the sake of permutation 
-            beta_standardizeds(ch, tpoint, :) = beta_standardized;
+            X = CondCode(idxSubj); 
+            Y = EEG(idxSubj);
+            subjDiff(s) = Y(X == 1) - Y(X == -1);
+            subjDiffs(ch, tpoint, s) = subjDiff(s);
         end
+        % Observed t-statistic
+        t_Obs(ch, tpoint) = mean(subjDiff) / (std(subjDiff) / sqrt(nSubj));
     end
 end
 fprintf('Observed t-statistic map completed.\n');
-
-
 
 %% Step 2: Observed TFCE map
 
@@ -152,15 +143,19 @@ parfor p = 1:nPerm
     flipSign = flipSigns(:, p);
     for ch = 1:nChan
         for tpoint = 1:nTime
-            beta_standardized = beta_standardizeds(ch, tpoint, :);
-            perm_t(ch, tpoint) = mean(beta_standardized .* flipSign);       
+            Diff = squeeze(subjDiffs(ch, tpoint, :));
+            
+            % Apply the same sign flips across all channels and time points
+            permDiff = Diff(:) .* flipSign;
+            perm_t(ch, tpoint) = mean(permDiff) / (std(permDiff) / sqrt(nSubj));
+
         end
     end
     
     TFCE_perm = ept_mex_TFCE2D(perm_t, ChN, E_H);
     
     TFCE_permMaxPos(p) = max(TFCE_perm(:));
-    TFCE_permMinNeg(p) = max(TFCE_perm(:));
+    TFCE_permMinNeg(p) = min(TFCE_perm(:));
 
     progressbar(p/nPerm)
 end
@@ -176,10 +171,10 @@ minTFCENeg = sort([TFCE_permMinNeg; min(TFCE_Obs(:))]);
 P_Values = nan(nChan, nTime);
 
 for ch = 1:nChan
-    for tpoint = 1:nTime
+    for tp = 1:nTime
         
-        pr = (1 + sum(maxTFCEPos >= TFCE_Obs(ch,tp))) / (nPerm + 1);
-        pl = (1 + sum(minTFCENeg <= TFCE_Obs(ch,tp))) / (nPerm + 1);        
+        pr = (sum(maxTFCEPos > TFCE_Obs(ch,tp))) / (nPerm + 1);
+        pl = (sum(minTFCENeg < TFCE_Obs(ch,tp))) / (nPerm + 1);        
         P_Values(ch,tp) = min(1, 2 * min(pr, pl));
     end
 end
@@ -220,7 +215,7 @@ clear all; clc; close all
 load('../Results/05_TFCE_within_subject_LME_results_Alternative.mat');
 
 mT = Results.tObs;
-mT(~Results.Mask) = 0;
+mT(Results.P_Values > 0.05) = 0;
 
 figure;
 imagesc(times, 1:nChan, mT);

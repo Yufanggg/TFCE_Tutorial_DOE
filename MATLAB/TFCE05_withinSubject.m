@@ -166,7 +166,7 @@ parfor p = 1:nPerm
     TFCE_perm = ept_mex_TFCE2D(perm_t, ChN, E_H);
     
     TFCE_permMaxPos(p) = max(TFCE_perm(:));
-    TFCE_permMinNeg(p) = max(TFCE_perm(:));
+    TFCE_permMinNeg(p) = min(TFCE_perm(:));
     
     progressbar(p/nPerm)
 end
@@ -185,10 +185,10 @@ minTFCENeg = sort([TFCE_permMinNeg; min(TFCE_Obs(:))]);
 P_Values = nan(nChan, nTime);
 
 for ch = 1:nChan
-    for tpoint = 1:nTime
+    for tp = 1:nTime
         
-        pr = (1 + sum(maxTFCEPos >= TFCE_Obs(ch,tp))) / (nPerm + 1);
-        pl = (1 + sum(minTFCENeg <= TFCE_Obs(ch,tp))) / (nPerm + 1);        
+        pr = (sum(maxTFCEPos > TFCE_Obs(ch,tp))) / (nPerm + 1);
+        pl = (sum(minTFCENeg < TFCE_Obs(ch,tp))) / (nPerm + 1);        
         P_Values(ch,tp) = min(1, 2 * min(pr, pl));
     end
 end
@@ -229,7 +229,7 @@ clear all; clc; close all
 load('../Results/05_TFCE_within_subject_LME_results.mat');
 
 mT = Results.tObs;
-mT(~Results.Mask) = 0;
+mT(Results.P_Values > 0.05) = 0;
 
 figure;
 imagesc(times, 1:nChan, mT);
