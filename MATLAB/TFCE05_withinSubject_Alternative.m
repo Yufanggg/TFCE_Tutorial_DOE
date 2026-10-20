@@ -139,18 +139,27 @@ fprintf('Step 3: Starting permutation: %d permutations...\n', nPerm);
 flipSigns = 2 * (rand(nSubj, nPerm) > 0.5) - 1;
 parfor p = 1:nPerm
     perm_t = nan(nChan, nTime);
-    
-    flipSign = flipSigns(:, p);
-    for ch = 1:nChan
-        for tpoint = 1:nTime
-            Diff = squeeze(subjDiffs(ch, tpoint, :));
-            
-            % Apply the same sign flips across all channels and time points
-            permDiff = Diff(:) .* flipSign;
-            perm_t(ch, tpoint) = mean(permDiff) / (std(permDiff) / sqrt(nSubj));
 
-        end
-    end
+    % One sign-flip vector per permutation
+    flipSign = flipSigns(:, p);
+    
+    % Apply flips across the subject dimension
+    permDiffs = subjDiffs .* reshape(flipSign, 1, 1, nSubj);
+    
+    % Calculate permutation t-statistic map
+    perm_t = mean(permDiffs, 3) ./ (std(permDiffs, 0, 3) ./ sqrt(nSubj));
+    
+    % flipSign = flipSigns(:, p);
+    % for ch = 1:nChan
+    %     for tpoint = 1:nTime
+    %         Diff = squeeze(subjDiffs(ch, tpoint, :));
+    % 
+    %         % Apply the same sign flips across all channels and time points
+    %         permDiff = Diff(:) .* flipSign;
+    %         perm_t(ch, tpoint) = mean(permDiff) / (std(permDiff) / sqrt(nSubj));
+    % 
+    %     end
+    % end
     
     TFCE_perm = ept_mex_TFCE2D(perm_t, ChN, E_H);
     
