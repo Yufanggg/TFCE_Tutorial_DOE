@@ -296,8 +296,8 @@ with_progress({
   progress_update <- progressor(along = seq_len(n_perm))
   
   TFCE_extrema <- future_sapply(seq_len(n_perm), function(p) {
-    perm_info <- design_info %>%
-      mutate(ConditionCode = sample(ConditionCode))
+    perm_info <- design_info %>% group_by(SubjID, Target) %>%
+      mutate(JSD = sample(JSD))
     
     perm_marginal_dat <- marginal_dat %>%
       select(-ConditionCode) %>%

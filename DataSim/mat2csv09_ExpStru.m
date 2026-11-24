@@ -59,6 +59,8 @@ for v = 1:numel(requiredVars)
     end
 end
 
+designTable.RowID = (1:height(designTable)).';
+
 %% Save design table
 
 writetable(designTable,'../data/09_designTable.csv');
@@ -71,7 +73,8 @@ chanIndex = repmat(kron((1:nChan).', ones(nTime, 1)), nObs, 1);
 channelLabels = {channelinfo.labels}.';
 timeValues = time(:);
 
-EEGlong = designTable(obsIndex, requiredVars);
+EEGlong = designTable(obsIndex, [{'RowID'}, requiredVars]);
+% EEGlong = designTable(obsIndex, requiredVars);
 EEGlong.Channel = channelLabels(chanIndex);
 EEGlong.Time = repmat(timeValues, nObs * nChan, 1);
 EEGlong.Amplitude = reshape(permute(EEGdata, [3 2 1]), [], 1); 
