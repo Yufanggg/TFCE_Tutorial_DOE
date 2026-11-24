@@ -2,3 +2,4 @@
 *.Rdata
 /Linked2lmeEEG/sEEG_all.mat
 /Linked2lmeEEG/EEGdata_long.csv
+/Data/09_EEGdata_long.csv

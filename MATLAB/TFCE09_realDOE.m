@@ -27,7 +27,7 @@ fprintf('\nStarting Freedman-Lane analysis...\n');
 % Load data
 %% ==========================================================
 
-load('../Data/realDOE_3.mat');
+load('../Data/09_realDOE.mat');
 
 %% ==========================================================
 % Dimensions
