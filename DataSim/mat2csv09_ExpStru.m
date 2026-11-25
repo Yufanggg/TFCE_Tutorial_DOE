@@ -1,91 +1,75 @@
-%% ==========================================================
-% Convert simulated nested class-student EEG data to CSV
+%% Export trial-level EEG data to CSV
 %
-% Input:
-%   EEGdata      : Class-student-condition rows ¡Á Channels ¡Á Time
-%   designTable  : One row per class-student-condition observation
+% Input:  ../Data/09_realDOE.mat
+% Output: ../Data/09_designTable.csv
+%         ../Data/09_EEGdata_long.csv
 %
-%   Each row of EEGdata corresponds to one row of designTable.
-%
-% Output:
-%
-% 1. 08designTable.csv
-%
-%  Subject, Item, Condition, ConditionCode
-%
-% 2. 08_EEGdata_long.csv
-%
-%   Subject, Item, Condition, ConditionCode, Channel, Time, Amplitude
-%
-% Thus, each row of designTable is expanded into
-% Channels ¡Á Time rows in 08_EEGdata_long.csv.
-%% ==========================================================
+% Each row of designTable corresponds to one trial in EEGdata.
+% Marker3 is copied to every channel-time row for that trial.
 
-clear all; clc; close all
+clearvars;
+clc;
 
-%% Load MAT file
+%% Load data
 
-load('../data/09_realDOE.mat');
+scriptFolder = fileparts(mfilename('fullpath'));
+dataFolder = fullfile(scriptFolder, '..', 'Data');
 
-%% Create output folder
+load(fullfile(dataFolder, '09_realDOE.mat'), ...
+    'EEGdata', 'designTable', 'channelinfo', 'time');
 
-if ~exist('../Data','dir')
-    mkdir('../Data');
+%% Check dimensions and required columns
+
+[nObs, nChan, nTime] = size(EEGdata);
+
+if height(designTable) ~= nObs
+    error('designTable must have one row per trial in EEGdata.');
 end
 
-%% Check dimensions
-
-[nObs,nChan,nTime] = size(EEGdata);
-
-if nChan ~= numel(channelinfo)
+if numel(channelinfo) ~= nChan
     error('Number of channels does not match channel labels.');
 end
 
-if nTime ~= numel(time)
+if numel(time) ~= nTime
     error('Number of time points does not match the time vector.');
 end
 
-if height(designTable) ~= nObs
-    error('Number of rows in designTable must equal the first dimension of EEGdata.');
-end
-
-requiredVars = {'SubjID', 'Target', 'JSD', 'ClassifierCongruency', ...
+requiredVars = {
+    'SubjID', 'Marker3', 'Target', 'JSD', 'ClassifierCongruency', ...
     'CongruencySemanticCategories', 'NumbersofStorks', ...
-    'Frequency', 'LengthofDistrctor'};
+    'Frequency', 'LengthofDistrctor'
+};
 
-for v = 1:numel(requiredVars)
-    if ~ismember(requiredVars{v}, designTable.Properties.VariableNames)
-        error('designTable is missing required variable: %s', requiredVars{v});
-    end
+missingVars = setdiff(requiredVars, designTable.Properties.VariableNames);
+
+if ~isempty(missingVars)
+    error('designTable is missing required columns: %s', ...
+        strjoin(missingVars, ', '));
 end
 
-designTable.RowID = (1:height(designTable)).';
-
-%% Save design table
-
-writetable(designTable,'../data/09_designTable.csv');
+% Remove RowID, including the earlier spelling rowID, if present.
+isRowID = strcmpi(designTable.Properties.VariableNames, 'RowID');
+designTable(:, isRowID) = [];
 
 %% Convert EEG data to long format
-%% ==========================================================
-obsIndex  = kron((1:nObs).', ones(nChan * nTime, 1));
+
+% Time varies fastest, then channel, then trial.
+obsIndex = kron((1:nObs).', ones(nChan * nTime, 1));
 chanIndex = repmat(kron((1:nChan).', ones(nTime, 1)), nObs, 1);
 
 channelLabels = {channelinfo.labels}.';
-timeValues = time(:);
 
-EEGlong = designTable(obsIndex, [{'RowID'}, requiredVars]);
-% EEGlong = designTable(obsIndex, requiredVars);
+EEGlong = designTable(obsIndex, requiredVars);
 EEGlong.Channel = channelLabels(chanIndex);
-EEGlong.Time = repmat(timeValues, nObs * nChan, 1);
-EEGlong.Amplitude = reshape(permute(EEGdata, [3 2 1]), [], 1); 
-% permute(EEGdata, [3 2 1])changes the dimension order from observation ¡Á channel ¡Á time to time ¡Á channel ¡Á observation.
-% reshape(..., [], 1) stacks all values into one column.
+EEGlong.Time = repmat(time(:), nObs * nChan, 1);
+EEGlong.Amplitude = reshape(permute(EEGdata, [3 2 1]), [], 1);
+
 
 disp(designTable(1:min(20, height(designTable)), :));
 disp(EEGlong(1:min(20, height(EEGlong)), :));
 
 %% Save EEG long table
-
+writetable(designTable, '../data/09_designTable.csv');
 writetable(EEGlong, '../data/09_EEGdata_long.csv');
 
 disp('Saved files:');

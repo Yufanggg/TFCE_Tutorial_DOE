@@ -44,8 +44,9 @@ library(dplyr)
 library(tidyr)
 library(lme4)
 library(lmerTest)
-
+library(future)
 source("../R/TFCE_transform.R")
+source("../R/TFCE_adjusted_p.R")
 
 cat("\nStarting fully crossed subject-item TFCE analysis...\n")
 
@@ -169,6 +170,18 @@ EEGlong <- EEGlong %>%
     LengthofDistrctor = as.numeric(scale(LengthofDistrctor))
   )
 
+
+designTable <- designTable %>%
+  ungroup() %>%
+  mutate(
+    SubjID = factor(SubjID),
+    Target = factor(Target),
+    JSD = C(factor(JSD), contr.sum),
+    ClassifierCongruency = C(factor(ClassifierCongruency), contr.sum),
+    NumbersofStorks = as.numeric(scale(NumbersofStorks)),
+    Frequency = log(Frequency),
+    LengthofDistrctor = as.numeric(scale(LengthofDistrctor))
+  )
 ## ==========================================================
 ## Step 0: Remove subject and item random effects
 ##
@@ -296,12 +309,12 @@ with_progress({
   progress_update <- progressor(along = seq_len(n_perm))
   
   TFCE_extrema <- future_sapply(seq_len(n_perm), function(p) {
-    perm_info <- design_info %>% group_by(SubjID, Target) %>%
+    perm_info <- designTable %>% group_by(SubjID, Target) %>%
       mutate(JSD = sample(JSD))
     
     perm_marginal_dat <- marginal_dat %>%
-      select(-ConditionCode) %>%
-      left_join(perm_info, by = "RowID")
+      select(-JSD) %>%
+      left_join(perm_info, by = c('SubjID', 'Target', 'Marker3'))
     
     ## ----------------------------------------------------------
     ## 3.1 Compute permutation t-map
@@ -334,84 +347,50 @@ cat("Step 4: Computing TFCE-corrected significance...\n")
 
 alpha <- 0.05
 
-## ==========================================================
-## Include the observed assignment in the maximum-TFCE
-## distribution
-## ==========================================================
+## Step 4: Compute TFCE-adjusted p-values
 
-maxTFCE <- sort(c(TFCE_permMax, max(abs(TFCE_Obs), na.rm = TRUE)))
+TFCE_p_adj <- TFCE_adjusted_p(
+  observed_map = TFCE_Obs,
+  perm_max = TFCE_extrema["perm_max", ],
+  perm_min = TFCE_extrema["perm_min", ]
+)
 
-maxTFCEcrit <- maxTFCE[round(n_perm * (1 - alpha))]
+stopifnot(identical(dimnames(TFCE_p_adj), dimnames(TFCE_Obs)))
 
-Mask <- abs(TFCE_Obs) >= maxTFCEcrit
-
-## ==========================================================
-## Compute family-wise-error-corrected p-values
-## ==========================================================
-
-P_Values <- matrix(NA,
-                   nrow = nChan,
-                   ncol = nTime,
-                   dimnames = dimnames(TFCE_Obs))
-
-for (ch in seq_len(nChan)) {
-  for (t in seq_len(nTime)) {
-    P_Values[ch, t] <-
-      (sum(TFCE_permMax >= abs(TFCE_Obs[ch, t]), na.rm = TRUE) + 1) /
-      (n_perm  + 1)
-  }
-}
+cat("Number of points with TFCE-adjusted p <= 0.05:",
+    sum(TFCE_p_adj <= 0.05, na.rm = TRUE), "\n")
 
 cat("TFCE-corrected significance completed.\n")
 
-cat(sprintf("Critical TFCE value = %.4f\n", maxTFCEcrit))
 
 ## ==========================================================
 ## Step 5: Store results
 ## ==========================================================
+Mask <- P_Values <= alpha
+cat("Channel-time points with adjusted p <=", alpha, ":", sum(Mask), "\n")
 
-cat("Step 5: Storing results...\n")
+# 7. Save results ---------------------------------------------------------
 
 Results <- list(
-  tObs         = t_Obs,
-  TFCE_Obs     = TFCE_Obs,
-  TFCE_Null    = TFCE_permMax,
-  maxTFCEcrit  = maxTFCEcrit,
-  P_Values     = P_Values,
-  Mask         = Mask,
-  alpha        = alpha,
-  n_perm         = n_perm ,
-  mixed_model = paste0("Amplitude ~ ConditionCode + ", "(1 | Subject) + ", "(1 | Item)"),
-  
-  local_model = paste0("MarginalAmplitude ~ ConditionCode"),
-  
-  test = paste0("Treatment - Control fixed effect"),
-  
-  marginalization = paste0("Subject- and item-specific random effects removed"),
-  
-  permutation = paste0("Condition-label flipping within each Subject-Item pair")
-  
+  tObs = t_Obs,
+  TFCE_Obs = TFCE_Obs,
+  P_Values = P_Values,
+  Mask = Mask,
+  alpha = alpha,
+  n_perm = n_perm,
+  tfce_settings = tfce_settings,
+  permutation_extrema = TFCE_extrema,
+  unit_counts = unit_counts,
+  mixed_model = deparse1(mixed_model),
+  local_model = deparse1(local_model),
+  test = "High versus low JSD",
+  marginalization = "Estimated subject and target random intercepts removed",
+  permutation = "JSD labels shuffled within subject-target pairs"
 )
 
-cat("Results stored.\n")
-
-## ==========================================================
-## Step 6: Save TFCE results
-## ==========================================================
-
-if (!dir.exists("../Results")) {
-  dir.create("../Results")
-}
-
-save(
-  Results,
-  times,
-  nChan,
-  channels,
-  
-  file = paste0("../Results/",
-                "08_TFCE_fully_crossed_subject_item_results.RData")
-)
+dir.create("../Results", showWarnings = FALSE)
+result_file <- "../Results/09_TFCE_fully_crossed_subject_item_results.RData"
+save(Results, times, nChan, channels, file = result_file)
 
 cat(paste0(
   "Fully crossed subject-item TFCE analysis ",
@@ -421,7 +400,7 @@ cat(paste0(
 
 ```{r, echo=TRUE}
 rm(list = ls())
-load("../Results/08_TFCE_fully_crossed_subject_item_results.RData")
+load("../Results/09_TFCE_fully_crossed_subject_item_results.RData")
 source("../R/plot_eeg_map.R")
 ## ==========================================================
 ## Step 7: Plot significant effects
