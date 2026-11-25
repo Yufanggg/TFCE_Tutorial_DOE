@@ -70,8 +70,8 @@ disp(EEGlong(1:min(20, height(EEGlong)), :));
 
 %% Save EEG long table
 writetable(designTable, '../data/09_designTable.csv');
-writetable(EEGlong, '../data/09_EEGdata_long.csv');
+%writetable(EEGlong, '../data/09_EEGdata_long.csv');
 
 disp('Saved files:');
 disp('../data/09_designTable.csv');
-disp('../data/09_EEGdata_long.csv');
+%disp('../data/09_EEGdata_long.csv');
