@@ -45,6 +45,8 @@ library(tidyr)
 library(lme4)
 library(lmerTest)
 library(future)
+library(progressr)
+library(future.apply)
 source("../R/TFCE_transform.R")
 source("../R/TFCE_adjusted_p.R")
 
@@ -116,7 +118,7 @@ subject_item_units <- designTable %>%
   ungroup() %>%
   count(SubjID, Target, name = "n_intended")
 
-# One row per retained trial is expected at each channel¨Ctime point.
+# One row per retained trial is expected at each channel?Ctime point.
 n_map_points <- nChan * nTime
 
 eeg_counts <- EEGlong %>%
@@ -297,7 +299,9 @@ cat("Step 3: Starting permutation test:", n_perm , "permutations...\n")
 
 n_workers <- max(1, parallel::detectCores() - 1)
 
-plan(multisession, workers = n_workers)
+plan(multisession, workers = n_workers -10)
+
+future::plan(future::sequential)
 
 handlers("txtprogressbar")
 
@@ -314,7 +318,8 @@ with_progress({
     
     perm_marginal_dat <- marginal_dat %>%
       select(-JSD) %>%
-      left_join(perm_info, by = c('SubjID', 'Target', 'Marker3'))
+      left_join(perm_info %>% select(SubjID, Target, Marker3, JSD),
+                by = c('SubjID', 'Target', 'Marker3'))
     
     ## ----------------------------------------------------------
     ## 3.1 Compute permutation t-map
