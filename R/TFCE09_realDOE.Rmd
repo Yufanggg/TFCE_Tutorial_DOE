@@ -316,31 +316,29 @@ with_progress({
     perm_info <- designTable %>% group_by(SubjID, Target) %>%
       mutate(JSD = sample(JSD))
     
-    perm_marginal_dat <- marginal_dat %>%
-      select(-JSD) %>%
-      left_join(perm_info %>% select(SubjID, Target, Marker3, JSD),
-                by = c('SubjID', 'Target', 'Marker3'))
-    
-    ## ----------------------------------------------------------
-    ## 3.1 Compute permutation t-map
-    ## ----------------------------------------------------------
-    
-    t_perm <- compute_tmap(perm_marginal_dat)
-    
-    TFCE_perm <- tfce_transform(t_perm, E = 0.5, H = 2, dh = 0.1)
-    
-    
-    perm_extrema <- c(
-      perm_max = max(TFCE_perm, na.rm = TRUE),
-      perm_min = min(TFCE_perm, na.rm = TRUE)
+  perm_marginal_dat <- marginal_dat %>%
+    select(-JSD) %>% left_join(
+      perm_info %>% select(SubjID, Target, Marker3, JSD),
+      by = c('SubjID', 'Target', 'Marker3')
+      )
+  ## ----------------------------------------------------------
+  ## 3.1 Compute permutation t-map
+  ## ----------------------------------------------------------
+  t_perm <- compute_tmap(perm_marginal_dat)
+  
+  TFCE_perm <- tfce_transform(t_perm, E = 0.5, H = 2, dh = 0.1)
+  
+  tfce_window <- TFCE_perm[, 52:168, drop = FALSE]
+  perm_extrema <- c(
+    perm_max = max(tfce_window, na.rm = TRUE),
+    perm_min = min(tfce_window, na.rm = TRUE)
     )
-    
-    progress_update()
-    
-    perm_extrema
-    
+  
+  progress_update()
+  
+  perm_extrema
   }, future.seed = TRUE, future.packages = c("dplyr", "tidyr", "lme4", "lmerTest"))
-})
+  })
 
 cat("Permutation testing completed.\n")
 
