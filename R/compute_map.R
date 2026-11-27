@@ -1,53 +1,62 @@
-
-compute_tmap <- function(data, formula, effect,
-                         channels, times) {
-  
-  nChan <- length(channels)
-  nTime <- length(times)
-  
-  res <- data %>%
-    group_by(Channel, Time) %>%
-    group_modify(~ {
-      
-      ## Fit the specified model
-      if (lme4::isREML(formula)) {
-        stop("Please supply a model formula, not a fitted model.")
-      }
-      
-      
-      if (length(lme4::findbars(formula)) > 0) {
-        fit <- lmerTest::lmer(formula, data = .x)
-      } else {
-        fit <- lm(formula, data = .x)
-      }
-      
-      ## Extract the statistic for the effect of interest
-      cf <- coef(summary(fit))
-      
-      tibble(
-        t_value = cf[effect, "t value"]
-      )
-    }) %>%
-    ungroup()
-  
-  tmat <- res %>%
-    mutate(
-      Channel = factor(Channel, levels = channels),
-      Time = factor(Time, levels = times)
-    ) %>%
-    arrange(Channel, Time) %>%
-    pull(t_value)
-  
-  matrix(
-    tmat,
-    nrow = nChan,
-    ncol = nTime,
-    byrow = TRUE,
-    dimnames = list(channels, times)
+compute_map <- function(
+    data, formula, term,
+    channel_col = "Channel", time_col = "Time",
+    channels = NULL, times = NULL, metric = c("t", "p")
+) {
+  stopifnot(
+    inherits(formula, "formula"),
+    is.character(term),
+    length(term) == 1L,
+    !is.na(term),
+    all(c(channel_col, time_col) %in% names(data)),
+    channel_col != time_col,!anyNA(data[c(channel_col, time_col)])
   )
+  
+  metric <- match.arg(metric)
+  stat_col <- switch(metric, t = "t value", p = "Pr(>|t|)")
+  
+  if (is.null(channels)) channels <- sort(unique(data[[channel_col]]))
+  if (is.null(times)) times <- sort(unique(data[[time_col]]))
+  
+  stopifnot(
+    length(channels) > 0L, !anyNA(channels), !anyDuplicated(channels),
+    length(times) > 0L, !anyNA(times), !anyDuplicated(times)
+  )
+  
+  # Fit one model per channel¨Ctime pair.
+  grouped <- dplyr::group_by(data, .data[[channel_col]], .data[[time_col]])
+  
+  results <- dplyr::group_modify(grouped, function(group_data, key) {
+    fit <- stats::lm(formula, data = group_data)
+    coefficients <- coef(summary(fit))
+    
+    #print(coefficients)
+    
+    stat_value <- if (term %in% rownames(coefficients)) {
+      unname(coefficients[term, stat_col])
+    } else {
+      NA_real_
+    }
+    
+    data.frame(stat_value = stat_value)
+  })
+  
+  # Place each statistic in its corresponding matrix cell.
+  map <- matrix(
+    NA_real_,
+    nrow = length(channels),
+    ncol = length(times),
+    dimnames = list(as.character(channels), as.character(times))
+  )
+  
+  row_idx <- match(results[[channel_col]], channels)
+  col_idx <- match(results[[time_col]], times)
+  keep <- !is.na(row_idx) & !is.na(col_idx)
+  
+  map[cbind(row_idx[keep], col_idx[keep])] <- results$stat_value[keep]
+  
+  return(map)
 }
-
-
 # -------------------------------------------------------------------------
 
 # 

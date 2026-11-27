@@ -30,7 +30,8 @@ library(future.apply)
 library(progressr)
 library(fields)
 
-source("../R/TFCE_transform.R")
+source("../R/tfce_functions.R")
+source("../R/compute_map.R")
 
 cat("\nStarting TFCE simple between-subject analysis...\n")
 
@@ -70,40 +71,12 @@ nChan <- length(channels)
 nTime <- length(times)
 
 ## ==========================================================
-## -2. Function to compute t-map
-## ==========================================================
-
-compute_tmap <- function(data) {
-  res <- data %>%
-    group_by(Channel, Time) %>%
-    summarise(t_value = coef(summary(lm(
-      Amplitude ~ CondCode
-    )))["CondCode", "t value"], .groups = "drop")
-  
-  tmat <- res %>%
-    mutate(
-      Channel = factor(Channel, levels = channels),
-      Time = factor(Time, levels = times)
-    ) %>%
-    arrange(Channel, Time) %>%
-    pull(t_value)
-  
-  matrix(
-    tmat,
-    nrow = nChan,
-    ncol = nTime,
-    byrow = TRUE,
-    dimnames = list(channels, times)
-  )
-}
-
-## ==========================================================
 ## Step 1: Observed t-map
 ## ==========================================================
 
 cat("Step 1: Computing observed t-map...\n")
 
-t_Obs <- compute_tmap(dat)
+t_Obs <- compute_map(dat, Amplitude ~ CondCode, "CondCode", metric = "t")
 
 cat("Observed t-map completed.\n")
 
@@ -114,7 +87,9 @@ cat("Observed t-map completed.\n")
 
 cat("Step 2: Computing observed TFCE map...\n")
 
-TFCE_Obs <- tfce_transform(t_Obs, E  = 0.66, H  = 2, dh = 0.1)
+graph = get_graph(channels, t_Obs)
+
+TFCE_Obs <- TFCE_transform(t_Obs, graph, E = 1/2, H = 1, ndh = 500L)
 
 cat("Observed TFCE map completed.\n")
 
@@ -124,7 +99,7 @@ cat("Observed TFCE map completed.\n")
 
 set.seed(123)
 
-n_perm <- 999
+n_perm <- 5
 
 subject_info <- designTable %>% select(Subject, CondCode) %>% distinct()
 
@@ -147,7 +122,7 @@ cat("Step 3: Starting parallel permutation testing with ",
 with_progress({
   progress_update <- progressor(along = seq_len(n_perm))
   
-  TFCE_permMax <- future_sapply(seq_len(n_perm), function(p) {
+  TFCE_perm <- future_sapply(seq_len(n_perm), function(p) {
 
     ## ----------------------------------------------------
     ## Construct the permuted EEG dataset
@@ -167,21 +142,18 @@ with_progress({
     ## ----------------------------------------------------
     ## Compute the permuted t-map
     ## ----------------------------------------------------
-    t_perm <- compute_tmap(perm_dat)
+    t_perm <- compute_map(perm_dat, Amplitude ~ CondCode, "CondCode", metric = "t")
     
     ## ----------------------------------------------------
     ## Apply the TFCE transformation
     ## ----------------------------------------------------
-    TFCE_perm <- tfce_transform(t_perm)
-    
-    ## Maximum absolute TFCE statistic
-    perm_max <- max(abs(TFCE_perm), na.rm = TRUE)
+    TFCE_perm <- TFCE_transform(t_perm, graph, E = 1/2, H = 1, ndh = 500L)
     
     ## Update progress bar once per completed permutation
     progress_update()
     
     ## Return the three permutation maxima
-    perm_max
+    c(perm_max = max(TFCE_perm, na.rm = TRUE), perm_min = min(TFCE_perm, na.rm = TRUE))
   }, ## Reproducible parallel random-number generation
   future.seed = TRUE, ## Packages required by the workers
   future.packages = c("dplyr", "tidyr"))

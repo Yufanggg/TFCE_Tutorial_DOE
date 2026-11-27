@@ -1,0 +1,329 @@
+---
+title: "TFCE08_crossed.Rmd"
+author: "Yufang"
+date: "2026-07-08"
+output: html_document
+---
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+
+rm(list = ls())
+
+library(dplyr)
+library(tidyr)
+library(lme4)
+library(lmerTest)
+library(future)
+library(progressr)
+library(future.apply)
+source("../R/TFCE_transform.R")
+source("../R/TFCE_adjusted_p.R")
+source("../R/compute_map.R")
+
+cat("\nStarting fully crossed subject-item TFCE analysis...\n")
+
+## ==========================================================
+## -1. Load EEG long-format data
+## ==========================================================
+
+designTable <- read.csv("../Data/09_designTable.csv")
+EEGlong <- read.csv("../Data/09_EEGdata_long.csv")
+
+print(names(designTable))
+print(names(EEGlong))
+
+## ==========================================================
+## 0. Prepare data
+## ==========================================================
+
+channels <- unique(EEGlong$Channel)
+times <- sort(unique(EEGlong$Time))
+subject <- unique(EEGlong$SubjID)
+target <- unique(EEGlong$Target)
+
+nChan <- length(channels)
+nTime <- length(times)
+nSubj <- length(subject)
+nTarget <- length(target)
+
+cat("Number of observations in EEGlong:", nrow(EEGlong), "\n")
+cat("Number of channels:", nChan, "\n")
+cat("Number of time points:", nTime, "\n")
+cat("Number of subjects:", nSubj, "\n")
+cat("Number of time targets:", nTarget, "\n")
+
+## ==========================================================
+## Basic checks
+## ==========================================================
+
+subject_item_units <- designTable %>% distinct(SubjID, Target)
+
+N_units = rep(NA, length(subject_item_units))
+for (u in seq_len(nrow(subject_item_units))) {
+  current_subject <- subject_item_units$SubjID[u]
+  current_item <- subject_item_units$Target[u]
+  
+  tmp <- designTable %>%
+    filter(SubjID == current_subject, Target == current_item)
+  
+  N_units[u] <- nrow(tmp)
+}
+
+cat("Basic design checks completed.\n")
+
+
+# Calculate the intended admissible transformation
+N_addtrans = prod(factorial(N_units))
+  
+cat("Number of intended admissble transformation:", N_addtrans, "\n")
+
+
+# Calculate the actual addmissible transformation
+## ==========================================================
+## Basic checks and permutation counts
+## ==========================================================
+
+
+EEGlong <- EEGlong %>%
+  ungroup() %>%
+  mutate(
+    SubjID = factor(SubjID),
+    Target = factor(Target),
+    JSD = C(factor(JSD), contr.sum),
+    ClassifierCongruency = C(factor(ClassifierCongruency), contr.sum),
+    NumbersofStorks = as.numeric(scale(NumbersofStorks)),
+    Frequency = log(Frequency),
+    LengthofDistrctor = as.numeric(scale(LengthofDistrctor))
+  )
+
+
+designTable <- designTable %>%
+  ungroup() %>%
+  mutate(
+    SubjID = factor(SubjID),
+    Target = factor(Target),
+    JSD = C(factor(JSD), contr.sum),
+    ClassifierCongruency = C(factor(ClassifierCongruency), contr.sum),
+    NumbersofStorks = as.numeric(scale(NumbersofStorks)),
+    Frequency = log(Frequency),
+    LengthofDistrctor = as.numeric(scale(LengthofDistrctor))
+  )
+## ==========================================================
+
+cat("Step 1: calculate point-wise p value...\n")
+
+Obs_p <- compute_map(
+  data = EEGlong,
+  formula = Amplitude ~ NumbersofStorks + Frequency +
+    LengthofDistrctor + ClassifierCongruency + JSD + (1|SubjID) + (1|Target),
+  effect = "JSD1",
+  channels = unique(EEGlong$Channel),
+  times = sort(unique(EEGlong$Time)),
+  metric = "p"
+)
+
+cat("Stage 1 has been completed.\n")
+
+
+
+## ==========================================================
+## -2. Function to compute the local t-map
+##
+## After marginalization, the local model is:
+##
+##   MarginalAmplitude ~ ConditionCode
+## ==========================================================
+
+compute_tmap <- function(data) {
+  res <- data %>%
+    group_by(Channel, Time) %>%
+    group_modify( ~ {
+      fit <- lm(MarginalAmplitude ~ NumbersofStorks + Frequency + LengthofDistrctor +
+                  ClassifierCongruency + JSD, data = .x)
+      
+      cf <- coef(summary(fit))
+      
+      tibble(t_Cond = cf["JSDL", "t value"])
+    }) %>%
+    ungroup()
+  
+  t_values <- res %>%
+    mutate(
+      Channel = factor(Channel, levels = channels),
+      Time = factor(Time, levels = times)
+    ) %>%
+    arrange(Channel, Time) %>%
+    pull(t_Cond)
+  
+  matrix(
+    t_values,
+    nrow = nChan,
+    ncol = nTime,
+    byrow = TRUE,
+    dimnames = list(channels, times)
+  )
+}
+
+## ==========================================================
+## Step 1: Observed t-map
+## ==========================================================
+
+cat("Step 1: Computing observed t-map...\n")
+
+t_Obs <- compute_tmap(marginal_dat)
+
+cat("Observed t-map completed.\n")
+
+## ==========================================================
+## Step 2: Observed TFCE map
+## ==========================================================
+
+cat("Step 2: Computing observed TFCE map...\n")
+
+TFCE_Obs <- tfce_transform(t_Obs, E = 0.5, H = 2, dh = 0.1)
+
+cat("Observed TFCE map completed.\n")
+
+## ==========================================================
+## Step 3: Permutation distribution
+## ==========================================================
+
+set.seed(123)
+
+n_perm <- 999
+
+cat("Step 3: Starting permutation test:", n_perm , "permutations...\n")
+
+## ------------------------------------------------------------
+## 3.1. Set up parallel processing
+## ------------------------------------------------------------
+
+n_workers <- max(1, parallel::detectCores() - 1)
+
+plan(multisession, workers = n_workers -10)
+
+future::plan(future::sequential)
+
+handlers("txtprogressbar")
+
+## ------------------------------------------------------------
+## 3.2 Parallel permutation test
+## ------------------------------------------------------------
+
+with_progress({
+  progress_update <- progressor(along = seq_len(n_perm))
+  
+  TFCE_extrema <- future_sapply(seq_len(n_perm), function(p) {
+    perm_info <- designTable %>% group_by(SubjID, Target) %>%
+      mutate(JSD = sample(JSD))
+    
+    perm_marginal_dat <- marginal_dat %>%
+      select(-JSD) %>%
+      left_join(perm_info %>% select(SubjID, Target, Marker3, JSD),
+                by = c('SubjID', 'Target', 'Marker3'))
+    
+    ## ----------------------------------------------------------
+    ## 3.1 Compute permutation t-map
+    ## ----------------------------------------------------------
+    
+    t_perm <- compute_tmap(perm_marginal_dat)
+    
+    TFCE_perm <- tfce_transform(t_perm, E = 0.5, H = 2, dh = 0.1)
+    
+    
+    perm_extrema <- c(
+      perm_max = max(TFCE_perm, na.rm = TRUE),
+      perm_min = min(TFCE_perm, na.rm = TRUE)
+    )
+    
+    progress_update()
+    
+    perm_extrema
+    
+  }, future.seed = TRUE, future.packages = c("dplyr", "tidyr", "lme4", "lmerTest"))
+})
+
+cat("Permutation testing completed.\n")
+
+## ==========================================================
+## Step 4: TFCE-corrected significance
+## ==========================================================
+
+cat("Step 4: Computing TFCE-corrected significance...\n")
+
+alpha <- 0.05
+
+## Step 4: Compute TFCE-adjusted p-values
+
+TFCE_p_adj <- TFCE_adjusted_p(
+  observed_map = TFCE_Obs,
+  perm_max = TFCE_extrema["perm_max", ],
+  perm_min = TFCE_extrema["perm_min", ]
+)
+
+stopifnot(identical(dimnames(TFCE_p_adj), dimnames(TFCE_Obs)))
+
+cat("Number of points with TFCE-adjusted p <= 0.05:",
+    sum(TFCE_p_adj <= 0.05, na.rm = TRUE), "\n")
+
+cat("TFCE-corrected significance completed.\n")
+
+
+## ==========================================================
+## Step 5: Store results
+## ==========================================================
+Mask <- P_Values <= alpha
+cat("Channel-time points with adjusted p <=", alpha, ":", sum(Mask), "\n")
+
+# 7. Save results ---------------------------------------------------------
+
+Results <- list(
+  tObs = t_Obs,
+  TFCE_Obs = TFCE_Obs,
+  P_Values = P_Values,
+  Mask = Mask,
+  alpha = alpha,
+  n_perm = n_perm,
+  tfce_settings = tfce_settings,
+  permutation_extrema = TFCE_extrema,
+  unit_counts = unit_counts,
+  mixed_model = deparse1(mixed_model),
+  local_model = deparse1(local_model),
+  test = "High versus low JSD",
+  marginalization = "Estimated subject and target random intercepts removed",
+  permutation = "JSD labels shuffled within subject-target pairs"
+)
+
+dir.create("../Results", showWarnings = FALSE)
+result_file <- "../Results/09_TFCE_fully_crossed_subject_item_results.RData"
+save(Results, times, nChan, channels, file = result_file)
+
+cat(paste0(
+  "Fully crossed subject-item TFCE analysis ",
+  "completed and results saved.\n"
+))
+```
+
+```{r, echo=TRUE}
+rm(list = ls())
+load("../Results/09_TFCE_fully_crossed_subject_item_results.RData")
+source("../R/plot_eeg_map.R")
+## ==========================================================
+## Step 7: Plot significant effects
+## ==========================================================
+
+mT <- Results$tObs
+mT[!Results$Mask] <- 0
+
+plot_eeg_map(mT, "TFCE-corrected Group Effect", times, nChan, channels)
+
+## ==========================================================
+## Step 7: Plot observed TFCE values
+## ==========================================================
+
+plot_eeg_map(Results$TFCE_Obs,
+             "Observed TFCE Map: Group Effect Adjusted for Covariate",
+             times,
+             nChan, channels)
+```
+
